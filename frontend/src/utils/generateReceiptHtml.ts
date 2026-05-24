@@ -140,6 +140,11 @@ export function generateReceiptHtml(
       <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
     </div>`;
   }
+  if (receipt.isStaffSale) {
+    totals += `<div style="text-align:center;border:1px solid #4c1d95;border-radius:3px;padding:3px 6px;margin:4px 0;font-size:11px;font-weight:700;color:#4c1d95;">
+      &#9733; STAFF PURCHASE &#8212; COST PRICE &#9733;
+    </div>`;
+  }
 
   // Footer
   let footer = divider();

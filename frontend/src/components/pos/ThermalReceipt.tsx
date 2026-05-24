@@ -215,6 +215,15 @@ export default function ThermalReceipt({
           </div>
         </>
       )}
+      {receipt.isStaffSale && (
+        <div style={{
+          textAlign: 'center', border: '1px solid #4c1d95',
+          borderRadius: 3, padding: '3px 6px', margin: '4px 0',
+          fontSize: 11, fontWeight: 700, color: '#4c1d95',
+        }}>
+          &#9733; STAFF PURCHASE &#8212; COST PRICE &#9733;
+        </div>
+      )}
 
       {/* ── FOOTER ── */}
       <Divider />
