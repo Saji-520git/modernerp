@@ -43,8 +43,22 @@ export const updatePurchaseSchema = z.object({
   lines:       z.array(purchaseLineInputSchema).min(1).optional(),
 });
 
+// ─── From alerts (auto-PO) ────────────────────────────────────────────────────
+
+export const fromAlertsSchema = z.object({
+  warehouseId: z.string().min(1, 'Warehouse is required'),
+  supplierId:  z.string().min(1, 'Supplier is required'),
+  items: z.array(z.object({
+    productId:     z.string().min(1),
+    qty:           z.number().positive(),
+    unitCostCents: z.number().int().min(0).optional(),
+  })).min(1, 'Select at least one product'),
+  note: z.string().max(500).optional(),
+});
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>;
 export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;
 export type ListPurchasesInput  = z.infer<typeof listPurchasesSchema>;
+export type FromAlertsInput     = z.infer<typeof fromAlertsSchema>;

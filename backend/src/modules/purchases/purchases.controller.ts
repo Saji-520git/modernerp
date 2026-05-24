@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { purchaseService } from './purchases.service.js';
-import { createPurchaseSchema, updatePurchaseSchema, listPurchasesSchema } from './purchases.schema.js';
+import { createPurchaseSchema, updatePurchaseSchema, listPurchasesSchema, fromAlertsSchema } from './purchases.schema.js';
 import { HttpError } from '../../middleware/error-handler.js';
 
 export const listSuppliers: RequestHandler = async (_req, res) => {
@@ -33,7 +33,7 @@ export const createPurchase: RequestHandler = async (req, res) => {
 
 export const confirmPurchase: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
-  const result = await purchaseService.confirmPurchase(req.params.id);
+  const result = await purchaseService.confirmPurchase(req.params.id, req.auth.userId);
   res.json(result);
 };
 
@@ -56,6 +56,13 @@ export const recordSupplierPayment: RequestHandler = async (req, res) => {
 
 export const listPurchasePayments: RequestHandler = async (req, res) => {
   res.json(await purchaseService.listPurchasePayments(req.params.id));
+};
+
+export const fromAlerts: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new HttpError(401, 'Not authenticated');
+  const input = fromAlertsSchema.parse(req.body);
+  const result = await purchaseService.fromAlerts(input, req.auth.userId);
+  res.status(201).json(result);
 };
 
 export const deletePurchase: RequestHandler = async (req, res) => {

@@ -15,6 +15,8 @@ import { router as unitsRouter } from './units/units.routes.js';
 import { router as expensesRouter } from './expenses/expenses.routes.js';
 import { router as settingsRouter } from './settings/settings.routes.js';
 import { router as warehousesRouter } from './warehouses/warehouses.routes.js';
+import { router as supplierPaymentsRouter } from './supplier-payments/supplier-payment.routes.js';
+import { router as importRouter }           from './import/import.routes.js';
 
 export const router: Router = Router();
 
@@ -35,4 +37,6 @@ router.use('/master-data', masterDataRouter);
 router.use('/units',    unitsRouter);
 router.use('/expenses', expensesRouter);
 router.use('/settings',   settingsRouter);
-router.use('/warehouses', warehousesRouter);
+router.use('/warehouses',        warehousesRouter);
+router.use('/supplier-payments', supplierPaymentsRouter);
+router.use('/import',            importRouter);

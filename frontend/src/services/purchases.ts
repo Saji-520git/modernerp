@@ -28,27 +28,75 @@ export interface PurchaseProduct {
   }>;
 }
 
-export type PurchaseStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
+export type PurchaseStatus        = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
+export type PurchasePaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
+export type DeliveryStatus        = 'PENDING' | 'PARTIAL' | 'DELIVERED';
 
 export interface PurchaseLine {
   id: string;
   productId: string;
   qty: number;
+  receivedQty: number;
   unitCostCents: number;
   taxPercent: number;
   lineTotalCents: number;
+  expiryDate?: string | null;
   product: {
     id: string;
     name: string;
     sku: string;
+    isBatchTracked: boolean;
     unit?: { shortCode: string };
   };
+}
+
+export interface PurchaseReceiptLine {
+  id:             string;
+  purchaseLineId: string;
+  productId:      string;
+  qty:            number;
+  batchNumber:    string | null;
+  expiryDate:     string | null;
+  product:        { id: string; name: string; sku: string };
+  purchaseLine:   { id: string; qty: number; receivedQty: number };
+}
+
+export interface PurchaseReceipt {
+  id:            string;
+  receiptNumber: string;
+  purchaseId:    string;
+  warehouseId:   string;
+  notes:         string | null;
+  receivedBy:    { id: string; fullName: string };
+  lines:         PurchaseReceiptLine[];
+  createdAt:     string;
+}
+
+export interface SupplierPayment {
+  id:            string;
+  paymentNumber: string;
+  purchaseId:    string;
+  supplierId:    string;
+  amountCents:   number;
+  paymentMethod: string;
+  referenceNo:   string | null;
+  bankName:      string | null;
+  paymentDate:   string;
+  notes:         string | null;
+  isActive:      boolean;
+  createdAt:     string;
+  supplier:      { id: string; name: string };
+  createdByUser: { id: string; fullName: string };
 }
 
 export interface Purchase {
   id: string;
   number: string;
   status: PurchaseStatus;
+  paymentStatus: PurchasePaymentStatus;
+  deliveryStatus: DeliveryStatus;
+  sourceType: string | null;
+  paidCents: number;
   date: string;
   subtotalCents: number;
   taxCents: number;
@@ -58,8 +106,35 @@ export interface Purchase {
   warehouse: { id: string; name: string; code: string };
   createdBy: { id: string; fullName: string };
   lines?: PurchaseLine[];
+  receipts?: PurchaseReceipt[];
+  supplierPayments?: SupplierPayment[];
   _count?: { lines: number };
   createdAt: string;
+}
+
+export interface CreateReceiptLineInput {
+  purchaseLineId: string;
+  qty:            number;
+  batchNumber?:   string;
+  expiryDate?:    string;
+}
+
+export interface CreateReceiptPayload {
+  lines: CreateReceiptLineInput[];
+  notes?: string;
+}
+
+export interface FromAlertsItem {
+  productId:     string;
+  qty:           number;
+  unitCostCents?: number;
+}
+
+export interface FromAlertsPayload {
+  warehouseId: string;
+  supplierId:  string;
+  items:       FromAlertsItem[];
+  note?:       string;
 }
 
 export interface PurchaseListResponse {
@@ -126,6 +201,19 @@ export const purchasesApi = {
 
   listPurchasePayments: (id: string): Promise<Array<{id: string; amountCents: number; method: string; date: string; note: string | null; createdBy: { fullName: string }}>> =>
     api.get(`/purchases/${id}/payments`).then((r) => r.data),
+
+  // ── GRN Receipts ──────────────────────────────────────────────────────────
+  listReceipts: (purchaseId: string): Promise<PurchaseReceipt[]> =>
+    api.get(`/purchases/${purchaseId}/receipts`).then((r) => r.data),
+
+  createReceipt: (purchaseId: string, payload: CreateReceiptPayload): Promise<PurchaseReceipt> =>
+    api.post(`/purchases/${purchaseId}/receipts`, payload).then((r) => r.data),
+
+  getReceipt: (receiptId: string): Promise<PurchaseReceipt> =>
+    api.get(`/purchases/receipts/${receiptId}`).then((r) => r.data),
+
+  fromAlerts: (payload: FromAlertsPayload): Promise<Purchase> =>
+    api.post('/purchases/from-alerts', payload).then((r) => r.data),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -144,4 +232,16 @@ export const STATUS_COLORS: Record<PurchaseStatus, string> = {
   DRAFT: 'bg-yellow-100 text-yellow-700',
   CONFIRMED: 'bg-green-100 text-green-700',
   CANCELLED: 'bg-slate-100 text-slate-500',
+};
+
+export const DELIVERY_LABELS: Record<DeliveryStatus, string> = {
+  PENDING:   'Pending',
+  PARTIAL:   'Partial',
+  DELIVERED: 'Delivered',
+};
+
+export const DELIVERY_COLORS: Record<DeliveryStatus, string> = {
+  PENDING:   'bg-slate-100 text-slate-500',
+  PARTIAL:   'bg-amber-100 text-amber-700',
+  DELIVERED: 'bg-emerald-100 text-emerald-700',
 };

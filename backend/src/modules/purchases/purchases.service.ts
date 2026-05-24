@@ -3,7 +3,8 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
-import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput } from './purchases.schema.js';
+import { createFullReceiptRecord } from './purchase-receipt.service.js';
+import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,11 +86,12 @@ export const purchaseService = {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          supplier: { select: { id: true, name: true } },
+          supplier:  { select: { id: true, name: true } },
           warehouse: { select: { id: true, name: true, code: true } },
           createdBy: { select: { id: true, fullName: true } },
-          _count: { select: { lines: true } },
+          _count:    { select: { lines: true } },
         },
+        // paymentStatus is a scalar on Purchase — returned automatically
       }),
     ]);
 
@@ -112,7 +114,27 @@ export const purchaseService = {
                 id: true,
                 name: true,
                 sku: true,
+                isBatchTracked: true,
                 unit: { select: { shortCode: true } },
+              },
+            },
+          },
+        },
+        supplierPayments: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+          include: {
+            createdByUser: { select: { id: true, fullName: true } },
+          },
+        },
+        receipts: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            receivedBy: { select: { id: true, fullName: true } },
+            lines: {
+              include: {
+                product:     { select: { id: true, name: true, sku: true } },
+                purchaseLine: { select: { id: true, qty: true, receivedQty: true } },
               },
             },
           },
@@ -195,7 +217,7 @@ export const purchaseService = {
 
   // ── Confirm PO → adds stock ────────────────────────────────────────────────
 
-  confirmPurchase: async (id: string) => {
+  confirmPurchase: async (id: string, userId?: string) => {
     const purchase = await (prisma as any).purchase.findFirst({
       where: { id, deletedAt: null },
       include: { lines: true },
@@ -285,6 +307,11 @@ export const purchaseService = {
         });
       }
     });
+
+    // ── NEW: create GRN document for backward-compat full delivery ────────────
+    if (userId) {
+      await createFullReceiptRecord(id, purchase.lines, purchase.warehouseId, userId);
+    }
 
     return prisma.purchase.findUnique({
       where: { id },
@@ -413,6 +440,70 @@ export const purchaseService = {
       where: { purchaseId: id },
       orderBy: { createdAt: 'asc' },
       include: { createdBy: { select: { fullName: true } } },
+    });
+  },
+
+  // ── Auto-PO from low stock alerts ─────────────────────────────────────────
+
+  fromAlerts: async (input: FromAlertsInput, userId: string) => {
+    const [supplier, warehouse] = await Promise.all([
+      prisma.supplier.findUnique({ where: { id: input.supplierId } }),
+      prisma.warehouse.findUnique({ where: { id: input.warehouseId } }),
+    ]);
+    if (!supplier) throw new HttpError(400, 'Supplier not found');
+    if (!warehouse) throw new HttpError(400, 'Warehouse not found');
+    if (!warehouse.isActive) throw new HttpError(400, 'Warehouse is not active');
+
+    const productIds = [...new Set(input.items.map((i) => i.productId))];
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, isActive: true },
+      select: { id: true, costCents: true },
+    });
+    if (products.length !== productIds.length) {
+      throw new HttpError(400, 'One or more products not found or inactive');
+    }
+    const costMap = new Map(products.map((p) => [p.id, p.costCents]));
+
+    const number = await generatePONumber();
+
+    const computedLines = input.items.map((item) => {
+      const unitCostCents = item.unitCostCents ?? costMap.get(item.productId) ?? 0;
+      const lineTotalCents = Math.round(item.qty * unitCostCents);
+      return { productId: item.productId, qty: item.qty, unitCostCents, lineTotalCents };
+    });
+
+    const totalCents = computedLines.reduce((s, l) => s + l.lineTotalCents, 0);
+
+    return prisma.purchase.create({
+      data: {
+        number,
+        supplierId:  input.supplierId,
+        warehouseId: input.warehouseId,
+        date:        new Date(),
+        note:        input.note ?? `Auto-generated from low-stock alerts`,
+        subtotalCents: totalCents,
+        taxCents:      0,
+        totalCents,
+        status:     'DRAFT',
+        sourceType: 'AUTO_PO',
+        createdById: userId,
+        lines: {
+          create: computedLines.map((l) => ({
+            productId:      l.productId,
+            qty:            l.qty,
+            unitCostCents:  l.unitCostCents,
+            taxPercent:     0,
+            lineTotalCents: l.lineTotalCents,
+          })),
+        },
+      },
+      include: {
+        supplier:  { select: { id: true, name: true } },
+        warehouse: { select: { id: true, name: true, code: true } },
+        lines: {
+          include: { product: { select: { id: true, name: true, sku: true } } },
+        },
+      },
     });
   },
 

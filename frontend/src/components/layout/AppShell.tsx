@@ -9,7 +9,7 @@ import {
   FileText, Truck, RotateCcw, Receipt,
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
-  UserCog, Settings, LogOut, ChevronLeft, ChevronRight,
+  UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
   Bell,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -84,6 +84,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'SYSTEM',
     items: [
       { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'] },
+      { to: '/settings/import', label: 'Import Products', icon: Upload, roles: ['ADMIN'] },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },

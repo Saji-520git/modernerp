@@ -2,17 +2,32 @@ import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight, Download,
+  Truck, PackageCheck,
 } from 'lucide-react';
 import {
   purchasesApi,
   formatCents,
   STATUS_LABELS,
   STATUS_COLORS,
+  DELIVERY_LABELS,
+  DELIVERY_COLORS,
   type PurchaseStatus,
+  type PurchasePaymentStatus,
+  type DeliveryStatus,
   type PurchaseProduct,
   type PurchaseLine,
+  type PurchaseReceipt,
   type Purchase,
+  type SupplierPayment,
+  type CreateReceiptLineInput,
 } from '../../services/purchases';
+import {
+  supplierPaymentsApi,
+  generateVoucherHtml,
+  printVoucher,
+  SPAY_METHOD_LABELS,
+  type SupplierPaymentMethod,
+} from '../../services/supplierPayments';
 import { inventoryApi } from '../../services/inventory';
 import { exportPurchaseOrder } from '../../services/pdfExport';
 import { productsApi } from '../../services/products';
@@ -31,94 +46,501 @@ interface LineForm {
   expiryDate: string; // YYYY-MM-DD or ''
 }
 
+// ─── Payment Status badge ─────────────────────────────────────────────────────
+
+const PAY_STATUS_COLORS: Record<PurchasePaymentStatus, string> = {
+  UNPAID:  'bg-red-100 text-red-700',
+  PARTIAL: 'bg-amber-100 text-amber-700',
+  PAID:    'bg-green-100 text-green-700',
+};
+
 // ─── Supplier Payment Section ─────────────────────────────────────────────────
 
-function SupplierPaymentSection({ poId, totalCents, paidCents }: { poId: string; totalCents: number; paidCents: number }) {
+function SupplierPaymentSection({
+  poId,
+  totalCents,
+  paidCents,
+  businessName = 'My Business',
+}: {
+  poId: string;
+  totalCents: number;
+  paidCents: number;
+  businessName?: string;
+}) {
   const queryClient = useQueryClient();
   const outstanding = totalCents - paidCents;
-  const [show, setShow]   = useState(false);
-  const [amount, setAmount] = useState((outstanding / 100).toFixed(2));
-  const [method, setMethod] = useState('CASH');
-  const [note, setNote]   = useState('');
-  const [err, setErr]     = useState('');
 
-  const { data: history = [] } = useQuery({
-    queryKey: ['po-payments', poId],
-    queryFn:  () => purchasesApi.listPurchasePayments(poId),
+  // ── form state ──
+  const [show,       setShow]       = useState(false);
+  const [amount,     setAmount]     = useState((outstanding / 100).toFixed(2));
+  const [method,     setMethod]     = useState<SupplierPaymentMethod>('CASH');
+  const [refNo,      setRefNo]      = useState('');
+  const [bankName,   setBankName]   = useState('');
+  const [payDate,    setPayDate]    = useState(new Date().toISOString().slice(0, 10));
+  const [notes,      setNotes]      = useState('');
+  const [err,        setErr]        = useState('');
+
+  const showRef = method === 'CHEQUE' || method === 'BANK_TRANSFER';
+
+  // ── query ──
+  const { data: history = [] } = useQuery<SupplierPayment[]>({
+    queryKey: ['spay', poId],
+    queryFn:  () => supplierPaymentsApi.listByPurchase(poId),
+    staleTime: 0,
   });
 
-  const mutation = useMutation({
-    mutationFn: () => purchasesApi.recordSupplierPayment(poId, {
-      amountCents: Math.round(parseFloat(amount) * 100),
-      method,
-      note: note || undefined,
+  // ── create mutation ──
+  const createMut = useMutation({
+    mutationFn: () => supplierPaymentsApi.create({
+      purchaseId:    poId,
+      amountCents:   Math.round(parseFloat(amount) * 100),
+      paymentMethod: method,
+      referenceNo:   refNo   || undefined,
+      bankName:      bankName || undefined,
+      paymentDate:   payDate,
+      notes:         notes   || undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', poId] });
-      queryClient.invalidateQueries({ queryKey: ['po-payments', poId] });
+      queryClient.invalidateQueries({ queryKey: ['spay', poId] });
       setShow(false); setErr('');
+      setAmount((outstanding / 100).toFixed(2));
     },
-    onError: (e: any) => setErr(e?.response?.data?.message ?? 'Failed'),
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setErr(msg ?? 'Failed to record payment');
+    },
   });
+
+  // ── void mutation ──
+  const voidMut = useMutation({
+    mutationFn: (id: string) => supplierPaymentsApi.void(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', poId] });
+      queryClient.invalidateQueries({ queryKey: ['spay', poId] });
+    },
+  });
+
+  // ── print voucher ──
+  const handlePrintVoucher = async (paymentId: string) => {
+    const voucher = await supplierPaymentsApi.getVoucherData(paymentId);
+    printVoucher(generateVoucherHtml(voucher, businessName));
+  };
 
   return (
     <div className="px-6 py-4 border-t border-slate-100">
-      <div className="flex items-center justify-between mb-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Supplier Payments</p>
         {outstanding > 0 && (
-          <button onClick={() => setShow(s => !s)}
-            className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold">
-            {show ? 'Cancel' : '+ Record Supplier Payment'}
+          <button
+            onClick={() => { setShow(s => !s); setErr(''); }}
+            className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+          >
+            {show ? 'Cancel' : '+ Record Payment'}
           </button>
         )}
       </div>
 
+      {/* Payment history table */}
       {history.length > 0 && (
-        <div className="space-y-1 mb-3">
-          {history.map((p: any) => (
-            <div key={p.id} className="flex items-center justify-between text-xs px-3 py-1.5 bg-slate-50 rounded-lg">
-              <span className="text-slate-500">{new Date(p.date).toLocaleDateString()}</span>
-              <span className="text-slate-600">{p.method.replace('_', ' ')}</span>
-              <span className="font-semibold">{formatCents(p.amountCents)}</span>
-              {p.note && <span className="text-slate-400">{p.note}</span>}
-            </div>
-          ))}
+        <div className="mb-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-slate-400 border-b border-slate-100">
+                <th className="pb-1 text-left font-medium">Voucher #</th>
+                <th className="pb-1 text-left font-medium">Date</th>
+                <th className="pb-1 text-left font-medium">Method</th>
+                <th className="pb-1 text-left font-medium">Ref</th>
+                <th className="pb-1 text-right font-medium">Amount</th>
+                <th className="pb-1 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((p) => (
+                <tr key={p.id} className="border-b border-slate-50">
+                  <td className="py-1.5 font-mono text-indigo-700">{p.paymentNumber}</td>
+                  <td className="py-1.5 text-slate-500">{new Date(p.paymentDate).toLocaleDateString()}</td>
+                  <td className="py-1.5">{SPAY_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</td>
+                  <td className="py-1.5 text-slate-400">{p.referenceNo ?? '—'}</td>
+                  <td className="py-1.5 text-right font-semibold">{formatCents(p.amountCents)}</td>
+                  <td className="py-1.5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handlePrintVoucher(p.id)}
+                        className="text-indigo-600 hover:text-indigo-800 text-[10px] font-medium"
+                        title="Print voucher"
+                      >
+                        Voucher
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Void payment ${p.paymentNumber}? This cannot be undone.`)) {
+                            voidMut.mutate(p.id);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 text-[10px] font-medium"
+                        title="Void this payment"
+                      >
+                        Void
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <div className="text-xs text-slate-600 flex gap-4">
+      {/* Summary bar */}
+      <div className="text-xs text-slate-600 flex gap-4 mb-2">
         <span>Total: <strong>{formatCents(totalCents)}</strong></span>
         <span>Paid: <strong className="text-green-600">{formatCents(paidCents)}</strong></span>
         <span>Outstanding: <strong className={outstanding > 0 ? 'text-red-600' : 'text-green-600'}>{formatCents(outstanding)}</strong></span>
       </div>
 
+      {/* Record payment form */}
       {show && (
         <div className="mt-3 p-4 bg-indigo-50 rounded-xl space-y-3 border border-indigo-100">
           {err && <p className="text-xs text-red-600">{err}</p>}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Amount (Rs.)</label>
-              <input type="number" min="0.01" step="0.01" value={amount}
+              <input
+                type="number" min="0.01" step="0.01" value={amount}
                 onChange={e => setAmount(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Payment Date</label>
+              <input
+                type="date" value={payDate}
+                onChange={e => setPayDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Method</label>
-              <select value={method} onChange={e => setMethod(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
-                {['CASH','CARD','BANK_TRANSFER','QR_PAY'].map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
+              <select
+                value={method}
+                onChange={e => setMethod(e.target.value as SupplierPaymentMethod)}
+                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="CASH">Cash</option>
+                <option value="CHEQUE">Cheque</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Note</label>
-              <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Optional"
-                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+              <input
+                type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional"
+                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            {showRef && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    {method === 'CHEQUE' ? 'Cheque No.' : 'Reference No.'}
+                  </label>
+                  <input
+                    type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="Optional"
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Bank Name</label>
+                  <input
+                    type="text" value={bankName} onChange={e => setBankName(e.target.value)} placeholder="Optional"
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => createMut.mutate()}
+            disabled={createMut.isPending}
+            className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
+          >
+            {createMut.isPending ? 'Saving…' : 'Record Payment'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Receive Stock Section ────────────────────────────────────────────────────
+
+function ReceiveStockSection({ po }: { po: Purchase }) {
+  const queryClient  = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [notes, setNotes]       = useState('');
+  const [err,   setErr]         = useState('');
+
+  // Per-line receive state: { purchaseLineId → { qty, batchNumber, expiryDate } }
+  const [lineInputs, setLineInputs] = useState<
+    Record<string, { qty: string; batchNumber: string; expiryDate: string }>
+  >({});
+
+  const lines    = po.lines ?? [];
+  const receipts = po.receipts ?? [];
+
+  // Initialise lineInputs from remaining qty
+  const initForm = () => {
+    const init: typeof lineInputs = {};
+    for (const l of lines) {
+      const remaining = Math.max(0, Number(l.qty) - Number(l.receivedQty ?? 0));
+      init[l.id] = { qty: remaining > 0 ? String(remaining) : '0', batchNumber: '', expiryDate: '' };
+    }
+    setLineInputs(init);
+    setNotes('');
+    setErr('');
+    setShowForm(true);
+  };
+
+  const updateInput = (lineId: string, field: 'qty' | 'batchNumber' | 'expiryDate', val: string) => {
+    setLineInputs((prev) => ({ ...prev, [lineId]: { ...prev[lineId], [field]: val } }));
+  };
+
+  const createMut = useMutation({
+    mutationFn: () => {
+      const receiptLines: CreateReceiptLineInput[] = [];
+      for (const l of lines) {
+        const input = lineInputs[l.id];
+        const qty   = parseFloat(input?.qty ?? '0');
+        if (qty > 0) {
+          receiptLines.push({
+            purchaseLineId: l.id,
+            qty,
+            batchNumber:  input.batchNumber || undefined,
+            expiryDate:   input.expiryDate  || undefined,
+          });
+        }
+      }
+      if (receiptLines.length === 0) throw new Error('Enter a qty > 0 for at least one line');
+      return purchasesApi.createReceipt(po.id, { lines: receiptLines, notes: notes || undefined });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', po.id] });
+      setShowForm(false);
+      setErr('');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } }; message?: string })
+        ?.response?.data?.message ?? (e as { message?: string })?.message ?? 'Failed to record delivery';
+      setErr(msg);
+    },
+  });
+
+  const isDelivered = po.deliveryStatus === 'DELIVERED';
+
+  return (
+    <div className="px-6 py-4 border-t border-slate-100">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <Truck className="w-3.5 h-3.5" />
+          Delivery / GRN Receipts
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ml-1 ${DELIVERY_COLORS[po.deliveryStatus ?? 'PENDING']}`}>
+            {DELIVERY_LABELS[po.deliveryStatus ?? 'PENDING']}
+          </span>
+        </p>
+        {!isDelivered && !showForm && (
+          <button
+            onClick={initForm}
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+          >
+            <PackageCheck className="w-3.5 h-3.5" /> Record Delivery
+          </button>
+        )}
+        {showForm && (
+          <button onClick={() => setShowForm(false)} className="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+        )}
+      </div>
+
+      {/* GRN history */}
+      {receipts.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {receipts.map((r: PurchaseReceipt) => (
+            <div key={r.id} className="border border-slate-100 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50">
+                <span className="text-xs font-mono font-semibold text-slate-600">{r.receiptNumber}</span>
+                <span className="text-xs text-slate-400">
+                  {new Date(r.createdAt).toLocaleDateString()} · {r.receivedBy.fullName}
+                </span>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-100">
+                    <th className="px-3 py-1 text-left font-medium">Product</th>
+                    <th className="px-3 py-1 text-right font-medium">Received</th>
+                    {r.lines.some((l) => l.batchNumber || l.expiryDate) && (
+                      <th className="px-3 py-1 text-left font-medium">Batch / Expiry</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.lines.map((rl) => (
+                    <tr key={rl.id} className="border-b border-slate-50">
+                      <td className="px-3 py-1.5 text-slate-700">{rl.product.name}</td>
+                      <td className="px-3 py-1.5 text-right font-semibold text-slate-700">{Number(rl.qty)}</td>
+                      {r.lines.some((l) => l.batchNumber || l.expiryDate) && (
+                        <td className="px-3 py-1.5 text-slate-400">
+                          {rl.batchNumber && <span className="mr-2 font-mono">{rl.batchNumber}</span>}
+                          {rl.expiryDate && <span>{new Date(rl.expiryDate).toLocaleDateString()}</span>}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {r.notes && <p className="px-3 py-1.5 text-xs text-slate-400 italic">{r.notes}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {receipts.length === 0 && !showForm && (
+        <p className="text-xs text-slate-400 mb-3">No deliveries recorded yet.</p>
+      )}
+
+      {/* Record delivery form */}
+      {showForm && (
+        <div className="border border-indigo-100 rounded-xl bg-indigo-50/40 p-4 space-y-3">
+          {err && <p className="text-xs text-red-600 font-medium">{err}</p>}
+
+          {/* Per-line qty inputs */}
+          {(() => {
+            // At least one active line has isBatchTracked — show batch/expiry columns
+            const needsBatchCol = lines.some((l) => l.product.isBatchTracked);
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-200">
+                      <th className="pb-1.5 text-left font-medium">Product</th>
+                      <th className="pb-1.5 text-right font-medium">Ordered</th>
+                      <th className="pb-1.5 text-right font-medium">Received</th>
+                      <th className="pb-1.5 text-right font-medium">Remaining</th>
+                      <th className="pb-1.5 text-right font-medium w-20">Qty Now</th>
+                      {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Batch #</th>}
+                      {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Expiry Date</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l) => {
+                      const received      = Number(l.receivedQty ?? 0);
+                      const remaining     = Math.max(0, Number(l.qty) - received);
+                      const input         = lineInputs[l.id] ?? { qty: '0', batchNumber: '', expiryDate: '' };
+                      const isBatch       = l.product.isBatchTracked;
+                      const qtyNow        = parseFloat(input.qty) || 0;
+                      const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
+                      return (
+                        <tr key={l.id} className={`border-b border-slate-100 ${remaining === 0 ? 'opacity-40' : ''}`}>
+                          <td className="py-1.5 text-slate-700 font-medium">
+                            <div>
+                              {l.product.name}
+                              <span className="ml-1 text-slate-400 font-normal">({l.product.sku})</span>
+                              {isBatch && (
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] bg-indigo-50 text-indigo-600 font-semibold">
+                                  BATCH
+                                </span>
+                              )}
+                            </div>
+                            {missingBatch && (
+                              <p className="text-[10px] text-amber-600 mt-0.5 flex items-center gap-1">
+                                ⚠ No batch number entered
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-1.5 text-right text-slate-500">{Number(l.qty)}</td>
+                          <td className="py-1.5 text-right text-slate-500">{received}</td>
+                          <td className={`py-1.5 text-right font-semibold ${remaining > 0 ? 'text-amber-700' : 'text-green-600'}`}>
+                            {remaining}
+                          </td>
+                          <td className="py-1.5 pl-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max={remaining}
+                              step="0.001"
+                              value={input.qty}
+                              disabled={remaining === 0}
+                              onChange={(e) => updateInput(l.id, 'qty', e.target.value)}
+                              className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                            />
+                          </td>
+                          {needsBatchCol && (
+                            <td className="py-1.5 pl-2">
+                              {isBatch ? (
+                                <input
+                                  type="text"
+                                  value={input.batchNumber}
+                                  onChange={(e) => updateInput(l.id, 'batchNumber', e.target.value)}
+                                  placeholder="e.g. BT-001"
+                                  disabled={remaining === 0}
+                                  className={`w-28 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 disabled:bg-slate-100 ${
+                                    missingBatch
+                                      ? 'border-amber-400 bg-amber-50 focus:ring-amber-400'
+                                      : 'border-slate-200 focus:ring-indigo-400'
+                                  }`}
+                                />
+                              ) : (
+                                <span className="text-slate-300 text-xs pl-1">—</span>
+                              )}
+                            </td>
+                          )}
+                          {needsBatchCol && (
+                            <td className="py-1.5 pl-2">
+                              {isBatch ? (
+                                <input
+                                  type="date"
+                                  value={input.expiryDate}
+                                  onChange={(e) => updateInput(l.id, 'expiryDate', e.target.value)}
+                                  disabled={remaining === 0}
+                                  className="w-32 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                                />
+                              ) : (
+                                <span className="text-slate-300 text-xs pl-1">—</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* Notes */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-48">
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Delivery notes (optional)"
+                className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
             </div>
           </div>
-          <button onClick={() => mutation.mutate()} disabled={mutation.isPending}
-            className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition">
-            {mutation.isPending ? 'Saving…' : 'Record Payment'}
+
+          <button
+            onClick={() => createMut.mutate()}
+            disabled={createMut.isPending}
+            className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
+          >
+            {createMut.isPending ? 'Saving GRN…' : 'Save GRN Receipt'}
           </button>
         </div>
       )}
@@ -168,10 +590,20 @@ function PurchaseDetailModal({
               {new Date(po.date).toLocaleDateString()}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[po.status]}`}>
               {STATUS_LABELS[po.status]}
             </span>
+            {po.status === 'CONFIRMED' && po.paymentStatus && (
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${PAY_STATUS_COLORS[po.paymentStatus]}`}>
+                {po.paymentStatus}
+              </span>
+            )}
+            {po.status === 'CONFIRMED' && po.deliveryStatus && (
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${DELIVERY_COLORS[po.deliveryStatus as DeliveryStatus]}`}>
+                {DELIVERY_LABELS[po.deliveryStatus as DeliveryStatus]}
+              </span>
+            )}
             <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg">
               <X className="w-5 h-5 text-slate-500" />
             </button>
@@ -238,6 +670,11 @@ function PurchaseDetailModal({
             </div>
           </div>
         </div>
+
+        {/* Delivery / GRN section — shown on CONFIRMED POs */}
+        {po.status === 'CONFIRMED' && (
+          <ReceiveStockSection po={po} />
+        )}
 
         {/* Supplier Payments section — shown on CONFIRMED POs */}
         {po.status === 'CONFIRMED' && (
@@ -394,24 +831,37 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Lines</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Paid</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Outstanding</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Payment</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Delivery</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-slate-400">Loading…</td>
+                <td colSpan={11} className="text-center py-12 text-slate-400">Loading…</td>
               </tr>
             )}
             {!isLoading && data?.data.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-slate-400">No purchase orders found</td>
+                <td colSpan={11} className="text-center py-12 text-slate-400">No purchase orders found</td>
               </tr>
             )}
             {data?.data.map((po) => (
               <tr key={po.id} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono font-medium text-brand-700">{po.number}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-medium text-brand-700">{po.number}</span>
+                    {po.sourceType === 'AUTO_PO' && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">
+                        Auto PO
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-slate-700">{po.supplier.name}</td>
                 <td className="px-4 py-3 text-slate-500">{po.warehouse.name}</td>
                 <td className="px-4 py-3 text-slate-500">
@@ -423,10 +873,30 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                 <td className="px-4 py-3 text-right font-medium text-slate-800">
                   {formatCents(po.totalCents)}
                 </td>
+                <td className="px-4 py-3 text-right text-green-700">
+                  {po.status === 'CONFIRMED' ? formatCents(po.paidCents ?? 0) : '—'}
+                </td>
+                <td className="px-4 py-3 text-right text-red-600">
+                  {po.status === 'CONFIRMED' ? formatCents((po.totalCents) - (po.paidCents ?? 0)) : '—'}
+                </td>
                 <td className="px-4 py-3 text-center">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[po.status]}`}>
                     {STATUS_LABELS[po.status]}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {po.status === 'CONFIRMED' && po.paymentStatus && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PAY_STATUS_COLORS[po.paymentStatus]}`}>
+                      {po.paymentStatus}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {po.status === 'CONFIRMED' && po.deliveryStatus && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${DELIVERY_COLORS[po.deliveryStatus as DeliveryStatus]}`}>
+                      {DELIVERY_LABELS[po.deliveryStatus as DeliveryStatus]}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-center gap-1">

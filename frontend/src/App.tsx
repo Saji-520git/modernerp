@@ -20,6 +20,7 @@ import ExpensesPage from './pages/expenses/ExpensesPage';
 import ShiftsPage from './pages/shifts/ShiftsPage';
 import WarehousesPage from './pages/warehouses/WarehousesPage';
 import AlertsPage from './pages/alerts/AlertsPage';
+import ImportPage from './pages/settings/ImportPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -204,6 +205,11 @@ export default function App() {
         <Route path="settings" element={
           <ErrorBoundary fallbackTitle="Settings failed to load">
             <SettingsPage />
+          </ErrorBoundary>
+        } />
+        <Route path="settings/import" element={
+          <ErrorBoundary fallbackTitle="Import page failed to load">
+            <ImportPage />
           </ErrorBoundary>
         } />
 

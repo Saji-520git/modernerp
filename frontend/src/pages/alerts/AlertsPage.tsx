@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell, Package, Clock, AlertTriangle, Check,
-  RefreshCw, Settings, X, ChevronRight,
+  RefreshCw, Settings, X, ChevronRight, ShoppingCart,
 } from 'lucide-react';
 import {
   alertsApi, type StockAlert, type AlertType,
 } from '../../services/alerts';
+import { purchasesApi } from '../../services/purchases';
+import { inventoryApi } from '../../services/inventory';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -32,10 +34,14 @@ function AlertCard({
   alert,
   onDismiss,
   onMarkRead,
+  selected,
+  onSelect,
 }: {
   alert:       StockAlert;
   onDismiss:   (id: string) => void;
   onMarkRead:  (id: string) => void;
+  selected?:   boolean;
+  onSelect?:   (id: string, checked: boolean) => void;
 }) {
   const isCritical = alert.severity === 'CRITICAL';
   const borderColor = isCritical ? 'border-l-red-500' : 'border-l-amber-400';
@@ -63,9 +69,21 @@ function AlertCard({
 
   return (
     <div
-      className={`${bgColor} border border-slate-200 border-l-4 ${borderColor} rounded-xl p-4 flex gap-3 cursor-pointer hover:shadow-sm transition`}
+      className={`${bgColor} border border-slate-200 border-l-4 ${borderColor} rounded-xl p-4 flex gap-3 hover:shadow-sm transition ${selected ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}
       onClick={() => !alert.isRead && onMarkRead(alert.id)}
     >
+      {/* Checkbox — only for LOW_STOCK alerts */}
+      {alert.type === 'LOW_STOCK' && onSelect && (
+        <div className="mt-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected ?? false}
+            onChange={e => onSelect(alert.id, e.target.checked)}
+            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+          />
+        </div>
+      )}
+
       {/* Icon */}
       <div className={`mt-0.5 shrink-0 ${iconColor}`}>
         <TypeIcon size={18} />
@@ -163,9 +181,18 @@ function EmptyState({ tab }: { tab: string }) {
 export default function AlertsPage() {
   const qc = useQueryClient();
 
+  const navigate = useNavigate();
+
   const [typeFilter, setTypeFilter]   = useState<AlertType | 'ALL'>('ALL');
   const [unreadOnly, setUnreadOnly]   = useState(false);
   const [dismissed,  setDismissed]    = useState<string[]>([]);
+
+  // ── Auto-PO selection state ───────────────────────────────────────────────
+  const [selected,      setSelected]      = useState<Set<string>>(new Set());
+  const [showPoModal,   setShowPoModal]   = useState(false);
+  const [poWarehouseId, setPoWarehouseId] = useState('');
+  const [poSupplierId,  setPoSupplierId]  = useState('');
+  const [poQtys,        setPoQtys]        = useState<Record<string, number>>({});
 
   const params = {
     type:     typeFilter !== 'ALL' ? typeFilter : undefined,
@@ -203,6 +230,25 @@ export default function AlertsPage() {
     },
   });
 
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn:  () => inventoryApi.getWarehouses(),
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn:  () => purchasesApi.listSuppliers(),
+  });
+
+  const createPoMut = useMutation({
+    mutationFn: purchasesApi.fromAlerts,
+    onSuccess: () => {
+      setShowPoModal(false);
+      setSelected(new Set());
+      navigate('/purchases');
+    },
+  });
+
   const items         = (data?.items ?? []).filter(a => !dismissed.includes(a.id));
   const total         = data?.total         ?? 0;
   const unreadCount   = data?.unreadCount   ?? 0;
@@ -222,6 +268,49 @@ export default function AlertsPage() {
   const handleDismiss = (id: string) => {
     setDismissed(p => [...p, id]);
     dismissMut.mutate(id);
+  };
+
+  const handleSelect = (id: string, checked: boolean) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  const lowStockItems   = items.filter(a => a.type === 'LOW_STOCK');
+  const selectedAlerts  = lowStockItems.filter(a => selected.has(a.id));
+  const allLowSelected  = lowStockItems.length > 0 && lowStockItems.every(a => selected.has(a.id));
+
+  const toggleSelectAll = () => {
+    if (allLowSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(lowStockItems.map(a => a.id)));
+    }
+  };
+
+  const openPoModal = () => {
+    const qtys: Record<string, number> = {};
+    for (const alert of selectedAlerts) {
+      qtys[alert.productId] = Math.max(1, alert.threshold - alert.qty);
+    }
+    setPoQtys(qtys);
+    setPoWarehouseId(warehouses[0]?.id ?? '');
+    setPoSupplierId(suppliers[0]?.id ?? '');
+    setShowPoModal(true);
+  };
+
+  const submitPo = () => {
+    if (!poWarehouseId || !poSupplierId) return;
+    createPoMut.mutate({
+      warehouseId: poWarehouseId,
+      supplierId:  poSupplierId,
+      items: selectedAlerts.map(a => ({
+        productId: a.productId,
+        qty:       poQtys[a.productId] ?? 1,
+      })),
+    });
   };
 
   const TABS: { key: AlertType | 'ALL'; label: string; count: number }[] = [
@@ -330,6 +419,39 @@ export default function AlertsPage() {
         </button>
       </div>
 
+      {/* Select-all + action bar (LOW_STOCK tab only) */}
+      {(typeFilter === 'ALL' || typeFilter === 'LOW_STOCK') && lowStockItems.length > 0 && (
+        <div className="flex items-center justify-between mb-3 px-1">
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allLowSelected}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Select all low-stock ({lowStockItems.length})
+          </label>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">{selected.size} selected</span>
+              <button
+                onClick={openPoModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
+              >
+                <ShoppingCart size={13} /> Generate PO
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                title="Clear selection"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
@@ -351,8 +473,127 @@ export default function AlertsPage() {
               alert={alert}
               onDismiss={handleDismiss}
               onMarkRead={id => markReadMut.mutate([id])}
+              selected={selected.has(alert.id)}
+              onSelect={handleSelect}
             />
           ))}
+        </div>
+      )}
+
+      {/* Generate PO Modal */}
+      {showPoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <ShoppingCart size={18} className="text-indigo-600" />
+                <h2 className="text-base font-bold text-slate-800">Generate Purchase Order</h2>
+              </div>
+              <button onClick={() => setShowPoModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+              {/* Warehouse */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Warehouse *</label>
+                <select
+                  value={poWarehouseId}
+                  onChange={e => setPoWarehouseId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="">Select warehouse…</option>
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Supplier */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Supplier *</label>
+                <select
+                  value={poSupplierId}
+                  onChange={e => setPoSupplierId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="">Select supplier…</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Per-product qty table */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">Order Quantities</label>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-left">
+                        <th className="px-3 py-2 font-semibold">Product</th>
+                        <th className="px-3 py-2 font-semibold text-center w-24">Current</th>
+                        <th className="px-3 py-2 font-semibold text-center w-24">Order Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {selectedAlerts.map(alert => (
+                        <tr key={alert.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-slate-800">{alert.product.name}</p>
+                            <p className="text-slate-400">{alert.product.sku}</p>
+                          </td>
+                          <td className="px-3 py-2 text-center text-slate-500">{alert.qty}</td>
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="number"
+                              min={1}
+                              value={poQtys[alert.productId] ?? 1}
+                              onChange={e => setPoQtys(prev => ({
+                                ...prev,
+                                [alert.productId]: Math.max(1, Number(e.target.value)),
+                              }))}
+                              className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {createPoMut.isError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {createPoMut.error instanceof Error ? createPoMut.error.message : 'Failed to create PO.'}
+                </p>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowPoModal(false)}
+                className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitPo}
+                disabled={!poWarehouseId || !poSupplierId || createPoMut.isPending}
+                className="px-5 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-2"
+              >
+                {createPoMut.isPending ? (
+                  <><RefreshCw size={13} className="animate-spin" /> Creating…</>
+                ) : (
+                  <><ShoppingCart size={13} /> Create PO ({selectedAlerts.length} items)</>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

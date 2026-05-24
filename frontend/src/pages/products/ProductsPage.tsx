@@ -20,6 +20,7 @@ import {
   type ConversionLinePayload,
 } from '../../services/units';
 import { inventoryApi, type BatchDetail } from '../../services/inventory';
+import { purchasesApi } from '../../services/purchases';
 import { daysUntilExpiry } from '../../services/pos';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +50,8 @@ interface FormState {
   reorderQty: string;
   expiryDate: string;
   expiryAlertDays: string;
+  isBatchTracked: boolean;
+  defaultSupplierId: string;
   isActive: boolean;
 }
 
@@ -71,6 +74,8 @@ function emptyForm(): FormState {
     cost: '', price: '', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
     expiryDate: '', expiryAlertDays: '30',
+    isBatchTracked: false,
+    defaultSupplierId: '',
     isActive: true,
   };
 }
@@ -94,6 +99,8 @@ function formFromProduct(p: Product): FormState {
     reorderQty: String(p.reorderQty),
     expiryDate: p.expiryDate ? p.expiryDate.substring(0, 10) : '',
     expiryAlertDays: String(p.expiryAlertDays),
+    isBatchTracked: p.isBatchTracked ?? false,
+    defaultSupplierId: p.defaultSupplierId ?? '',
     isActive: p.isActive,
   };
 }
@@ -193,6 +200,12 @@ export default function ProductsPage() {
   const { data: meta } = useQuery({
     queryKey: ['products-meta'],
     queryFn: productsApi.meta,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['purchase-suppliers'],
+    queryFn:  purchasesApi.listSuppliers,
     staleTime: 5 * 60_000,
   });
 
@@ -410,9 +423,11 @@ export default function ProductsPage() {
       taxPercent:   parseFloat(form.taxPercent) || 0,
       reorderLevel: parseInt(form.reorderLevel) || 0,
       reorderQty:   parseInt(form.reorderQty) || 0,
-      expiryDate:   form.expiryDate || null,
-      expiryAlertDays: parseInt(form.expiryAlertDays) || 30,
-      isActive:     form.isActive,
+      expiryDate:        form.expiryDate || null,
+      expiryAlertDays:   parseInt(form.expiryAlertDays) || 30,
+      isBatchTracked:    form.isBatchTracked,
+      defaultSupplierId: form.defaultSupplierId || null,
+      isActive:          form.isActive,
     };
 
     // Build conversions payload
@@ -1423,6 +1438,39 @@ export default function ProductsPage() {
                       onChange={(e) => setForm((f) => ({ ...f, expiryAlertDays: e.target.value }))}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Batch tracking + Default Supplier ──────────────────── */}
+              <section>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Purchasing</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, isBatchTracked: !f.isBatchTracked }))}
+                      className={`relative w-10 h-5 rounded-full transition ${form.isBatchTracked ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.isBatchTracked ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                    <div>
+                      <span className="text-sm text-slate-700 font-medium">Batch / Expiry Tracking</span>
+                      <p className="text-xs text-slate-400">Require batch # on each delivery</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Default Supplier</label>
+                    <select
+                      value={form.defaultSupplierId}
+                      onChange={(e) => setForm((f) => ({ ...f, defaultSupplierId: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value="">No default supplier</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </section>

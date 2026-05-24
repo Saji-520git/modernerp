@@ -31,6 +31,19 @@ enum PaymentMethod {
   BANK_TRANSFER
   QR_PAY
   CREDIT
+  CHEQUE
+}
+
+enum PurchasePaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum DeliveryStatus {
+  PENDING    // confirmed, awaiting first delivery
+  PARTIAL    // some lines / qty received
+  DELIVERED  // all ordered qty received
 }
 
 enum StockMoveType {
@@ -42,6 +55,7 @@ enum StockMoveType {
   RETURN_IN
   RETURN_OUT
   WRITE_OFF
+  OPENING
 }
 
 enum UnitType {
@@ -78,6 +92,9 @@ model User {
   deletedPurchases Purchase[]        @relation("PurchaseDeletedBy")
   deletedExpenses  Expense[]         @relation("ExpenseDeletedBy")
   deletedExpCats   ExpenseCategory[] @relation("ExpenseCategoryDeletedBy")
+
+  supplierPayments SupplierPayment[]  @relation("SPAYCreatedBy")
+  purchaseReceipts PurchaseReceipt[]  @relation("GRNReceivedBy")
 }
 
 model Category {
@@ -142,8 +159,9 @@ model Warehouse {
   saleReturns SaleReturn[]
   posDrafts   PosDraft[]
   posShifts   PosShift[]
-  stockBatches StockBatch[]
-  stockAlerts  StockAlert[]
+  stockBatches     StockBatch[]
+  stockAlerts      StockAlert[]
+  purchaseReceipts PurchaseReceipt[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -173,6 +191,10 @@ model Product {
   purchaseUnit   Unit?   @relation("PurchaseUnit", fields: [purchaseUnitId], references: [id])
   salesUnit      Unit?   @relation("SalesUnit",   fields: [salesUnitId],   references: [id])
 
+  // Default supplier for auto-generated purchase orders
+  defaultSupplierId String?
+  defaultSupplier   Supplier? @relation("ProductDefaultSupplier", fields: [defaultSupplierId], references: [id])
+
   costCents     Int   @default(0)   // last cost
   priceCents    Int   @default(0)   // selling price
   taxPercent    Float @default(0)
@@ -185,7 +207,8 @@ model Product {
 
   // Expiry tracking
   expiryDate      DateTime?
-  expiryAlertDays Int @default(30) // alert X days before expiry
+  expiryAlertDays Int     @default(30) // alert X days before expiry
+  isBatchTracked  Boolean @default(false) // show batch# + expiry on every GRN line
 
   stock           Stock[]
   saleLines       SaleLine[]
@@ -196,6 +219,7 @@ model Product {
   unitConversions ProductUnitConversion[]
   stockBatches    StockBatch[]
   stockAlerts     StockAlert[]
+  receiptLines    PurchaseReceiptLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -254,7 +278,9 @@ model Supplier {
   email     String?
   address   String?
   isActive  Boolean  @default(true)
-  purchases Purchase[]
+  purchases          Purchase[]
+  supplierPayments   SupplierPayment[]
+  defaultForProducts Product[]         @relation("ProductDefaultSupplier")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -272,6 +298,9 @@ model Purchase {
   taxCents      Int       @default(0)
   totalCents    Int       @default(0)
   paidCents     Int       @default(0)
+  paymentStatus  PurchasePaymentStatus @default(UNPAID)
+  deliveryStatus DeliveryStatus        @default(PENDING)
+  sourceType     String?               // "MANUAL" | "AUTO_PO"
   note         String?
   createdById  String
   createdBy    User       @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
@@ -279,7 +308,9 @@ model Purchase {
   deletedById  String?
   deletedBy    User?      @relation("PurchaseDeletedBy", fields: [deletedById], references: [id])
   lines        PurchaseLine[]
+  receipts     PurchaseReceipt[]
   payments     Payment[]
+  supplierPayments SupplierPayment[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -295,6 +326,9 @@ model PurchaseLine {
   taxPercent Float    @default(0)
   lineTotalCents Int
 
+  // Cumulative qty received across all GRN receipts
+  receivedQty Decimal @default(0) @db.Decimal(18, 4)
+
   // Expiry tracking per batch
   expiryDate DateTime?
 
@@ -302,6 +336,8 @@ model PurchaseLine {
   unitId   String?
   unit     Unit?    @relation(fields: [unitId], references: [id])
   baseQty  Decimal? @db.Decimal(18, 6)  // qty converted to base unit
+
+  receiptLines PurchaseReceiptLine[]
 }
 
 model Sale {
@@ -505,6 +541,7 @@ model StockBatch {
   warehouseId    String
   purchaseLineId String?   // which purchase line created this batch
   qty            Decimal   @db.Decimal(18, 4)
+  batchNumber    String?   // supplier/manufacturer batch/lot number
   expiryDate     DateTime?
   receivedAt     DateTime  @default(now())
   createdAt      DateTime  @default(now())
@@ -580,6 +617,65 @@ model StockAlert {
   updatedAt   DateTime  @updatedAt
 
   @@map("stock_alerts")
+}
+
+// ─── Supplier Payments ───────────────────────────────────────────────────────
+
+model SupplierPayment {
+  id            String                @id @default(cuid())
+  paymentNumber String                @unique            // SPAY-YYYY-NNNN
+  purchaseId    String
+  purchase      Purchase              @relation(fields: [purchaseId], references: [id])
+  supplierId    String
+  supplier      Supplier              @relation(fields: [supplierId], references: [id])
+  amountCents   Int                                      // always positive
+  paymentMethod PaymentMethod
+  referenceNo   String?                                  // cheque number or bank ref
+  bankName      String?
+  paymentDate   DateTime
+  notes         String?
+  createdById   String
+  createdByUser User                  @relation("SPAYCreatedBy", fields: [createdById], references: [id])
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@map("supplier_payments")
+}
+
+// ─── Purchase Receipts (GRN — Goods Received Notes) ──────────────────────────
+
+model PurchaseReceipt {
+  id            String   @id @default(cuid())
+  receiptNumber String   @unique                  // GRN-YYYY-NNNN
+  purchaseId    String
+  purchase      Purchase @relation(fields: [purchaseId], references: [id])
+  warehouseId   String
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+  receivedById  String
+  receivedBy    User      @relation("GRNReceivedBy", fields: [receivedById], references: [id])
+  notes         String?
+  lines         PurchaseReceiptLine[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptLine {
+  id             String          @id @default(cuid())
+  receiptId      String
+  receipt        PurchaseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  purchaseLineId String
+  purchaseLine   PurchaseLine    @relation(fields: [purchaseLineId], references: [id])
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  qty            Decimal         @db.Decimal(18, 4)
+  batchNumber    String?
+  expiryDate     DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@map("purchase_receipt_lines")
 }
 
 // ─── App Settings (singleton row) ────────────────────────────────────────────

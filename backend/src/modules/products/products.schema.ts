@@ -28,8 +28,10 @@ export const createProductSchema = z.object({
   reorderQty:      z.number().int().min(0).default(0),
   isActive:        z.boolean().default(true),
   imageUrl:        z.string().optional().nullable(),
-  expiryDate:      z.coerce.date().optional().nullable(),
-  expiryAlertDays: z.number().int().min(1).max(365).default(30),
+  expiryDate:        z.coerce.date().optional().nullable(),
+  expiryAlertDays:   z.number().int().min(1).max(365).default(30),
+  isBatchTracked:    z.boolean().optional(),
+  defaultSupplierId: z.string().optional().nullable(),
 });
 
 export const updateProductSchema = createProductSchema.partial();

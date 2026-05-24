@@ -40,6 +40,8 @@ export interface Product {
   imageUrl: string | null;
   expiryDate: string | null;
   expiryAlertDays: number;
+  isBatchTracked: boolean;
+  defaultSupplierId: string | null;
   stock: ProductStock[];
   createdAt: string;
   updatedAt: string;
@@ -78,6 +80,8 @@ export interface CreateProductPayload {
   imageUrl?: string | null;
   expiryDate?: string | null;
   expiryAlertDays?: number;
+  isBatchTracked?: boolean;
+  defaultSupplierId?: string | null;
 }
 
 export type UpdateProductPayload = Partial<CreateProductPayload>;
