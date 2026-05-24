@@ -1,0 +1,31 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: modernerp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp_password
+      POSTGRES_DB: modernerp
+    ports:
+      - "5432:5432"
+    volumes:
+      - modernerp-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d modernerp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: modernerp-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  modernerp-db-data:

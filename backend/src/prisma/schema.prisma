@@ -1,0 +1,661 @@
+// ModernERP Prisma Schema
+// Phase 1: Auth + Master + Products + Purchases + Sales + POS + Inventory
+// Phase 2: Unit Conversion Module
+// Money is stored as integer cents (e.g., price_cents). Quantities support fractions where needed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  CASHIER
+  STAFF
+}
+
+enum DocStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  QR_PAY
+  CREDIT
+}
+
+enum StockMoveType {
+  PURCHASE_IN
+  SALE_OUT
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN_IN
+  RETURN_OUT
+  WRITE_OFF
+}
+
+enum UnitType {
+  COUNT   // Piece, Box, Pack, Case, Bottle, Carton
+  WEIGHT  // Kg, g, mg, Ton
+  VOLUME  // Liter, ml, cl
+  LENGTH  // m, cm, mm
+  OTHER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(STAFF)
+  permissions  Json?    // null = use role defaults; string[] = custom overrides
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sales        Sale[]       @relation("SaleCreatedBy")
+  purchases    Purchase[]   @relation("PurchaseCreatedBy")
+  saleReturns  SaleReturn[]
+  posDrafts    PosDraft[]
+  posShifts         PosShift[] @relation("ShiftUser")
+  forceClosedShifts PosShift[] @relation("ShiftForceClose")
+  payments     Payment[]
+  expenses     Expense[]    @relation("ExpenseCreatedBy")
+  managedWarehouses Warehouse[] @relation("WarehouseManager")
+
+  // Soft-delete audit back-references
+  deletedSales     Sale[]            @relation("SaleDeletedBy")
+  deletedPurchases Purchase[]        @relation("PurchaseDeletedBy")
+  deletedExpenses  Expense[]         @relation("ExpenseDeletedBy")
+  deletedExpCats   ExpenseCategory[] @relation("ExpenseCategoryDeletedBy")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  parentId  String?
+  parent    Category? @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryToCategory")
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Unit {
+  id           String   @id @default(cuid())
+  name         String   @unique     // e.g. "Piece", "Kilogram"
+  shortCode    String   @unique     // e.g. "pcs", "kg"
+  allowDecimal Boolean  @default(false)
+  type         UnitType @default(COUNT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Legacy relation (unitId on Product — kept for backward compatibility)
+  products              Product[]                @relation("LegacyUnit")
+  // New typed relations
+  productsAsBase        Product[]                @relation("BaseUnit")
+  productsAsPurchase    Product[]                @relation("PurchaseUnit")
+  productsAsSales       Product[]                @relation("SalesUnit")
+  conversionsFrom       ProductUnitConversion[]  @relation("FromUnit")
+  conversionsTo         ProductUnitConversion[]  @relation("ToUnit")
+  purchaseLines         PurchaseLine[]
+  saleLines             SaleLine[]
+}
+
+model Warehouse {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  address     String?
+  city        String?
+  phone       String?
+  email       String?
+  managerId   String?
+  manager     User?    @relation("WarehouseManager", fields: [managerId], references: [id])
+  type        String   @default("MAIN")
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  notes       String?
+  stock       Stock[]
+  movements   StockMovement[]
+  purchases   Purchase[]
+  sales       Sale[]
+  saleReturns SaleReturn[]
+  posDrafts   PosDraft[]
+  posShifts   PosShift[]
+  stockBatches StockBatch[]
+  stockAlerts  StockAlert[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("warehouses")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  sku           String   @unique
+  barcode       String?  @unique
+  name          String
+  description   String?
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  brandId       String?
+  brand         Brand?    @relation(fields: [brandId], references: [id])
+
+  // Legacy unit field (kept for backward compatibility — points to the base unit)
+  unitId        String
+  unit          Unit      @relation("LegacyUnit", fields: [unitId], references: [id])
+
+  // Unit conversion fields (new — nullable until products are migrated)
+  baseUnitId     String?
+  purchaseUnitId String?
+  salesUnitId    String?
+  baseUnit       Unit?   @relation("BaseUnit",    fields: [baseUnitId],    references: [id])
+  purchaseUnit   Unit?   @relation("PurchaseUnit", fields: [purchaseUnitId], references: [id])
+  salesUnit      Unit?   @relation("SalesUnit",   fields: [salesUnitId],   references: [id])
+
+  costCents     Int   @default(0)   // last cost
+  priceCents    Int   @default(0)   // selling price
+  taxPercent    Float @default(0)
+  reorderLevel  Int   @default(0)
+  reorderQty    Int   @default(0)   // suggested order quantity when stock hits reorder level
+  isActive      Boolean @default(true)
+
+  // Image
+  imageUrl        String?
+
+  // Expiry tracking
+  expiryDate      DateTime?
+  expiryAlertDays Int @default(30) // alert X days before expiry
+
+  stock           Stock[]
+  saleLines       SaleLine[]
+  purchaseLines   PurchaseLine[]
+  movements       StockMovement[]
+  returnLines     SaleReturnLine[]
+  draftItems      PosDraftItem[]
+  unitConversions ProductUnitConversion[]
+  stockBatches    StockBatch[]
+  stockAlerts     StockAlert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Stock {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  qty         Decimal  @default(0) @db.Decimal(18, 4)
+
+  @@unique([productId, warehouseId])
+}
+
+model StockMovement {
+  id          String         @id @default(cuid())
+  productId   String
+  product     Product        @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
+  type        StockMoveType
+  qty         Decimal        @db.Decimal(18, 4)   // signed: +in, -out
+  refType     String?        // "Sale" / "Purchase" / "Adjustment"
+  refId       String?
+  batchId     String?        // which StockBatch was deducted (for WRITE_OFF and FEFO tracking)
+  note        String?
+  createdAt   DateTime       @default(now())
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+
+  // Credit account
+  creditEnabled    Boolean @default(false)
+  creditLimitCents Int     @default(0)      // 0 = unlimited when creditEnabled
+  creditAlertPct   Int     @default(80)     // warn at this % of limit (0-100)
+  creditSettleDays Int?                     // expected settlement period in days
+
+  sales     Sale[]
+  posDrafts PosDraft[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  purchases Purchase[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Purchase {
+  id           String     @id @default(cuid())
+  number       String     @unique           // e.g. PO-2026-0001
+  supplierId   String
+  supplier     Supplier   @relation(fields: [supplierId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse  @relation(fields: [warehouseId], references: [id])
+  status       DocStatus  @default(DRAFT)
+  date         DateTime   @default(now())
+  subtotalCents Int       @default(0)
+  taxCents      Int       @default(0)
+  totalCents    Int       @default(0)
+  paidCents     Int       @default(0)
+  note         String?
+  createdById  String
+  createdBy    User       @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  deletedAt    DateTime?
+  deletedById  String?
+  deletedBy    User?      @relation("PurchaseDeletedBy", fields: [deletedById], references: [id])
+  lines        PurchaseLine[]
+  payments     Payment[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model PurchaseLine {
+  id         String  @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  qty        Decimal  @db.Decimal(18, 4)
+  unitCostCents Int
+  taxPercent Float    @default(0)
+  lineTotalCents Int
+
+  // Expiry tracking per batch
+  expiryDate DateTime?
+
+  // Unit conversion tracking (nullable — null = base unit)
+  unitId   String?
+  unit     Unit?    @relation(fields: [unitId], references: [id])
+  baseQty  Decimal? @db.Decimal(18, 6)  // qty converted to base unit
+}
+
+model Sale {
+  id            String     @id @default(cuid())
+  number        String     @unique           // INV-2026-0001
+  customerId    String?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  warehouseId   String
+  warehouse     Warehouse  @relation(fields: [warehouseId], references: [id])
+  status        DocStatus  @default(DRAFT)
+  isPos         Boolean    @default(false)
+  date          DateTime   @default(now())
+  subtotalCents Int        @default(0)
+  taxCents      Int        @default(0)
+  discountCents Int        @default(0)
+  totalCents    Int        @default(0)
+  paidCents     Int        @default(0)
+  paymentMethod PaymentMethod @default(CASH)
+  note          String?
+  shiftId       String?
+  shift         PosShift?  @relation(fields: [shiftId], references: [id])
+  createdById   String
+  createdBy     User       @relation("SaleCreatedBy", fields: [createdById], references: [id])
+  deletedAt     DateTime?
+  deletedById   String?
+  deletedBy     User?      @relation("SaleDeletedBy", fields: [deletedById], references: [id])
+  lines         SaleLine[]
+  returns       SaleReturn[]
+  payments      Payment[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model SaleLine {
+  id         String  @id @default(cuid())
+  saleId     String
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  qty        Decimal @db.Decimal(18, 4)
+  unitPriceCents Int
+  taxPercent Float    @default(0)
+  discountCents Int    @default(0)
+  lineTotalCents Int
+
+  // Unit conversion tracking (nullable — null = base unit)
+  unitId   String?
+  unit     Unit?    @relation(fields: [unitId], references: [id])
+  baseQty  Decimal? @db.Decimal(18, 6)  // qty converted to base unit
+}
+
+model SaleReturn {
+  id          String           @id @default(cuid())
+  number      String           @unique          // CRN-2026-0001
+  saleId      String
+  sale        Sale             @relation(fields: [saleId], references: [id])
+  warehouseId String
+  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id])
+  reason      String?
+  totalCents  Int              @default(0)
+  createdById String
+  createdBy   User             @relation(fields: [createdById], references: [id])
+  lines       SaleReturnLine[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model SaleReturnLine {
+  id             String     @id @default(cuid())
+  returnId       String
+  saleReturn     SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product    @relation(fields: [productId], references: [id])
+  qty            Decimal    @db.Decimal(18, 4)
+  unitPriceCents Int
+  lineTotalCents Int
+}
+
+// ─── POS Draft (hold bill) ────────────────────────────────────────────────────
+
+model PosDraft {
+  id            String        @id @default(cuid())
+  label         String?       // Optional cashier label: "Table 3", "John"
+  warehouseId   String
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  paymentMethod PaymentMethod @default(CASH)
+  discountCents Int           @default(0)
+  note          String?
+  createdById   String
+  createdBy     User          @relation(fields: [createdById], references: [id])
+  items         PosDraftItem[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model PosDraftItem {
+  id             String   @id @default(cuid())
+  draftId        String
+  draft          PosDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id])
+  qty            Int
+  unitPriceCents Int      // custom price captured at draft save time
+}
+
+// ─── Product Unit Conversions ─────────────────────────────────────────────────
+
+model ProductUnitConversion {
+  id            String  @id @default(cuid())
+  productId     String
+  fromUnitId    String
+  toUnitId      String
+  conversionQty Decimal @db.Decimal(18, 6)  // how many toUnits in 1 fromUnit (e.g. 20.000000 for Box→Piece)
+  priceCents    Int?    // optional price override for this unit (in cents)
+  barcode       String? @unique              // optional barcode for this specific unit pack
+  isActive      Boolean @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromUnit  Unit    @relation("FromUnit", fields: [fromUnitId], references: [id])
+  toUnit    Unit    @relation("ToUnit",   fields: [toUnitId],   references: [id])
+
+  @@unique([productId, fromUnitId, toUnitId])
+  @@map("product_unit_conversions")
+}
+
+// ─── POS Shift ────────────────────────────────────────────────────────────────
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model PosShift {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation("ShiftUser", fields: [userId], references: [id])
+  warehouseId      String
+  warehouse        Warehouse   @relation(fields: [warehouseId], references: [id])
+
+  status           ShiftStatus @default(OPEN)
+  openedAt         DateTime    @default(now())
+  closedAt         DateTime?
+
+  // Opening float entered by cashier
+  openingCashCents Int         @default(0)
+
+  // Filled at close (snapshot — never recomputed)
+  closingCashCents  Int?
+  cashSalesCents    Int        @default(0)
+  cardSalesCents    Int        @default(0)
+  bankTransferCents Int        @default(0)
+  qrPayCents        Int        @default(0)
+  creditSalesCents  Int        @default(0)
+  totalSalesCents   Int        @default(0)
+  saleCount         Int        @default(0)
+  expectedCashCents Int?
+  varianceCents     Int?
+  note              String?
+
+  // Force-close audit
+  forceClosedById String?
+  forceClosedBy   User?      @relation("ShiftForceClose", fields: [forceClosedById], references: [id])
+
+  sales     Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pos_shifts")
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id          String        @id @default(cuid())
+  saleId      String?
+  purchaseId  String?
+  amountCents Int
+  method      PaymentMethod
+  date        DateTime      @default(now())
+  note        String?
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  sale        Sale?         @relation(fields: [saleId],     references: [id])
+  purchase    Purchase?     @relation(fields: [purchaseId], references: [id])
+  createdBy   User          @relation(fields: [createdById], references: [id])
+
+  @@map("payments")
+}
+
+// ─── Stock Batches (one row per confirmed purchase line) ──────────────────────
+
+model StockBatch {
+  id             String    @id @default(cuid())
+  productId      String
+  warehouseId    String
+  purchaseLineId String?   // which purchase line created this batch
+  qty            Decimal   @db.Decimal(18, 4)
+  expiryDate     DateTime?
+  receivedAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  product    Product   @relation(fields: [productId],   references: [id])
+  warehouse  Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@map("stock_batches")
+}
+
+// ─── Expenses ─────────────────────────────────────────────────────────────────
+
+model ExpenseCategory {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  color         String    @default("#6366f1")
+  isActive      Boolean   @default(true)
+  monthlyBudget Int?      // cents, optional monthly budget
+  deletedAt     DateTime?
+  deletedById   String?
+  deletedBy     User?     @relation("ExpenseCategoryDeletedBy", fields: [deletedById], references: [id])
+  expenses      Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id            String          @id @default(cuid())
+  categoryId    String
+  amount        Int             // cents
+  description   String
+  date          DateTime
+  paymentMethod PaymentMethod   @default(CASH)
+  reference     String?
+  isRecurring   Boolean         @default(false)
+  recurringDay  Int?            // day of month 1-28
+
+  // Recurring occurrence linkage — set only on recorded occurrences, never on templates
+  recurringTemplateId String?   // id of the isRecurring=true template row
+  monthYear           String?   // "YYYY-MM" of the recorded month
+
+  createdById   String
+  deletedAt     DateTime?
+  deletedById   String?
+  createdAt     DateTime        @default(now())
+
+  category      ExpenseCategory @relation(fields: [categoryId],  references: [id])
+  createdBy     User            @relation("ExpenseCreatedBy",  fields: [createdById],  references: [id])
+  deletedBy     User?           @relation("ExpenseDeletedBy",   fields: [deletedById],  references: [id])
+
+  // One occurrence per template per calendar month
+  @@unique([recurringTemplateId, monthYear])
+  @@map("expenses")
+}
+
+// ─── Stock Alerts ────────────────────────────────────────────────────────────
+
+model StockAlert {
+  id          String    @id
+  type        String    // 'LOW_STOCK' | 'EXPIRING_SOON' | 'EXPIRED'
+  severity    String    // 'WARNING' | 'CRITICAL'
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouseId String?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+  qty         Float
+  threshold   Float
+  expiryDate  DateTime?
+  message     String
+  isRead      Boolean   @default(false)
+  isDismissed Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("stock_alerts")
+}
+
+// ─── App Settings (singleton row) ────────────────────────────────────────────
+
+model AppSettings {
+  id                    String   @id @default(cuid())
+
+  // Company
+  businessName          String   @default("My Business")
+  businessRegNo         String?
+  businessAddress       String?
+  businessPhone         String?
+  businessEmail         String?
+  logoUrl               String?
+
+  // Localisation
+  currencySymbol        String   @default("Rs.")
+  currencyCode          String   @default("LKR")
+  currencyPosition      String   @default("before")
+  dateFormat            String   @default("DD/MM/YYYY")
+  timezone              String   @default("Asia/Colombo")
+
+  // Tax
+  defaultTaxPercent     Float    @default(0)
+  taxLabel              String   @default("Tax")
+  taxNumber             String?
+  taxEnabled            Boolean  @default(false)
+  taxInclusive          Boolean  @default(false)
+
+  // POS
+  posRequireShift       Boolean  @default(true)
+  posAllowDiscount      Boolean  @default(true)
+  posMaxDiscountPct     Float    @default(100)
+  posPrintReceipt       Boolean  @default(true)
+  posReceiptFooter      String?
+  posDefaultWarehouseId String?
+
+  // Invoice
+  invoicePrefix         String   @default("INV")
+  invoiceStartNo        Int      @default(1)
+  invoiceDueDays        Int      @default(30)
+  purchasePrefix        String   @default("PO")
+  invoiceFooter         String?
+  invoiceShowLogo       Boolean  @default(true)
+
+  // Security
+  sessionTimeoutMin     Int      @default(480)
+
+  // Alert thresholds
+  alertLowStockEnabled  Boolean  @default(true)
+  alertExpiryEnabled    Boolean  @default(true)
+  alertExpiryDays       Int      @default(30)
+  alertLowStockEmail    String?
+  alertShowInDashboard  Boolean  @default(true)
+  alertBellEnabled      Boolean  @default(true)
+
+  // POS behaviour
+  blockExpiredSales     Boolean  @default(true)   // DEPRECATED — kept for backwards compat; use expiredStockPolicy
+  expiredStockPolicy    String   @default("BLOCK") // "BLOCK" | "WARN" | "ALLOW"
+  staffSalesEnabled     Boolean  @default(false)  // when true MANAGER/ADMIN can tag a sale as a staff sale
+
+  // Receipt / Print
+  receiptLanguage       String   @default("en")
+  receiptTagline        String?
+  receiptShowLogo       Boolean  @default(true)
+  receiptShowTax        Boolean  @default(false)
+  receiptShowSku        Boolean  @default(false)
+  receiptPaperWidth     String   @default("80mm")
+  receiptShowBarcode    Boolean  @default(true)
+  receiptShowCashier    Boolean  @default(true)
+  receiptQrEnabled      Boolean  @default(false)
+  receiptHeaderLine1    String?
+  receiptHeaderLine2    String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("app_settings")
+}
