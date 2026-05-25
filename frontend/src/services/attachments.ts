@@ -1,6 +1,18 @@
 import { api } from './api';
 import { useAuthStore } from '../store/authStore';
 
+// Derive the file server origin from VITE_API_URL so Electron packaging
+// (same origin) and dev (localhost:4000) both work without code changes.
+// e.g. "http://localhost:4000/api/v1" → "http://localhost:4000"
+const FILE_ORIGIN = (() => {
+  try {
+    const u = new URL(import.meta.env.VITE_API_URL as string);
+    return u.origin;          // "http://localhost:4000"
+  } catch {
+    return 'http://localhost:4000';
+  }
+})();
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Attachment {
@@ -43,7 +55,7 @@ export const attachmentsApi = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getFileUrl(storedName: string): string {
-  return `http://localhost:4000/uploads/${storedName}`;
+  return `${FILE_ORIGIN}/uploads/${storedName}`;
 }
 
 /** Returns the Authorization header needed to fetch from /uploads/:filename */
