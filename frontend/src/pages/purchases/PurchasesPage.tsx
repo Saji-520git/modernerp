@@ -374,16 +374,30 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
           <Truck className="w-3.5 h-3.5" />
           Delivery / GRN Receipts
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ml-1 ${DELIVERY_COLORS[po.deliveryStatus ?? 'PENDING']}`}>
-            {DELIVERY_LABELS[po.deliveryStatus ?? 'PENDING']}
-          </span>
+          {po.deliveryStatus === 'PARTIAL' ? (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ml-1 ${DELIVERY_COLORS['PARTIAL']}`}>
+              {lines.filter(l => Number(l.receivedQty ?? 0) >= Number(l.qty)).length}/{lines.length} Lines Received
+            </span>
+          ) : (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ml-1 ${DELIVERY_COLORS[po.deliveryStatus ?? 'PENDING']}`}>
+              {DELIVERY_LABELS[po.deliveryStatus ?? 'PENDING']}
+            </span>
+          )}
         </p>
-        {!isDelivered && !showForm && (
+        {!isDelivered && !showForm && po.deliveryStatus !== 'PARTIAL' && (
           <button
             onClick={initForm}
             className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
           >
             <PackageCheck className="w-3.5 h-3.5" /> Record Delivery
+          </button>
+        )}
+        {!isDelivered && !showForm && po.deliveryStatus === 'PARTIAL' && (
+          <button
+            onClick={initForm}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-semibold"
+          >
+            <Truck className="w-3.5 h-3.5" /> Receive Remaining
           </button>
         )}
         {showForm && (

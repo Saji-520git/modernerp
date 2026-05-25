@@ -22,6 +22,8 @@ import {
 import { inventoryApi, type BatchDetail } from '../../services/inventory';
 import { purchasesApi } from '../../services/purchases';
 import { daysUntilExpiry } from '../../services/pos';
+import { categoriesApi, brandsApi } from '../../services/masterData';
+import QuickAddModal from '../../components/common/QuickAddModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +166,10 @@ export default function ProductsPage() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [formErr, setFormErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // ── Quick-add category / brand ──
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAddBrand,    setShowAddBrand]    = useState(false);
 
   // ── Barcode check ──
   const [barcodeCheck, setBarcodeCheck] = useState<BarcodeCheckState | null>(null);
@@ -1167,6 +1173,13 @@ export default function ProductsPage() {
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCategory(true)}
+                      className="mt-1 text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={11} /> Add new category
+                    </button>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Brand</label>
@@ -1180,6 +1193,13 @@ export default function ProductsPage() {
                         <option key={b.id} value={b.id}>{b.name}</option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddBrand(true)}
+                      className="mt-1 text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={11} /> Add new brand
+                    </button>
                   </div>
                 </div>
               </section>
@@ -1514,6 +1534,30 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Quick-add Category */}
+      <QuickAddModal
+        label="Category"
+        isOpen={showAddCategory}
+        onClose={() => setShowAddCategory(false)}
+        onCreate={(name) => categoriesApi.create(name)}
+        onCreated={(cat) => {
+          qc.invalidateQueries({ queryKey: ['product-meta'] });
+          setForm((f) => ({ ...f, categoryId: cat.id }));
+        }}
+      />
+
+      {/* Quick-add Brand */}
+      <QuickAddModal
+        label="Brand"
+        isOpen={showAddBrand}
+        onClose={() => setShowAddBrand(false)}
+        onCreate={(name) => brandsApi.create(name)}
+        onCreated={(brand) => {
+          qc.invalidateQueries({ queryKey: ['product-meta'] });
+          setForm((f) => ({ ...f, brandId: brand.id }));
+        }}
+      />
     </div>
   );
 }

@@ -22,6 +22,8 @@ import WarehousesPage from './pages/warehouses/WarehousesPage';
 import AlertsPage from './pages/alerts/AlertsPage';
 import ImportPage from './pages/settings/ImportPage';
 import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
+import CategoriesPage from './pages/settings/CategoriesPage';
+import BrandsPage from './pages/settings/BrandsPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -199,7 +201,9 @@ export default function App() {
               <ReportsPage />
             </ErrorBoundary>
           } />
+          {/* Disabled — POS shift report not yet implemented
           <Route path="shifts" element={<ComingSoon title="POS Shift Reports" />} />
+          */}
         </Route>
 
         {/* SYSTEM */}
@@ -218,6 +222,8 @@ export default function App() {
             <ImportPage />
           </ErrorBoundary>
         } />
+        <Route path="settings/categories" element={<CategoriesPage />} />
+        <Route path="settings/brands" element={<BrandsPage />} />
 
         {/* Legacy */}
         <Route path="units" element={<UnitsPage />} />
