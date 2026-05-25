@@ -20,7 +20,8 @@ export interface SaleProduct {
 }
 
 export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
-export type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'QR_PAY' | 'CREDIT';
+export type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'QR_PAY' | 'CREDIT' | 'CHEQUE';
+export type SalePaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
 export interface SaleLine {
   id: string;
@@ -49,12 +50,14 @@ export interface Sale {
   discountCents: number;
   totalCents: number;
   paidCents: number;
+  paymentStatus: SalePaymentStatus;
   paymentMethod: PaymentMethod;
   note: string | null;
   customer: { id: string; name: string; phone?: string | null } | null;
   warehouse: { id: string; name: string; code: string };
   createdBy: { id: string; fullName: string };
   lines?: SaleLine[];
+  customerPayments?: import('./customerPayments').CustomerPayment[];
   _count?: { lines: number };
   createdAt: string;
 }
@@ -243,4 +246,5 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   BANK_TRANSFER: 'Bank Transfer',
   QR_PAY:        'QR Pay',
   CREDIT:        'Credit',
+  CHEQUE:        'Cheque',
 };

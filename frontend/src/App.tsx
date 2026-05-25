@@ -21,6 +21,7 @@ import ShiftsPage from './pages/shifts/ShiftsPage';
 import WarehousesPage from './pages/warehouses/WarehousesPage';
 import AlertsPage from './pages/alerts/AlertsPage';
 import ImportPage from './pages/settings/ImportPage';
+import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -125,6 +126,11 @@ export default function App() {
         <Route path="returns"  element={
           <ErrorBoundary fallbackTitle="Returns page failed to load">
             <ReturnsPage />
+          </ErrorBoundary>
+        } />
+        <Route path="purchase-returns" element={
+          <ErrorBoundary fallbackTitle="Purchase Returns page failed to load">
+            <PurchaseReturnsPage />
           </ErrorBoundary>
         } />
         <Route path="expenses" element={

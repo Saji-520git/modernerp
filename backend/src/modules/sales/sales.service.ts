@@ -121,6 +121,11 @@ export const salesService = {
             },
           },
         },
+        customerPayments: {
+          where:   { isActive: true },
+          orderBy: { paymentDate: 'asc' },
+          include: { createdByUser: { select: { id: true, fullName: true } } },
+        },
       },
     });
     if (!sale) throw new HttpError(404, 'Invoice not found');

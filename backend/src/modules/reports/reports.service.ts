@@ -525,4 +525,264 @@ export const reportsService = {
       })(),
     };
   },
+
+  // ─── Dashboard Live Stats ────────────────────────────────────────────────────
+
+  getDashboardStats: async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    // Last 7 days array (oldest first)
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+
+    const [
+      todaySalesAgg,
+      receivablesAgg,
+      payablesAgg,
+      stocks,
+      day7Results,
+      [sales, purchases, cpays, spays],
+    ] = await Promise.all([
+      // 1. Today's sales
+      prisma.sale.aggregate({
+        where: { status: 'CONFIRMED', date: { gte: today, lt: todayEnd }, deletedAt: null },
+        _sum:   { totalCents: true },
+        _count: { id: true },
+      }),
+
+      // 2. Outstanding receivables (confirmed sales not fully paid)
+      prisma.sale.aggregate({
+        where: {
+          status:        'CONFIRMED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+          deletedAt:     null,
+        },
+        _sum: { totalCents: true, paidCents: true },
+      }),
+
+      // 3. Outstanding payables (confirmed purchases not fully paid)
+      prisma.purchase.aggregate({
+        where: {
+          status:        'CONFIRMED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+          deletedAt:     null,
+        },
+        _sum: { totalCents: true, paidCents: true },
+      }),
+
+      // 4. Low stock count (application-code filter — no raw SQL)
+      prisma.stock.findMany({
+        where:   { qty: { gt: 0 } },
+        include: { product: { select: { reorderLevel: true } } },
+      }),
+
+      // 5. Last 7 days daily sales
+      Promise.all(days.map((day) => {
+        const nextDay = new Date(day);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return prisma.sale.aggregate({
+          where: { status: 'CONFIRMED', date: { gte: day, lt: nextDay }, deletedAt: null },
+          _sum:   { totalCents: true },
+          _count: { id: true },
+        });
+      })),
+
+      // 6. Recent activity — 4 separate queries
+      Promise.all([
+        prisma.sale.findMany({
+          where:   { status: 'CONFIRMED', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take:    5,
+          select:  {
+            id: true, number: true, totalCents: true, createdAt: true,
+            customer: { select: { name: true } },
+          },
+        }),
+        prisma.purchase.findMany({
+          where:   { status: 'CONFIRMED', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take:    5,
+          select:  {
+            id: true, number: true, totalCents: true, createdAt: true,
+            supplier: { select: { name: true } },
+          },
+        }),
+        prisma.customerPayment.findMany({
+          where:   { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take:    5,
+          select:  {
+            id: true, paymentNumber: true, amountCents: true, createdAt: true,
+            sale: { select: { number: true } },
+          },
+        }),
+        prisma.supplierPayment.findMany({
+          where:   { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take:    5,
+          select:  {
+            id: true, paymentNumber: true, amountCents: true, createdAt: true,
+            purchase: { select: { number: true } },
+          },
+        }),
+      ]),
+    ]);
+
+    const lowStockCount = stocks.filter(
+      (s) => Number(s.qty) <= (s.product.reorderLevel ?? 0),
+    ).length;
+
+    const outstandingReceivablesCents =
+      (receivablesAgg._sum.totalCents ?? 0) - (receivablesAgg._sum.paidCents ?? 0);
+    const outstandingPayablesCents =
+      (payablesAgg._sum.totalCents ?? 0) - (payablesAgg._sum.paidCents ?? 0);
+
+    const last7Days = days.map((day, i) => ({
+      date:       day.toISOString().split('T')[0],
+      salesCents: day7Results[i]._sum.totalCents ?? 0,
+      salesCount: day7Results[i]._count.id ?? 0,
+    }));
+
+    const activity = [
+      ...sales.map((s) => ({
+        type:        'SALE' as const,
+        refNumber:   s.number,
+        description: s.customer?.name ?? 'Walk-in',
+        amountCents: s.totalCents,
+        createdAt:   s.createdAt.toISOString(),
+      })),
+      ...purchases.map((p) => ({
+        type:        'PURCHASE' as const,
+        refNumber:   p.number,
+        description: p.supplier.name,
+        amountCents: p.totalCents,
+        createdAt:   p.createdAt.toISOString(),
+      })),
+      ...cpays.map((c) => ({
+        type:        'PAYMENT_IN' as const,
+        refNumber:   c.paymentNumber,
+        description: `Receipt for ${c.sale.number}`,
+        amountCents: c.amountCents,
+        createdAt:   c.createdAt.toISOString(),
+      })),
+      ...spays.map((s) => ({
+        type:        'PAYMENT_OUT' as const,
+        refNumber:   s.paymentNumber,
+        description: `Payment for ${s.purchase.number}`,
+        amountCents: s.amountCents,
+        createdAt:   s.createdAt.toISOString(),
+      })),
+    ]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 10);
+
+    return {
+      todaySalesCents:             todaySalesAgg._sum.totalCents ?? 0,
+      todaySalesCount:             todaySalesAgg._count.id ?? 0,
+      outstandingReceivablesCents,
+      outstandingPayablesCents,
+      lowStockCount,
+      last7Days,
+      recentActivity: activity,
+    };
+  },
+
+  // ─── P&L Comparison (current vs previous period) ────────────────────────────
+
+  getPnlComparison: async (dateFrom: string, dateTo: string, warehouseId?: string) => {
+    const from       = new Date(dateFrom);
+    const to         = new Date(dateTo);
+    const durationMs = to.getTime() - from.getTime();
+    const prevFrom   = new Date(from.getTime() - durationMs);
+    const prevTo     = from;
+
+    async function getPeriodMetrics(pFrom: Date, pTo: Date, whId?: string) {
+      const warehouseFilter = whId ? { warehouseId: whId } : {};
+
+      // COGS via raw SQL — two variants (with / without warehouseId) to keep types clean
+      const cogsRows = whId
+        ? await prisma.$queryRaw<[{ cogs: bigint }]>`
+            SELECT COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
+            FROM "SaleLine" sl
+            JOIN "Sale" s ON s.id = sl."saleId"
+            JOIN "Product" p ON p.id = sl."productId"
+            WHERE s.status = 'CONFIRMED'
+              AND s.date >= ${pFrom} AND s.date < ${pTo}
+              AND s."deletedAt" IS NULL
+              AND s."warehouseId" = ${whId}
+          `
+        : await prisma.$queryRaw<[{ cogs: bigint }]>`
+            SELECT COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
+            FROM "SaleLine" sl
+            JOIN "Sale" s ON s.id = sl."saleId"
+            JOIN "Product" p ON p.id = sl."productId"
+            WHERE s.status = 'CONFIRMED'
+              AND s.date >= ${pFrom} AND s.date < ${pTo}
+              AND s."deletedAt" IS NULL
+          `;
+
+      const [revResult, returnResult, expResult] = await Promise.all([
+        prisma.sale.aggregate({
+          where: {
+            status:    'CONFIRMED',
+            date:      { gte: pFrom, lt: pTo },
+            deletedAt: null,
+            ...warehouseFilter,
+          },
+          _sum: { totalCents: true },
+        }),
+
+        prisma.purchaseReturn.aggregate({
+          where: {
+            status:    'CONFIRMED',
+            createdAt: { gte: pFrom, lt: pTo },
+            isActive:  true,
+          },
+          _sum: { totalCents: true },
+        }),
+
+        // Expense.amount is the cents field (not amountCents); date field is 'date'
+        prisma.expense.aggregate({
+          where: {
+            date:      { gte: pFrom, lt: pTo },
+            deletedAt: null,
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      const revenue        = revResult._sum.totalCents ?? 0;
+      const cogs           = Number(cogsRows[0]?.cogs ?? 0);
+      const purchaseReturns = returnResult._sum.totalCents ?? 0;
+      const expenses        = expResult._sum.amount ?? 0;
+
+      const grossProfit    = revenue - (cogs - purchaseReturns);
+      const netProfit      = grossProfit - expenses;
+      const grossMarginPct = revenue > 0 ? Math.round((grossProfit / revenue) * 1000) / 10 : 0;
+      const netMarginPct   = revenue > 0 ? Math.round((netProfit  / revenue) * 1000) / 10 : 0;
+
+      return {
+        revenue, cogs, purchaseReturns,
+        grossProfit, expenses, netProfit,
+        grossMarginPct, netMarginPct,
+      };
+    }
+
+    const [current, previous] = await Promise.all([
+      getPeriodMetrics(from,     to,      warehouseId),
+      getPeriodMetrics(prevFrom, prevTo,  warehouseId),
+    ]);
+
+    return {
+      period:   { from: from.toISOString(), to: to.toISOString() },
+      current,
+      previous,
+    };
+  },
 };

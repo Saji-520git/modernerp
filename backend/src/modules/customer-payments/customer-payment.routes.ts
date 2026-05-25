@@ -1,0 +1,13 @@
+import { Router } from 'express';
+import { requireAuth } from '../../middleware/auth.js';
+import { requirePermission } from '../../middleware/auth.js';
+import { asyncHandler as h } from '../../middleware/async-handler.js';
+import * as ctrl from './customer-payment.controller.js';
+
+export const router = Router();
+
+router.use(requireAuth);
+
+router.post(  '/',               h(ctrl.createCustomerPayment));
+router.get(   '/sale/:saleId',   h(ctrl.listCustomerPayments));
+router.delete('/:id',            h(requirePermission('manage_settings')), h(ctrl.voidCustomerPayment));

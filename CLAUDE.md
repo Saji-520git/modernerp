@@ -427,7 +427,7 @@ npm run seed
 
 ---
 
-### ✅ Done: Sprint 19 — Purchasing Power-Ups
+### ✅ Done: Sprint 18 — Purchasing Power-Ups
 
 **Task 1 — Supplier Payments (rich modal):**
 - `SupplierPayment` model: paymentNumber, method, referenceNo, bankName, paymentDate
@@ -518,6 +518,7 @@ After completing a module:
 **Phase 3 Sprint 16: Stock Alerts ✓** (2026-05-22)
 **Phase 3 Sprint 17: FEFO + Write-off + Stock Overview ✓** (2026-05-24)
 **Phase 3 Sprint 18: Purchasing Power-Ups ✓** (2026-05-25)
+**Phase 3 Sprint 19: Attachments, Customer Payments, Purchase Returns, P&L Compare, Dashboard Live Data ✓** (2026-05-25)
 
 Phase 2 sprints completed:
 - Sprint 5: User Management ✓
@@ -535,7 +536,7 @@ Phase 3 sprints completed:
 - Sprint 17: FEFO + Write-off (FEFO batch deduction in POS checkout, WRITE_OFF enum + batchId on StockMovement, blockExpiredSales setting, /inventory/write-off endpoint, WriteOffModal in ProductDetailPanel + inline write-off in StockRow, KPI tiles on Stock Overview) ✓
 - Sprint 17b: expiredStockPolicy 3-option radio (BLOCK/WARN/ALLOW) replacing boolean blockExpiredSales toggle; Settings UI 3-option radio; POS card policy-aware badge/confirm dialog; checkout warnings in response) ✓
 - Sprint 18: Barcode System (BarcodeInput shared component, GET /products/by-barcode/:barcode endpoint, barcode inline duplicate check + search-Enter in Products page, POS unknown barcode → API fallback → QuickAddModal, Purchases scan-to-add-line, Inventory Adjust + Transfer scan-to-select; all type=text, loading states, focus management) ✓
-- Sprint 19: Purchasing Power-Ups (Supplier Payments rich modal, Product Import page wired up, Partial Delivery / GRN receipts with batch+expiry per line, Auto-PO from Low Stock Alerts with Generate PO modal) ✓
+- Sprint 18: Purchasing Power-Ups (Supplier Payments rich modal, Product Import page wired up, Partial Delivery / GRN receipts with batch+expiry per line, Auto-PO from Low Stock Alerts with Generate PO modal) ✓
 
 **Current: Phase 3 continuing**
 **Next sprint: Choose from:**

@@ -20,6 +20,7 @@ import {
   type ProfitLossData,
   type SlowMoverItem,
   type LowStockItem,
+  type PnlComparisonResult,
 } from '../../services/reports';
 import { inventoryApi } from '../../services/inventory';
 import jsPDF from 'jspdf';
@@ -1056,6 +1057,136 @@ function InventoryTab() {
   );
 }
 
+// ─── Compare Periods Panel ────────────────────────────────────────────────────
+
+function ComparePeriodsPanel() {
+  const [open, setOpen]             = useState(false);
+  const [dateFrom, setDateFrom]     = useState('');
+  const [dateTo, setDateTo]         = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const [enabled, setEnabled]       = useState(false);
+
+  const { data, isFetching } = useQuery<PnlComparisonResult>({
+    queryKey: ['pnl-compare', dateFrom, dateTo, warehouseId],
+    queryFn:  () => reportsApi.pnlComparison({ dateFrom, dateTo, warehouseId: warehouseId || undefined }),
+    enabled:  enabled && !!dateFrom && !!dateTo,
+  });
+
+  const { data: warehouses = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['warehouses-pnl'],
+    queryFn:  inventoryApi.getWarehouses,
+  });
+
+  const formatRs = (cents: number) =>
+    `Rs. ${(cents / 100).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`;
+  const fmtPct   = (v: number) => `${v.toFixed(1)}%`;
+  const valClass = (v: number) => v >= 0 ? 'text-green-600' : 'text-red-600';
+
+  type Row = { label: string; curr: number; prev: number; bold?: boolean; separator?: boolean };
+
+  const rows: Row[] = data ? [
+    { label: 'Revenue',           curr:  data.current.revenue,         prev: data.previous.revenue },
+    { label: 'Cost of Goods Sold',curr: -data.current.cogs,            prev: -data.previous.cogs },
+    { label: 'Purchase Returns',  curr:  data.current.purchaseReturns, prev: data.previous.purchaseReturns },
+    { separator: true, label: '', curr: 0, prev: 0 },
+    { label: 'Gross Profit',      curr:  data.current.grossProfit,     prev: data.previous.grossProfit, bold: true },
+    { label: 'Gross Margin %',    curr:  data.current.grossMarginPct,  prev: data.previous.grossMarginPct },
+    { separator: true, label: '', curr: 0, prev: 0 },
+    { label: 'Operating Expenses',curr: -data.current.expenses,        prev: -data.previous.expenses },
+    { separator: true, label: '', curr: 0, prev: 0 },
+    { label: 'NET PROFIT',        curr:  data.current.netProfit,       prev: data.previous.netProfit, bold: true },
+    { label: 'Net Margin %',      curr:  data.current.netMarginPct,    prev: data.previous.netMarginPct },
+  ] : [];
+
+  const isPct = (label: string) => label.includes('%');
+
+  return (
+    <div className="mt-6 border border-slate-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-sm font-semibold text-slate-700 transition"
+      >
+        Compare Two Periods
+        <span className="text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">From</label>
+              <input type="date" value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); setEnabled(false); }}
+                className="border border-slate-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">To</label>
+              <input type="date" value={dateTo}
+                onChange={(e) => { setDateTo(e.target.value); setEnabled(false); }}
+                className="border border-slate-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Warehouse</label>
+              <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}
+                className="border border-slate-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="">All</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => setEnabled(true)}
+              disabled={!dateFrom || !dateTo}
+              className="px-4 py-1.5 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+            >
+              {isFetching ? 'Loading…' : 'Generate'}
+            </button>
+          </div>
+
+          {data && (
+            <>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left py-2 px-3 border-b border-slate-200 font-medium text-slate-600 text-xs"></th>
+                    <th className="text-right py-2 px-3 border-b border-slate-200 font-medium text-slate-600 text-xs">Current Period</th>
+                    <th className="text-right py-2 px-3 border-b border-slate-200 font-medium text-slate-600 text-xs">Previous Period</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, i) =>
+                    row.separator ? (
+                      <tr key={i}><td colSpan={3} className="border-t border-slate-100 py-0.5" /></tr>
+                    ) : (
+                      <tr key={i} className={
+                        row.label === 'NET PROFIT'
+                          ? (row.curr >= 0 ? 'bg-green-50' : 'bg-red-50')
+                          : 'hover:bg-slate-50'
+                      }>
+                        <td className={`py-2 px-3 text-slate-700 ${row.bold ? 'font-bold' : ''}`}>{row.label}</td>
+                        <td className={`text-right py-2 px-3 ${row.bold ? 'font-bold' : ''} ${valClass(row.curr)}`}>
+                          {isPct(row.label) ? fmtPct(row.curr) : formatRs(row.curr)}
+                        </td>
+                        <td className={`text-right py-2 px-3 ${row.bold ? 'font-bold' : ''} ${valClass(row.prev)}`}>
+                          {isPct(row.label) ? fmtPct(row.prev) : formatRs(row.prev)}
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+              <button onClick={() => window.print()} className="text-sm text-indigo-600 hover:underline">
+                Print Comparison
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 6. Profit & Loss Tab ─────────────────────────────────────────────────────
 
 function ProfitLossTab() {
@@ -1265,6 +1396,9 @@ function ProfitLossTab() {
           </div>
         </>
       )}
+
+      {/* ── Compare Two Periods ──────────────────────────────────────────────── */}
+      <ComparePeriodsPanel />
     </div>
   );
 }

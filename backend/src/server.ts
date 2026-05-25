@@ -1,8 +1,13 @@
 import 'dotenv/config';
+import fs from 'fs';
 import express from 'express';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
+
+// Ensure uploads directory exists before any request is served
+const uploadsDir = path.resolve('uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ── Prevent unhandled promise rejections from crashing the server ──────────────
 process.on('unhandledRejection', (reason) => {
@@ -47,6 +52,8 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true, // only count failed attempts
 });
 app.use('/api/v1/auth/login', loginLimiter);
+
+app.use('/uploads', express.static(path.resolve('uploads')));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 app.use('/api/v1', apiRouter);

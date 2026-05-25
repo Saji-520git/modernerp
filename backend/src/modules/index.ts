@@ -17,6 +17,9 @@ import { router as settingsRouter } from './settings/settings.routes.js';
 import { router as warehousesRouter } from './warehouses/warehouses.routes.js';
 import { router as supplierPaymentsRouter } from './supplier-payments/supplier-payment.routes.js';
 import { router as importRouter }           from './import/import.routes.js';
+import { router as attachmentsRouter }       from './attachments/attachment.routes.js';
+import { router as customerPaymentsRouter }  from './customer-payments/customer-payment.routes.js';
+import { router as purchaseReturnsRouter }   from './purchase-returns/purchase-return.routes.js';
 
 export const router: Router = Router();
 
@@ -40,3 +43,6 @@ router.use('/settings',   settingsRouter);
 router.use('/warehouses',        warehousesRouter);
 router.use('/supplier-payments', supplierPaymentsRouter);
 router.use('/import',            importRouter);
+router.use('/attachments',        attachmentsRouter);
+router.use('/customer-payments',  customerPaymentsRouter);
+router.use('/purchase-returns',   purchaseReturnsRouter);

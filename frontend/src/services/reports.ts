@@ -178,6 +178,45 @@ export interface ProfitLossData {
   }[];
 }
 
+// ─── P&L Comparison types ─────────────────────────────────────────────────────
+
+export interface PnlPeriodMetrics {
+  revenue:         number;
+  cogs:            number;
+  purchaseReturns: number;
+  grossProfit:     number;
+  expenses:        number;
+  netProfit:       number;
+  grossMarginPct:  number;
+  netMarginPct:    number;
+}
+
+export interface PnlComparisonResult {
+  period:   { from: string; to: string };
+  current:  PnlPeriodMetrics;
+  previous: PnlPeriodMetrics;
+}
+
+// ─── Dashboard Live Stats types ───────────────────────────────────────────────
+
+export interface DashboardActivity {
+  type:        'SALE' | 'PURCHASE' | 'PAYMENT_IN' | 'PAYMENT_OUT';
+  refNumber:   string;
+  description: string;
+  amountCents: number;
+  createdAt:   string;
+}
+
+export interface DashboardStats {
+  todaySalesCents:             number;
+  todaySalesCount:             number;
+  outstandingReceivablesCents: number;
+  outstandingPayablesCents:    number;
+  lowStockCount:               number;
+  last7Days: Array<{ date: string; salesCents: number; salesCount: number }>;
+  recentActivity:              DashboardActivity[];
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const reportsApi = {
@@ -203,4 +242,10 @@ export const reportsApi = {
     const q = new URLSearchParams({ from: params.from, to: params.to, groupBy: params.groupBy ?? 'day' });
     return `/api/v1/reports/sales/csv?${q}`;
   },
+
+  pnlComparison: (params: { dateFrom: string; dateTo: string; warehouseId?: string }): Promise<PnlComparisonResult> =>
+    api.get('/reports/pnl', { params }).then((r) => r.data),
+
+  dashboardStats: (): Promise<DashboardStats> =>
+    api.get('/reports/dashboard').then((r) => r.data),
 };

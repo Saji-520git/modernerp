@@ -2,8 +2,9 @@ import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight, Download,
-  Truck, PackageCheck,
+  Truck, PackageCheck, Paperclip, Printer,
 } from 'lucide-react';
+import AttachmentPanel from '../../components/common/AttachmentPanel';
 import {
   purchasesApi,
   formatCents,
@@ -33,6 +34,13 @@ import { exportPurchaseOrder } from '../../services/pdfExport';
 import { productsApi } from '../../services/products';
 import BarcodeInput from '../../components/common/BarcodeInput';
 import axios from 'axios';
+import {
+  purchaseReturnsApi, printDebitNote,
+  RETURN_STATUS_LABELS, RETURN_STATUS_COLORS,
+  formatCents as fmtReturnCents,
+  type PurchaseReturn, type ReturnStatus,
+} from '../../services/purchaseReturns';
+import { CornerUpLeft } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +86,8 @@ function SupplierPaymentSection({
   const [bankName,   setBankName]   = useState('');
   const [payDate,    setPayDate]    = useState(new Date().toISOString().slice(0, 10));
   const [notes,      setNotes]      = useState('');
-  const [err,        setErr]        = useState('');
+  const [err,           setErr]          = useState('');
+  const [expandedPayId, setExpandedPayId] = useState<string | null>(null);
 
   const showRef = method === 'CHEQUE' || method === 'BANK_TRANSFER';
 
@@ -160,35 +169,51 @@ function SupplierPaymentSection({
             </thead>
             <tbody>
               {history.map((p) => (
-                <tr key={p.id} className="border-b border-slate-50">
-                  <td className="py-1.5 font-mono text-indigo-700">{p.paymentNumber}</td>
-                  <td className="py-1.5 text-slate-500">{new Date(p.paymentDate).toLocaleDateString()}</td>
-                  <td className="py-1.5">{SPAY_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</td>
-                  <td className="py-1.5 text-slate-400">{p.referenceNo ?? '—'}</td>
-                  <td className="py-1.5 text-right font-semibold">{formatCents(p.amountCents)}</td>
-                  <td className="py-1.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handlePrintVoucher(p.id)}
-                        className="text-indigo-600 hover:text-indigo-800 text-[10px] font-medium"
-                        title="Print voucher"
-                      >
-                        Voucher
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Void payment ${p.paymentNumber}? This cannot be undone.`)) {
-                            voidMut.mutate(p.id);
-                          }
-                        }}
-                        className="text-red-500 hover:text-red-700 text-[10px] font-medium"
-                        title="Void this payment"
-                      >
-                        Void
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <>
+                  <tr key={p.id} className="border-b border-slate-50">
+                    <td className="py-1.5 font-mono text-indigo-700">{p.paymentNumber}</td>
+                    <td className="py-1.5 text-slate-500">{new Date(p.paymentDate).toLocaleDateString()}</td>
+                    <td className="py-1.5">{SPAY_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</td>
+                    <td className="py-1.5 text-slate-400">{p.referenceNo ?? '—'}</td>
+                    <td className="py-1.5 text-right font-semibold">{formatCents(p.amountCents)}</td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setExpandedPayId(expandedPayId === p.id ? null : p.id)}
+                          className={`p-1 rounded hover:bg-slate-100 transition ${expandedPayId === p.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                          title="Attachments"
+                        >
+                          <Paperclip size={11} />
+                        </button>
+                        <button
+                          onClick={() => handlePrintVoucher(p.id)}
+                          className="text-indigo-600 hover:text-indigo-800 text-[10px] font-medium"
+                          title="Print voucher"
+                        >
+                          Voucher
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Void payment ${p.paymentNumber}? This cannot be undone.`)) {
+                              voidMut.mutate(p.id);
+                            }
+                          }}
+                          className="text-red-500 hover:text-red-700 text-[10px] font-medium"
+                          title="Void this payment"
+                        >
+                          Void
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedPayId === p.id && (
+                    <tr key={`${p.id}-att`}>
+                      <td colSpan={6} className="px-2 pb-3">
+                        <AttachmentPanel refType="SupplierPayment" refId={p.id} />
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>
@@ -548,6 +573,158 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
   );
 }
 
+// ─── Purchase Return Section (inside PO detail modal) ─────────────────────────
+
+function PurchaseReturnSection({ poId }: { poId: string }) {
+  const qc = useQueryClient();
+  const [showNew, setShowNew] = useState(false);
+  const [newLineQtys, setNewLineQtys] = useState<Record<string, string>>({});
+  const [newReason, setNewReason] = useState('');
+  const [formErr, setFormErr] = useState('');
+
+  const { data: returns = [], isLoading } = useQuery<PurchaseReturn[]>({
+    queryKey: ['purchase-returns', poId],
+    queryFn:  () => purchaseReturnsApi.list(poId),
+  });
+
+  const { data: po } = useQuery({
+    queryKey: ['purchase', poId],
+    queryFn:  () => purchasesApi.getPurchase(poId),
+    enabled:  showNew,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => {
+      const lines = (po?.lines ?? [])
+        .filter((l: any) => parseFloat(newLineQtys[l.id] ?? '0') > 0)
+        .map((l: any) => ({ purchaseLineId: l.id, qty: parseFloat(newLineQtys[l.id]) }));
+      if (!lines.length) throw new Error('Enter qty for at least one line');
+      return purchaseReturnsApi.create({ purchaseId: poId, reason: newReason || undefined, lines });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-returns', poId] });
+      qc.invalidateQueries({ queryKey: ['purchase-returns'] });
+      setShowNew(false); setNewLineQtys({}); setNewReason(''); setFormErr('');
+    },
+    onError: (err: any) => setFormErr(err?.response?.data?.message ?? err.message ?? 'Failed'),
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: (id: string) => purchaseReturnsApi.confirm(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['purchase-returns', poId] }); qc.invalidateQueries({ queryKey: ['purchase-returns'] }); },
+  });
+
+  return (
+    <div className="px-6 border-t border-slate-100 pt-4 pb-2 mt-2">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <CornerUpLeft size={13} className="text-orange-500" />
+          <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Returns to Supplier</h4>
+          {returns.length > 0 && (
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{returns.length}</span>
+          )}
+        </div>
+        {!showNew && (
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-1 text-xs font-medium text-orange-600 hover:text-orange-800 px-2.5 py-1 bg-orange-50 hover:bg-orange-100 rounded-lg transition">
+            <Plus size={12} /> New Return
+          </button>
+        )}
+      </div>
+
+      {showNew && (
+        <div className="bg-slate-50 rounded-xl p-4 mb-3 space-y-3 border border-slate-200">
+          <p className="text-xs font-semibold text-slate-600">New Return Draft</p>
+          {formErr && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formErr}</p>}
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Reason (optional)</label>
+            <input type="text" value={newReason} onChange={(e) => setNewReason(e.target.value)}
+              placeholder="e.g. Damaged, wrong items"
+              className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+          {(po?.lines ?? []).length > 0 && (
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400">
+                <th className="pb-1 text-left font-medium">Product</th>
+                <th className="pb-1 text-right font-medium">Received</th>
+                <th className="pb-1 text-right font-medium">Returned</th>
+                <th className="pb-1 text-right font-medium">Return Qty</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(po?.lines ?? []).map((l: any) => {
+                  const max = Number(l.receivedQty ?? 0) - Number(l.returnedQty ?? 0);
+                  return (
+                    <tr key={l.id} className={max <= 0 ? 'opacity-40' : ''}>
+                      <td className="py-1.5 font-medium text-slate-700">{l.product?.name}</td>
+                      <td className="py-1.5 text-right text-slate-500">{Number(l.receivedQty ?? 0)}</td>
+                      <td className="py-1.5 text-right text-slate-500">{Number(l.returnedQty ?? 0)}</td>
+                      <td className="py-1.5 text-right">
+                        <input type="number" min="0" max={max} step="1"
+                          disabled={max <= 0}
+                          value={newLineQtys[l.id] ?? ''}
+                          onChange={(e) => setNewLineQtys((p) => ({ ...p, [l.id]: e.target.value }))}
+                          placeholder="0"
+                          className="w-16 text-right border border-slate-300 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:bg-slate-100" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => { setShowNew(false); setFormErr(''); }}
+              className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-100">Cancel</button>
+            <button onClick={() => createMut.mutate()} disabled={createMut.isPending}
+              className="flex-1 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-semibold hover:bg-orange-700 disabled:opacity-60">
+              {createMut.isPending ? 'Creating…' : 'Create Draft'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <p className="text-xs text-slate-400 py-2">Loading returns…</p>
+      ) : returns.length === 0 ? (
+        <p className="text-xs text-slate-400 text-center py-3">No returns for this PO</p>
+      ) : (
+        <div className="space-y-2 mb-2">
+          {returns.map((r) => (
+            <div key={r.id} className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl hover:bg-slate-100 transition">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-orange-700 font-mono">{r.number}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${RETURN_STATUS_COLORS[r.status as ReturnStatus]}`}>
+                    {RETURN_STATUS_LABELS[r.status as ReturnStatus]}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {new Date(r.createdAt).toLocaleDateString()} · {r.createdBy.fullName}
+                  {r.reason ? ` · ${r.reason}` : ''}
+                </p>
+              </div>
+              <span className="text-sm font-bold text-orange-700 shrink-0">{fmtReturnCents(r.totalCents)}</span>
+              {r.status === 'CONFIRMED' && (
+                <button onClick={() => printDebitNote(r)}
+                  className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition shrink-0">
+                  <Printer size={12} />
+                </button>
+              )}
+              {r.status === 'DRAFT' && (
+                <button onClick={() => { if (window.confirm('Confirm this return? Stock will be deducted.')) confirmMut.mutate(r.id); }}
+                  disabled={confirmMut.isPending}
+                  className="px-2 py-1 text-[10px] font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 shrink-0">
+                  Confirm
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 function PurchaseDetailModal({
@@ -680,6 +857,16 @@ function PurchaseDetailModal({
         {po.status === 'CONFIRMED' && (
           <SupplierPaymentSection poId={id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} />
         )}
+
+        {/* Purchase Returns section — shown on CONFIRMED POs */}
+        {po.status === 'CONFIRMED' && (
+          <PurchaseReturnSection poId={id} />
+        )}
+
+        {/* Purchase attachments */}
+        <div className="px-6">
+          <AttachmentPanel refType="Purchase" refId={po.id} />
+        </div>
 
         {/* Footer actions */}
         <div className="flex justify-between items-center px-6 py-4 border-t border-slate-100">

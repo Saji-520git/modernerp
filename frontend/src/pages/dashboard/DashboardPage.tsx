@@ -13,6 +13,7 @@ import {
   formatDateShort, formatDateTime,
   type RevenuePoint, type TopProduct,
 } from '../../services/dashboard';
+import { reportsApi } from '../../services/reports';
 import { useAppSettings } from '../../context/SettingsContext';
 import { inventoryApi } from '../../services/inventory';
 import { expensesApi } from '../../services/expenses';
@@ -463,6 +464,12 @@ export default function DashboardPage() {
     staleTime: 5 * 60_000,
   });
 
+  const { data: liveStats } = useQuery({
+    queryKey: ['dashboard-live-stats'],
+    queryFn:  reportsApi.dashboardStats,
+    refetchInterval: 60_000,
+  });
+
   const kpis = data?.kpis;
   const now   = new Date();
   const hour  = now.getHours();
@@ -566,6 +573,20 @@ export default function DashboardPage() {
           sub="Products with expiry alerts"
           icon={AlertTriangle} iconBg="bg-red-400"
           to="/inventory"
+        />
+        <StatCard
+          label="Receivables"
+          value={formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0)}
+          sub="Outstanding from customers"
+          icon={CreditCard} iconBg="bg-cyan-500"
+          to="/sales"
+        />
+        <StatCard
+          label="Payables"
+          value={formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0)}
+          sub="Due to suppliers"
+          icon={Truck} iconBg="bg-amber-600"
+          to="/purchases"
         />
       </div>
 

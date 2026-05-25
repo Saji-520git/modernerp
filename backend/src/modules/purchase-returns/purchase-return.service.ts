@@ -1,0 +1,270 @@
+import { prisma } from '../../config/prisma.js';
+import { HttpError } from '../../middleware/error-handler.js';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface CreateReturnLineInput {
+  purchaseLineId: string;
+  qty:            number;
+}
+
+export interface CreateReturnInput {
+  purchaseId: string;
+  reason?:    string;
+  lines:      CreateReturnLineInput[];
+  createdBy:  string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function nextReturnNumber(): Promise<string> {
+  const year   = new Date().getFullYear();
+  const prefix = `PRET-${year}-`;
+  const last   = await (prisma as any).purchaseReturn.findFirst({
+    where:   { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select:  { number: true },
+  });
+  const seq = last ? parseInt(last.number.slice(prefix.length), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
+
+const RETURN_INCLUDE = {
+  purchase:  { select: { id: true, number: true } },
+  supplier:  { select: { id: true, name: true } },
+  warehouse: { select: { id: true, name: true, code: true } },
+  createdBy: { select: { id: true, fullName: true } },
+  lines: {
+    include: {
+      product:      { select: { id: true, name: true, sku: true } },
+      purchaseLine: { select: { id: true, qty: true, receivedQty: true, returnedQty: true } },
+    },
+  },
+} as const;
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
+export const purchaseReturnService = {
+
+  // ── Create draft return ─────────────────────────────────────────────────────
+
+  async createReturn(input: CreateReturnInput) {
+    const { purchaseId, reason, lines, createdBy } = input;
+
+    if (!lines || lines.length === 0) throw new HttpError(400, 'At least one line is required');
+
+    const purchase = await (prisma as any).purchase.findUnique({
+      where:   { id: purchaseId },
+      include: {
+        lines: true,
+        supplier: true,
+      },
+    });
+    if (!purchase)                         throw new HttpError(404, 'Purchase not found');
+    if (purchase.status !== 'CONFIRMED')   throw new HttpError(400, 'Purchase must be CONFIRMED to create a return');
+
+    // Validate each return line
+    let totalCents = 0;
+    const validatedLines: Array<{
+      purchaseLineId: string;
+      productId:      string;
+      qty:            number;
+      unitCostCents:  number;
+      lineTotalCents: number;
+    }> = [];
+
+    for (const line of lines) {
+      const pl = purchase.lines.find((l: any) => l.id === line.purchaseLineId);
+      if (!pl) throw new HttpError(400, `Purchase line ${line.purchaseLineId} not found on this PO`);
+
+      const maxReturnable = Number(pl.receivedQty) - Number(pl.returnedQty);
+      if (line.qty <= 0)            throw new HttpError(400, `Qty must be positive (line ${pl.id})`);
+      if (line.qty > maxReturnable) throw new HttpError(400,
+        `Cannot return ${line.qty} — only ${maxReturnable.toFixed(4)} returnable on line ${pl.id}`);
+
+      const lineTotalCents = Math.round(line.qty * pl.unitCostCents);
+      totalCents += lineTotalCents;
+
+      validatedLines.push({
+        purchaseLineId: pl.id,
+        productId:      pl.productId,
+        qty:            line.qty,
+        unitCostCents:  pl.unitCostCents,
+        lineTotalCents,
+      });
+    }
+
+    const number = await nextReturnNumber();
+
+    const ret = await (prisma as any).purchaseReturn.create({
+      data: {
+        number,
+        purchaseId,
+        supplierId:  purchase.supplierId,
+        warehouseId: purchase.warehouseId,
+        status:      'DRAFT',
+        reason:      reason ?? null,
+        totalCents,
+        createdById: createdBy,
+        lines: {
+          create: validatedLines.map((l) => ({
+            purchaseLineId: l.purchaseLineId,
+            productId:      l.productId,
+            qty:            l.qty,
+            unitCostCents:  l.unitCostCents,
+            lineTotalCents: l.lineTotalCents,
+          })),
+        },
+      },
+      include: RETURN_INCLUDE,
+    });
+
+    return ret;
+  },
+
+  // ── Confirm return → deduct stock + update returnedQty ─────────────────────
+
+  async confirmReturn(id: string) {
+    const ret = await (prisma as any).purchaseReturn.findUnique({
+      where:   { id },
+      include: { lines: { include: { purchaseLine: true, product: true } } },
+    });
+    if (!ret)                   throw new HttpError(404, 'Return not found');
+    if (ret.status !== 'DRAFT') throw new HttpError(400, 'Only DRAFT returns can be confirmed');
+    if (!ret.isActive)          throw new HttpError(400, 'Return has been deleted');
+
+    const ops: any[] = [];
+
+    for (const line of ret.lines) {
+      const qty = Number(line.qty);
+
+      // 1. Create RETURN_OUT stock movement
+      ops.push(
+        prisma.stockMovement.create({
+          data: {
+            productId:   line.productId,
+            warehouseId: ret.warehouseId,
+            type:        'RETURN_OUT',
+            qty:         -qty,
+            refType:     'PurchaseReturn',
+            refId:       ret.id,
+          },
+        }),
+      );
+
+      // 2. Decrease Stock.qty
+      ops.push(
+        prisma.stock.updateMany({
+          where: { productId: line.productId, warehouseId: ret.warehouseId },
+          data:  { qty: { decrement: qty } },
+        }),
+      );
+
+      // 3. Update purchaseLine.returnedQty
+      ops.push(
+        prisma.purchaseLine.update({
+          where: { id: line.purchaseLineId },
+          data:  { returnedQty: { increment: qty } },
+        }),
+      );
+    }
+
+    // 4. Mark return CONFIRMED
+    ops.push(
+      (prisma as any).purchaseReturn.update({
+        where:   { id },
+        data:    { status: 'CONFIRMED' },
+        include: RETURN_INCLUDE,
+      }),
+    );
+
+    const results = await prisma.$transaction(ops);
+    return results[results.length - 1];
+  },
+
+  // ── Cancel return (DRAFT only) ──────────────────────────────────────────────
+
+  async cancelReturn(id: string) {
+    const ret = await (prisma as any).purchaseReturn.findUnique({
+      where:  { id },
+      select: { status: true, isActive: true },
+    });
+    if (!ret)                   throw new HttpError(404, 'Return not found');
+    if (ret.status !== 'DRAFT') throw new HttpError(400, 'Only DRAFT returns can be cancelled');
+
+    return (prisma as any).purchaseReturn.update({
+      where:   { id },
+      data:    { status: 'CANCELLED' },
+      include: RETURN_INCLUDE,
+    });
+  },
+
+  // ── Soft-delete (DRAFT only) ────────────────────────────────────────────────
+
+  async deleteReturn(id: string) {
+    const ret = await (prisma as any).purchaseReturn.findUnique({
+      where:  { id },
+      select: { status: true, isActive: true },
+    });
+    if (!ret)                   throw new HttpError(404, 'Return not found');
+    if (!ret.isActive)          throw new HttpError(400, 'Already deleted');
+    if (ret.status !== 'DRAFT') throw new HttpError(400, 'Only DRAFT returns can be deleted');
+
+    return (prisma as any).purchaseReturn.update({
+      where:   { id },
+      data:    { isActive: false },
+      include: RETURN_INCLUDE,
+    });
+  },
+
+  // ── List returns ────────────────────────────────────────────────────────────
+
+  async listReturns(purchaseId?: string) {
+    return (prisma as any).purchaseReturn.findMany({
+      where:   {
+        isActive: true,
+        ...(purchaseId ? { purchaseId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        purchase:  { select: { id: true, number: true } },
+        supplier:  { select: { id: true, name: true } },
+        warehouse: { select: { id: true, name: true, code: true } },
+        createdBy: { select: { id: true, fullName: true } },
+        _count:    { select: { lines: true } },
+      },
+    });
+  },
+
+  // ── Get single return ───────────────────────────────────────────────────────
+
+  async getReturn(id: string) {
+    const ret = await (prisma as any).purchaseReturn.findFirst({
+      where:   { id, isActive: true },
+      include: RETURN_INCLUDE,
+    });
+    if (!ret) throw new HttpError(404, 'Return not found');
+    return ret;
+  },
+
+  // ── Debit note data (for PDF) ───────────────────────────────────────────────
+
+  async getDebitNoteData(id: string) {
+    const ret = await (prisma as any).purchaseReturn.findFirst({
+      where: { id, isActive: true },
+      include: {
+        purchase:  { select: { id: true, number: true, date: true } },
+        supplier:  true,
+        warehouse: { select: { id: true, name: true, code: true } },
+        createdBy: { select: { id: true, fullName: true } },
+        lines: {
+          include: {
+            product: { select: { id: true, name: true, sku: true } },
+          },
+        },
+      },
+    });
+    if (!ret) throw new HttpError(404, 'Return not found');
+    return ret;
+  },
+};

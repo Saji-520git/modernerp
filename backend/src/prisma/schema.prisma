@@ -40,6 +40,12 @@ enum PurchasePaymentStatus {
   PAID
 }
 
+enum SalePaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
 enum DeliveryStatus {
   PENDING    // confirmed, awaiting first delivery
   PARTIAL    // some lines / qty received
@@ -93,8 +99,11 @@ model User {
   deletedExpenses  Expense[]         @relation("ExpenseDeletedBy")
   deletedExpCats   ExpenseCategory[] @relation("ExpenseCategoryDeletedBy")
 
-  supplierPayments SupplierPayment[]  @relation("SPAYCreatedBy")
-  purchaseReceipts PurchaseReceipt[]  @relation("GRNReceivedBy")
+  supplierPayments  SupplierPayment[]   @relation("SPAYCreatedBy")
+  purchaseReceipts  PurchaseReceipt[]   @relation("GRNReceivedBy")
+  attachments       Attachment[]
+  customerPayments  CustomerPayment[]   @relation("CPAYCreatedByUser")
+  purchaseReturns   PurchaseReturn[]    @relation("PRETCreatedBy")
 }
 
 model Category {
@@ -162,6 +171,7 @@ model Warehouse {
   stockBatches     StockBatch[]
   stockAlerts      StockAlert[]
   purchaseReceipts PurchaseReceipt[]
+  purchaseReturns  PurchaseReturn[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -219,7 +229,8 @@ model Product {
   unitConversions ProductUnitConversion[]
   stockBatches    StockBatch[]
   stockAlerts     StockAlert[]
-  receiptLines    PurchaseReceiptLine[]
+  receiptLines       PurchaseReceiptLine[]
+  purchaseReturnLines PurchaseReturnLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,8 +276,9 @@ model Customer {
   creditAlertPct   Int     @default(80)     // warn at this % of limit (0-100)
   creditSettleDays Int?                     // expected settlement period in days
 
-  sales     Sale[]
-  posDrafts PosDraft[]
+  sales            Sale[]
+  posDrafts        PosDraft[]
+  customerPayments CustomerPayment[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -280,6 +292,7 @@ model Supplier {
   isActive  Boolean  @default(true)
   purchases          Purchase[]
   supplierPayments   SupplierPayment[]
+  purchaseReturns    PurchaseReturn[]
   defaultForProducts Product[]         @relation("ProductDefaultSupplier")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -307,10 +320,11 @@ model Purchase {
   deletedAt    DateTime?
   deletedById  String?
   deletedBy    User?      @relation("PurchaseDeletedBy", fields: [deletedById], references: [id])
-  lines        PurchaseLine[]
-  receipts     PurchaseReceipt[]
-  payments     Payment[]
+  lines            PurchaseLine[]
+  receipts         PurchaseReceipt[]
+  payments         Payment[]
   supplierPayments SupplierPayment[]
+  purchaseReturns  PurchaseReturn[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -329,6 +343,9 @@ model PurchaseLine {
   // Cumulative qty received across all GRN receipts
   receivedQty Decimal @default(0) @db.Decimal(18, 4)
 
+  // Cumulative qty returned to supplier
+  returnedQty Decimal @default(0) @db.Decimal(18, 4)
+
   // Expiry tracking per batch
   expiryDate DateTime?
 
@@ -338,6 +355,7 @@ model PurchaseLine {
   baseQty  Decimal? @db.Decimal(18, 6)  // qty converted to base unit
 
   receiptLines PurchaseReceiptLine[]
+  returnLines  PurchaseReturnLine[]
 }
 
 model Sale {
@@ -354,19 +372,21 @@ model Sale {
   taxCents      Int        @default(0)
   discountCents Int        @default(0)
   totalCents    Int        @default(0)
-  paidCents     Int        @default(0)
-  paymentMethod PaymentMethod @default(CASH)
-  note          String?
-  shiftId       String?
+  paidCents      Int                @default(0)
+  paymentStatus  SalePaymentStatus  @default(UNPAID)
+  paymentMethod  PaymentMethod      @default(CASH)
+  note           String?
+  shiftId        String?
   shift         PosShift?  @relation(fields: [shiftId], references: [id])
   createdById   String
   createdBy     User       @relation("SaleCreatedBy", fields: [createdById], references: [id])
   deletedAt     DateTime?
   deletedById   String?
   deletedBy     User?      @relation("SaleDeletedBy", fields: [deletedById], references: [id])
-  lines         SaleLine[]
-  returns       SaleReturn[]
-  payments      Payment[]
+  lines            SaleLine[]
+  returns          SaleReturn[]
+  payments         Payment[]
+  customerPayments CustomerPayment[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 }
@@ -676,6 +696,87 @@ model PurchaseReceiptLine {
   createdAt      DateTime        @default(now())
 
   @@map("purchase_receipt_lines")
+}
+
+// ─── Attachments ─────────────────────────────────────────────────────────────
+
+model Attachment {
+  id            String   @id @default(cuid())
+  refType       String                           // "Purchase" | "SupplierPayment" | "CustomerPayment" | "PurchaseReturn"
+  refId         String
+  fileName      String                           // original file name shown to user
+  storedName    String                           // filename on disk (timestamped UUID)
+  mimeType      String
+  fileSizeBytes Int
+  uploadedBy    String
+  uploader      User     @relation(fields: [uploadedBy], references: [id])
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@map("attachments")
+}
+
+// ─── Purchase Returns (return to supplier) ───────────────────────────────────
+
+model PurchaseReturn {
+  id           String     @id @default(cuid())
+  number       String     @unique              // PRET-YYYY-NNNN
+  purchaseId   String
+  purchase     Purchase   @relation(fields: [purchaseId], references: [id])
+  supplierId   String
+  supplier     Supplier   @relation(fields: [supplierId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse  @relation(fields: [warehouseId], references: [id])
+  status       DocStatus  @default(DRAFT)
+  reason       String?
+  totalCents   Int        @default(0)
+  createdById  String
+  createdBy    User       @relation("PRETCreatedBy", fields: [createdById], references: [id])
+  lines        PurchaseReturnLine[]
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnLine {
+  id              String         @id @default(cuid())
+  returnId        String
+  purchaseReturn  PurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  purchaseLineId  String
+  purchaseLine    PurchaseLine   @relation(fields: [purchaseLineId], references: [id])
+  productId       String
+  product         Product        @relation(fields: [productId], references: [id])
+  qty             Decimal        @db.Decimal(18, 4)
+  unitCostCents   Int
+  lineTotalCents  Int
+
+  @@map("purchase_return_lines")
+}
+
+// ─── Customer Payments (receivables) ─────────────────────────────────────────
+
+model CustomerPayment {
+  id            String        @id @default(cuid())
+  paymentNumber String        @unique              // CPAY-YYYY-NNNN
+  saleId        String
+  sale          Sale          @relation(fields: [saleId], references: [id])
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  amountCents   Int                                // always positive
+  paymentMethod PaymentMethod
+  referenceNo   String?                            // cheque number or bank ref
+  bankName      String?
+  paymentDate   DateTime
+  notes         String?
+  createdBy     String
+  createdByUser User          @relation("CPAYCreatedByUser", fields: [createdBy], references: [id])
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("customer_payments")
 }
 
 // ─── App Settings (singleton row) ────────────────────────────────────────────

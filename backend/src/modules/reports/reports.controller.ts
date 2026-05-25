@@ -66,3 +66,17 @@ export const profitLoss: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
   res.json(await reportsService.profitLoss(from, to));
 };
+
+export const pnlComparison: RequestHandler = async (req, res) => {
+  const { dateFrom, dateTo, warehouseId } = req.query as Record<string, string>;
+  if (!dateFrom || !dateTo) {
+    res.status(400).json({ error: 'dateFrom and dateTo required' });
+    return;
+  }
+  res.json(await reportsService.getPnlComparison(dateFrom, dateTo, warehouseId || undefined));
+};
+
+export const dashboardStats: RequestHandler = async (_req, res) => {
+  res.json(await reportsService.getDashboardStats());
+};
+

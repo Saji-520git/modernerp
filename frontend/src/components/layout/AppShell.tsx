@@ -10,7 +10,7 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell,
+  Bell, CornerUpLeft,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -59,7 +59,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/sales', label: 'Sales', icon: FileText },
       { to: '/purchases', label: 'Purchases', icon: Truck },
-      { to: '/returns', label: 'Returns', icon: RotateCcw },
+      { to: '/returns', label: 'Sale Returns', icon: RotateCcw },
+      { to: '/purchase-returns', label: 'Purch. Returns', icon: CornerUpLeft },
       { to: '/expenses', label: 'Expenses', icon: Receipt },
       { to: '/shifts', label: 'POS Shifts', icon: Clock, roles: ['ADMIN', 'MANAGER'] },
     ],

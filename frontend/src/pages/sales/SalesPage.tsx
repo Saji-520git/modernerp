@@ -5,15 +5,17 @@ import {
   Plus, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight,
   Trash2, CreditCard, AlertCircle, RotateCcw, Download, Filter,
   FileText, Printer, ChevronDown, ShoppingCart, Receipt, RefreshCw,
-  DollarSign, TrendingUp, Package,
+  DollarSign, TrendingUp, Package, Paperclip,
 } from 'lucide-react';
 import {
   salesApi, formatCents, STATUS_LABELS, STATUS_COLORS, PAYMENT_LABELS,
   type SaleStatus, type PaymentMethod, type SaleProduct, type SaleLine, type SaleForReturn,
 } from '../../services/sales';
+import { customerPaymentsApi, type CustomerPayment, type CreateCustomerPaymentInput } from '../../services/customerPayments';
 import { inventoryApi } from '../../services/inventory';
 import { exportSaleInvoice, exportSaleReturn } from '../../services/pdfExport';
 import { useAuthStore } from '../../store/authStore';
+import AttachmentPanel from '../../components/common/AttachmentPanel';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -126,6 +128,202 @@ function PaymentModal({ saleId, totalCents, currentPaid, onClose }: {
   );
 }
 
+// ─── Customer Payment Section ─────────────────────────────────────────────────
+
+function CustomerPaymentSection({ saleId, totalCents, paidCents }: {
+  saleId: string; totalCents: number; paidCents: number;
+}) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // form state
+  const [amount, setAmount]     = useState('');
+  const [method, setMethod]     = useState<PaymentMethod>('CASH');
+  const [refNo, setRefNo]       = useState('');
+  const [bank, setBank]         = useState('');
+  const [date, setDate]         = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes]       = useState('');
+  const [formErr, setFormErr]   = useState('');
+
+  const { data: payments = [], isLoading } = useQuery<CustomerPayment[]>({
+    queryKey: ['customer-payments', saleId],
+    queryFn:  () => customerPaymentsApi.listBySale(saleId),
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: CreateCustomerPaymentInput) => customerPaymentsApi.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customer-payments', saleId] });
+      qc.invalidateQueries({ queryKey: ['sale', saleId] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      setShowForm(false);
+      setAmount(''); setRefNo(''); setBank(''); setNotes('');
+      setFormErr('');
+    },
+    onError: (err: any) => setFormErr(err?.response?.data?.message ?? 'Failed to record payment'),
+  });
+
+  const voidMut = useMutation({
+    mutationFn: (id: string) => customerPaymentsApi.void(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customer-payments', saleId] });
+      qc.invalidateQueries({ queryKey: ['sale', saleId] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+    },
+  });
+
+  const handleSubmit = () => {
+    const amountCents = Math.round(parseFloat(amount) * 100);
+    if (!amount || isNaN(amountCents) || amountCents <= 0) { setFormErr('Enter a valid amount'); return; }
+    if (!date) { setFormErr('Select a payment date'); return; }
+    createMut.mutate({ saleId, amountCents, paymentMethod: method, referenceNo: refNo || undefined, bankName: bank || undefined, paymentDate: date, notes: notes || undefined });
+  };
+
+  const balance = totalCents - paidCents;
+  const methodLabels: Record<string, string> = {
+    CASH: 'Cash', CARD: 'Card', BANK_TRANSFER: 'Bank', QR_PAY: 'QR', CREDIT: 'Credit', CHEQUE: 'Cheque',
+  };
+  const methodColors: Record<string, string> = {
+    CASH: 'bg-green-100 text-green-700', CARD: 'bg-blue-100 text-blue-700',
+    BANK_TRANSFER: 'bg-purple-100 text-purple-700', QR_PAY: 'bg-orange-100 text-orange-700',
+    CREDIT: 'bg-red-100 text-red-700', CHEQUE: 'bg-amber-100 text-amber-700',
+  };
+
+  return (
+    <div className="border-t border-slate-100 pt-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <DollarSign size={13} className="text-slate-400" />
+          <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Payment History</h4>
+          {payments.length > 0 && (
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{payments.length}</span>
+          )}
+        </div>
+        {balance > 0 && !showForm && (
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition">
+            <Plus size={12} /> Record Payment
+          </button>
+        )}
+      </div>
+
+      {/* Add payment form */}
+      {showForm && (
+        <div className="bg-slate-50 rounded-xl p-4 mb-3 space-y-3 border border-slate-200">
+          <p className="text-xs font-semibold text-slate-600">New Payment
+            <span className="ml-2 text-slate-400 font-normal">Balance due: {formatCents(balance)}</span>
+          </p>
+          {formErr && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formErr}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">Amount (Rs.)</label>
+              <input type="number" min="0" step="0.01" value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder={(balance / 100).toFixed(2)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Method</label>
+            <div className="flex flex-wrap gap-1.5">
+              {(['CASH','CARD','BANK_TRANSFER','QR_PAY','CHEQUE','CREDIT'] as PaymentMethod[]).map(m => (
+                <button key={m} onClick={() => setMethod(m)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium border transition ${method === m ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                  {methodLabels[m] ?? m}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(method === 'BANK_TRANSFER' || method === 'CHEQUE' || method === 'CARD') && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-500 mb-1">Reference No.</label>
+                <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-500 mb-1">Bank Name</label>
+                <input type="text" value={bank} onChange={e => setBank(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">Notes (optional)</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setShowForm(false); setFormErr(''); }}
+              className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+            <button onClick={handleSubmit} disabled={createMut.isPending}
+              className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60 transition">
+              {createMut.isPending ? 'Saving…' : 'Save Payment'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Payment history list */}
+      {isLoading ? (
+        <div className="flex items-center gap-1.5 text-xs text-slate-400 py-2">
+          <RefreshCw size={11} className="animate-spin" /> Loading…
+        </div>
+      ) : payments.length === 0 ? (
+        <p className="text-xs text-slate-400 text-center py-3">No payments recorded yet</p>
+      ) : (
+        <div className="space-y-2">
+          {payments.map((p) => (
+            <React.Fragment key={p.id}>
+              <div className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl hover:bg-slate-100 transition group">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-700">{p.paymentNumber}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${methodColors[p.paymentMethod] ?? 'bg-slate-100 text-slate-500'}`}>
+                      {methodLabels[p.paymentMethod] ?? p.paymentMethod}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {new Date(p.paymentDate).toLocaleDateString()} · {p.createdByUser.fullName}
+                    {p.referenceNo && ` · Ref: ${p.referenceNo}`}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-green-700 shrink-0">{formatCents(p.amountCents)}</span>
+                <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition shrink-0"
+                  title="Attachments">
+                  <Paperclip size={12} />
+                </button>
+                <button onClick={() => {
+                    if (!window.confirm(`Void payment ${p.paymentNumber}? This will reverse the amount.`)) return;
+                    voidMut.mutate(p.id);
+                  }}
+                  disabled={voidMut.isPending}
+                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition disabled:opacity-50 shrink-0"
+                  title="Void payment">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+              {expandedId === p.id && (
+                <div className="pl-3 pr-1">
+                  <AttachmentPanel refType="CustomerPayment" refId={p.id} />
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sale Detail Modal ─────────────────────────────────────────────────────────
 
 function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose: () => void; onEdit?: (sale: any) => void }) {
@@ -228,6 +426,15 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
             <div className="flex justify-between text-green-600 font-medium"><span>Paid</span><span>{formatCents(sale.paidCents)}</span></div>
             {balance > 0 && <div className="flex justify-between text-red-600 font-bold"><span>Balance Due</span><span>{formatCents(balance)}</span></div>}
           </div>
+
+          {/* Customer payment history — confirmed invoices only */}
+          {sale.status === 'CONFIRMED' && (
+            <CustomerPaymentSection
+              saleId={sale.id}
+              totalCents={sale.totalCents}
+              paidCents={sale.paidCents}
+            />
+          )}
         </div>
 
         {/* Footer actions */}
