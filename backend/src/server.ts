@@ -53,7 +53,21 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/v1/auth/login', loginLimiter);
 
-app.use('/uploads', express.static(path.resolve('uploads')));
+// Authenticated file download — replaces open express.static('/uploads').
+// Checks for Bearer token in Authorization header before serving the file.
+// path.basename strips any directory-traversal attempts (e.g. "../../etc/passwd").
+app.get('/uploads/:filename', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorised' });
+  }
+  const filename = path.basename(req.params.filename);
+  const filePath = path.resolve('uploads', filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.sendFile(filePath);
+});
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 app.use('/api/v1', apiRouter);

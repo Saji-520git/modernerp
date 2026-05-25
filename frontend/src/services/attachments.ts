@@ -1,4 +1,5 @@
 import { api } from './api';
+import { useAuthStore } from '../store/authStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,12 @@ export const attachmentsApi = {
 
 export function getFileUrl(storedName: string): string {
   return `http://localhost:4000/uploads/${storedName}`;
+}
+
+/** Returns the Authorization header needed to fetch from /uploads/:filename */
+export function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().accessToken;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export function isImage(mimeType: string): boolean {

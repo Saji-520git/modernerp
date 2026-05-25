@@ -1,12 +1,70 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Upload, FileText, Trash2, ExternalLink, RefreshCw, Paperclip,
 } from 'lucide-react';
 import {
-  attachmentsApi, getFileUrl, isImage, formatFileSize,
+  attachmentsApi, getFileUrl, getAuthHeaders, isImage, formatFileSize,
   type Attachment,
 } from '../../services/attachments';
+import { useAuthStore } from '../../store/authStore';
+
+// ─── AuthImage ─────────────────────────────────────────────────────────────────
+// Fetches the image with the Bearer token and displays it via an object URL.
+// Plain <img src="..."> does NOT send auth headers, so it would get a 401
+// from the authenticated /uploads route.
+
+function AuthImage({
+  src,
+  alt,
+  className,
+  onClick,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  onClick?: () => void;
+}) {
+  const [url, setUrl] = useState<string>('');
+  const token = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    let objectUrl = '';
+    fetch(src, { headers: { Authorization: `Bearer ${token ?? ''}` } })
+      .then((r) => r.blob())
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => setUrl(''));
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src, token]);
+
+  return url
+    ? <img src={url} alt={alt} className={className} onClick={onClick} />
+    : <div className={className} />;
+}
+
+// ─── openFileWithAuth ─────────────────────────────────────────────────────────
+// window.open() does NOT send auth headers either, so we fetch the blob first
+// and open the resulting object URL in a new tab.
+
+async function openFileWithAuth(storedName: string): Promise<void> {
+  try {
+    const response = await fetch(getFileUrl(storedName), { headers: getAuthHeaders() });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, '_blank');
+    // Object URL is intentionally not revoked immediately so the new tab can render it.
+    // Browsers clean up object URLs when the tab is closed.
+  } catch {
+    // Silently ignore — user sees no file open
+  }
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -146,16 +204,16 @@ export default function AttachmentPanel({ refType, refId, canDelete = true }: Pr
             >
               {/* Preview / icon */}
               {isImage(att.mimeType) ? (
-                <img
+                <AuthImage
                   src={getFileUrl(att.storedName)}
                   alt={att.fileName}
                   className="w-11 h-11 object-cover rounded-lg shrink-0 cursor-pointer hover:opacity-80 transition"
-                  onClick={() => window.open(getFileUrl(att.storedName), '_blank')}
+                  onClick={() => openFileWithAuth(att.storedName)}
                 />
               ) : (
                 <div
                   className="w-11 h-11 bg-red-50 border border-red-100 rounded-lg flex items-center justify-center shrink-0 cursor-pointer hover:bg-red-100 transition"
-                  onClick={() => window.open(getFileUrl(att.storedName), '_blank')}
+                  onClick={() => openFileWithAuth(att.storedName)}
                 >
                   <FileText size={20} className="text-red-500" />
                 </div>
@@ -171,16 +229,15 @@ export default function AttachmentPanel({ refType, refId, canDelete = true }: Pr
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
-                <a
-                  href={getFileUrl(att.storedName)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                {/* Open in new tab — uses fetch+blob so the auth header is included */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openFileWithAuth(att.storedName); }}
                   className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition"
                   title="Open in new tab"
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <ExternalLink size={12} />
-                </a>
+                </button>
                 {canDelete && (
                   <button
                     onClick={() => handleDelete(att)}

@@ -54,6 +54,14 @@ export const customerPaymentService = {
     if (!sale)           throw new HttpError(404, 'Sale not found');
     if (sale.status !== 'CONFIRMED') throw new HttpError(400, 'Sale must be CONFIRMED to record payment');
 
+    const outstanding = (sale.totalCents as number) - (sale.paidCents as number);
+    if (amountCents > outstanding) {
+      throw new HttpError(
+        400,
+        `Payment of ${(amountCents / 100).toFixed(2)} exceeds outstanding balance of ${(outstanding / 100).toFixed(2)}`,
+      );
+    }
+
     const newPaid  = (sale.paidCents as number) + amountCents;
     const newStatus = computePaymentStatus(sale.totalCents as number, newPaid);
     const number    = await nextPaymentNumber();
