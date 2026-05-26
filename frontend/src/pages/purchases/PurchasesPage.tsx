@@ -1022,33 +1022,31 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">PO #</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Supplier</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Warehouse</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Lines</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Paid</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Outstanding</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Payment</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Delivery</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-32">PO #</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[120px]">Supplier</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Date</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Total</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Paid</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-32">Outstanding</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Status</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Payment</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Delivery</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20 sticky right-0 bg-slate-50 border-l border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={11} className="text-center py-12 text-slate-400">Loading…</td>
+                <td colSpan={9} className="text-center py-12 text-slate-400">Loading…</td>
               </tr>
             )}
             {!isLoading && data?.data.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-12 text-slate-400">No purchase orders found</td>
+                <td colSpan={9} className="text-center py-12 text-slate-400">No purchase orders found</td>
               </tr>
             )}
             {data?.data.map((po) => (
@@ -1064,12 +1062,8 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                   </div>
                 </td>
                 <td className="px-4 py-3 text-slate-700">{po.supplier.name}</td>
-                <td className="px-4 py-3 text-slate-500">{po.warehouse.name}</td>
                 <td className="px-4 py-3 text-slate-500">
                   {new Date(po.date).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-500">
-                  {po._count?.lines ?? 0}
                 </td>
                 <td className="px-4 py-3 text-right font-medium text-slate-800">
                   {formatCents(po.totalCents)}
@@ -1099,7 +1093,7 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 sticky right-0 bg-white border-l border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
                   <div className="flex items-center justify-center gap-1">
                     <button
                       title="View details"
