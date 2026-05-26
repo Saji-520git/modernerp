@@ -13,7 +13,8 @@
     "seed": "tsx src/prisma/seed.ts",
     "prisma:gen": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "fix:return-stock": "tsx scripts/fix-return-stock.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

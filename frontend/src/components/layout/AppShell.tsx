@@ -10,11 +10,12 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell, CornerUpLeft,
+  Bell, CornerUpLeft, Tag, Layers,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
 import { alertsApi } from '../../services/alerts';
+import { shiftsApi } from '../../services/shifts';
 
 type Role = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
 
@@ -78,7 +79,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/reports/sales', label: 'Sales Reports', icon: BarChart3 },
       { to: '/reports/inventory', label: 'Inventory Reports', icon: Archive },
       { to: '/reports/profit-loss', label: 'Profit & Loss', icon: TrendingUp },
-      { to: '/reports/shifts', label: 'POS Shift Reports', icon: Clock },
     ],
   },
   {
@@ -86,6 +86,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'] },
       { to: '/settings/import', label: 'Import Products', icon: Upload, roles: ['ADMIN'] },
+      { to: '/settings/categories', label: 'Categories', icon: Tag, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/settings/brands', label: 'Brands', icon: Layers, roles: ['ADMIN', 'MANAGER'] },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -132,6 +134,20 @@ export default function AppShell() {
     return !!userRole && item.roles.includes(userRole);
   }
 
+  async function handleLogout() {
+    try {
+      const result = await shiftsApi.list({ status: 'OPEN', userId: user?.id });
+      if (result.data && result.data.length > 0) {
+        window.alert('Please close your POS shift before logging out.');
+        return;
+      }
+    } catch {
+      // If check fails, allow logout
+    }
+    logout();
+    navigate('/login');
+  }
+
   // ── Conditional returns come AFTER all hooks ──────────────────────────────────
   if (isFullscreen) {
     return (
@@ -154,7 +170,7 @@ export default function AppShell() {
         >
           {!collapsed && (
             <span className="text-lg font-bold text-brand-700 truncate select-none">
-              {businessName}
+              {settings?.businessName || 'ModernERP'}
             </span>
           )}
           <button
@@ -263,7 +279,7 @@ export default function AppShell() {
             </button>
           )}
           <button
-            onClick={logout}
+            onClick={handleLogout}
             title="Sign out"
             className={`flex w-full items-center gap-2 px-2 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition ${
               collapsed ? 'justify-center' : ''

@@ -113,6 +113,7 @@ model Category {
   parent    Category? @relation("CategoryToCategory", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryToCategory")
   products  Product[]
+  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -121,6 +122,7 @@ model Brand {
   id        String   @id @default(cuid())
   name      String   @unique
   products  Product[]
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -260,6 +262,11 @@ model StockMovement {
   batchId     String?        // which StockBatch was deducted (for WRITE_OFF and FEFO tracking)
   note        String?
   createdAt   DateTime       @default(now())
+
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([createdAt])
+  @@index([type])
 }
 
 model Customer {
@@ -327,6 +334,12 @@ model Purchase {
   purchaseReturns  PurchaseReturn[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
+  @@index([status])
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@index([date])
+  @@index([createdAt])
 }
 
 model PurchaseLine {
@@ -389,6 +402,12 @@ model Sale {
   customerPayments CustomerPayment[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+
+  @@index([date])
+  @@index([status])
+  @@index([customerId])
+  @@index([warehouseId])
+  @@index([createdAt])
 }
 
 model SaleLine {

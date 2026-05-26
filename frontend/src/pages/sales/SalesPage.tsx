@@ -981,15 +981,21 @@ export default function SalesPage() {
   const hasFilter = search || status || payMethod || fromDate || toDate || !includePos;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-6" id="sales-print-area">
+      {/* Print-only header */}
+      <div className="print-header mb-4 pb-4 border-b">
+        <h1 className="text-xl font-bold">ModernERP — Sales Report</h1>
+        <p className="text-sm text-slate-500">Printed: {new Date().toLocaleString()}</p>
+      </div>
+
       {/* ── Page Header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Sales</h1>
-          <p className="text-sm text-slate-500 mt-0.5">All sales including POS transactions and invoices</p>
+          <h1 className="text-2xl font-bold text-slate-800">Sales</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Invoices and POS transactions</p>
         </div>
         <button onClick={() => { setEditSale(null); setShowNewInvoice(true); }}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition">
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors no-print">
           <Plus className="w-4 h-4" /> New Invoice
         </button>
       </div>
@@ -997,33 +1003,35 @@ export default function SalesPage() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Sales', value: stats.count, icon: <Package className="w-5 h-5 text-indigo-600" />, sub: 'transactions', color: 'indigo' },
-          { label: 'Revenue', value: formatCents(stats.totalRevenue), icon: <TrendingUp className="w-5 h-5 text-green-600" />, sub: 'this view', color: 'green' },
-          { label: 'Collected', value: formatCents(stats.totalPaid), icon: <CheckCircle className="w-5 h-5 text-blue-600" />, sub: 'payments received', color: 'blue' },
-          { label: 'Outstanding', value: formatCents(stats.totalDue), icon: <DollarSign className="w-5 h-5 text-red-500" />, sub: 'balance due', color: 'red' },
+          { label: 'Total Sales',  value: String(stats.count),             sub: 'transactions',      iconBg: 'bg-blue-50',    icon: <Package    size={22} className="text-blue-600" /> },
+          { label: 'Revenue',      value: formatCents(stats.totalRevenue),  sub: 'this view',         iconBg: 'bg-violet-50',  icon: <TrendingUp size={22} className="text-violet-600" /> },
+          { label: 'Collected',    value: formatCents(stats.totalPaid),     sub: 'payments received', iconBg: 'bg-emerald-50', icon: <CheckCircle size={22} className="text-emerald-600" /> },
+          { label: 'Outstanding',  value: formatCents(stats.totalDue),      sub: 'balance due',       iconBg: 'bg-amber-50',   icon: <DollarSign  size={22} className="text-amber-600" />, valueCls: stats.totalDue > 0 ? 'text-amber-600' : '' },
         ].map(k => (
-          <div key={k.label} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-4">
-            <div className={`p-2.5 rounded-xl bg-${k.color}-50`}>{k.icon}</div>
-            <div className="min-w-0">
-              <p className="text-xs text-slate-400 font-medium">{k.label}</p>
-              <p className="font-bold text-slate-800 text-base truncate">{k.value}</p>
-              <p className="text-[10px] text-slate-400">{k.sub}</p>
+          <div key={k.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${k.iconBg}`}>
+              {k.icon}
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{k.label}</p>
+              <p className={`text-2xl font-bold mt-0.5 ${k.valueCls ?? 'text-slate-800'}`}>{k.value}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{k.sub}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* ── Table Card ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
 
         {/* Toolbar */}
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 flex-wrap no-print">
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input type="text" placeholder="Search invoice # or customer…" value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50" />
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
           </div>
 
           {/* Show N entries */}
@@ -1044,15 +1052,15 @@ export default function SalesPage() {
 
           {/* Export buttons */}
           <button onClick={() => exportToCSV(sales, 'sales.csv')}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition">
+            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition no-print">
             <FileText className="w-4 h-4" /> CSV
           </button>
           <button onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition">
+            className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition no-print">
             <Printer className="w-4 h-4" /> Print
           </button>
           <button onClick={() => refetch()}
-            className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition">
+            className="p-2 border border-slate-200 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition no-print">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
@@ -1103,68 +1111,77 @@ export default function SalesPage() {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Invoice No.</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Customer</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Location</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Pay Status</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Method</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Total</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Paid</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Balance</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Action</th>
+          <table className="w-full text-sm min-w-[800px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Invoice #</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Customer</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Pay Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Method</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Total</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Paid</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={11} className="text-center py-16 text-slate-400">
-                  <div className="flex items-center justify-center gap-2"><div className="w-5 h-5 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin" /> Loading sales…</div>
+                <tr><td colSpan={8} className="text-center py-16 text-slate-400">
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+                    Loading sales…
+                  </div>
                 </td></tr>
               ) : sales.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-16">
-                  <div className="text-4xl mb-3">🧾</div>
+                <tr><td colSpan={8} className="px-4 py-16 text-center">
+                  <FileText size={40} className="mx-auto text-slate-200 mb-3" />
                   <p className="text-slate-500 font-medium">No sales found</p>
-                  <p className="text-slate-400 text-sm mt-1">{hasFilter ? 'Try adjusting your filters' : 'Sales created via POS or New Invoice will appear here'}</p>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {hasFilter ? 'Try adjusting your filters' : 'Create your first invoice or make a POS sale'}
+                  </p>
                 </td></tr>
               ) : sales.map(sale => {
-                const ps      = paymentStatusLabel(sale);
-                const balance = sale.totalCents - sale.paidCents;
+                const ps = paymentStatusLabel(sale);
                 return (
-                  <tr key={sale.id} className="hover:bg-slate-50/80 transition group">
-                    <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                      <p>{new Date(sale.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-                      <p className="text-xs text-slate-400">{new Date(sale.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+                  <tr key={sale.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                      <div>{new Date(sale.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                      <div className="text-xs text-slate-400">{new Date(sale.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {sale.isPos
                           ? <span className="bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">POS</span>
-                          : <span className="bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">INV</span>
+                          : <span className="bg-blue-100 text-blue-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">INV</span>
                         }
-                        <span className="font-semibold text-slate-800">{sale.number}</span>
+                        <span className="inline-flex items-center gap-1 font-mono text-sm font-semibold text-blue-600">
+                          <FileText size={13} />
+                          {sale.number}
+                        </span>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5 text-slate-700 whitespace-nowrap">{sale.customer?.name ?? <span className="text-slate-400 italic">Walk-in</span>}</td>
-                    <td className="px-5 py-3.5 text-slate-500 whitespace-nowrap text-xs">{sale.customer?.phone ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap text-xs">{sale.warehouse?.name}</td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${ps.cls}`}>{ps.label}</span>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="font-medium text-slate-800">
+                        {sale.customer?.name ?? <span className="text-slate-400 italic">Walk-in</span>}
+                      </span>
                     </td>
-                    <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap text-xs">
-                      {PAYMENT_LABELS[sale.paymentMethod as PaymentMethod] ?? sale.paymentMethod}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${ps.cls}`}>
+                        {ps.label}
+                      </span>
                     </td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatCents(sale.totalCents)}</td>
-                    <td className="px-5 py-3.5 text-right text-green-600 font-medium whitespace-nowrap">{formatCents(sale.paidCents)}</td>
-                    <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                      {balance > 0
-                        ? <span className="text-red-600 font-semibold">{formatCents(balance)}</span>
-                        : <span className="text-slate-300">—</span>}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
+                        {PAYMENT_LABELS[sale.paymentMethod as PaymentMethod] ?? sale.paymentMethod}
+                      </span>
                     </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
+                    <td className="px-4 py-3 text-right font-medium text-slate-800 whitespace-nowrap">
+                      {formatCents(sale.totalCents)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-emerald-600 whitespace-nowrap">
+                      {formatCents(sale.paidCents)}
+                    </td>
+                    <td className="px-4 py-3 text-center whitespace-nowrap sticky right-0 bg-white border-l border-slate-100">
                       <ActionDropdown
                         sale={sale}
                         onView={() => setDetailId(sale.id)}
@@ -1187,24 +1204,29 @@ export default function SalesPage() {
 
         {/* Pagination */}
         {total > 0 && (
-          <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between text-sm">
-            <p className="text-slate-500">
-              Showing <span className="font-semibold text-slate-700">{(page - 1) * pageSize + 1}</span>–<span className="font-semibold text-slate-700">{Math.min(page * pageSize, total)}</span> of <span className="font-semibold text-slate-700">{total}</span> entries
-            </p>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 no-print">
+            <span className="text-sm text-slate-500">
+              Showing{' '}
+              <span className="font-semibold text-slate-700">{(page - 1) * pageSize + 1}</span>–<span className="font-semibold text-slate-700">{Math.min(page * pageSize, total)}</span>
+              {' '}of{' '}
+              <span className="font-semibold text-slate-700">{total}</span> entries
+            </span>
             <div className="flex items-center gap-1">
-              <button onClick={() => setPage(1)} disabled={page === 1} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+              <button onClick={() => setPage(1)} disabled={page === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
                 <ChevronLeft className="w-4 h-4" />
               </button>
               {Array.from({ length: Math.min(pages, 7) }, (_, i) => {
                 const p = pages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= pages - 3 ? pages - 6 + i : page - 3 + i;
                 return (
                   <button key={p} onClick={() => setPage(p)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium transition ${page === p ? 'bg-indigo-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    className={`w-8 h-8 rounded-lg text-sm font-medium transition ${page === p ? 'bg-blue-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                     {p}
                   </button>
                 );
               })}
-              <button onClick={() => setPage(pages)} disabled={page === pages} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+              <button onClick={() => setPage(pages)} disabled={page === pages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>

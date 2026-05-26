@@ -1073,13 +1073,28 @@ function productToPosProduct(p: Product): PosProduct {
 
 export default function POSPage() {
   const navigate  = useNavigate();
-  const { user }  = useAuthStore();
+  const { user, logout }  = useAuthStore();
   const { currencySymbol, settings: appSettings } = useAppSettings();
   const { enterPOS, exitPOS, shiftId, openShift: storeOpenShift, closeShift: storeCloseShift } = usePosStore();
   const shiftOpenedAt = usePosStore(s => s.shiftOpenedAt);
   const qc        = useQueryClient();
 
   const isAdmin   = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+  async function handleLogout() {
+    try {
+      const result = await shiftsApi.list({ status: 'OPEN', userId: user?.id });
+      if (result.data && result.data.length > 0) {
+        window.alert('Please close your POS shift before logging out.');
+        return;
+      }
+    } catch {
+      // If shift check fails, allow logout
+    }
+    exitPOS();
+    logout();
+    navigate('/login');
+  }
 
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const barcodeRef    = useRef<HTMLInputElement>(null);
@@ -1090,7 +1105,17 @@ export default function POSPage() {
   const [search, setSearch]                     = useState('');
   const [debouncedSearch, setDebouncedSearch]   = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [cart, setCart]                         = useState<CartItem[]>([]);
+  const CART_KEY = 'pos_cart_draft';
+  const [cart, setCart]                         = useState<CartItem[]>(() => {
+    try {
+      const raw = localStorage.getItem('pos_cart_draft');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('percent');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
@@ -1123,6 +1148,11 @@ export default function POSPage() {
 
   const clock   = useLiveClock();
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // ── Cart persistence ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore */ }
+  }, [cart, CART_KEY]);
 
   // ── Fullscreen mode ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1303,6 +1333,7 @@ export default function POSPage() {
   }, [removeFromCart, refocusBarcode]);
 
   const clearCart = useCallback(() => {
+    try { localStorage.removeItem(CART_KEY); } catch { /* ignore */ }
     setCart([]);
     setCartDiscountType('percent');
     setCartDiscountValue(0);
@@ -1764,6 +1795,14 @@ export default function POSPage() {
             <LogOut size={13} /> Exit POS
           </button>
         )}
+
+        {/* Sign out — visible to ALL roles */}
+        <button type="button" onClick={handleLogout}
+          title="Sign out"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 transition shrink-0">
+          <LogOut size={13} />
+          <span className="hidden sm:inline">Sign out</span>
+        </button>
       </header>
 
       {/* ═══════════════════════════════════════════════════════════════

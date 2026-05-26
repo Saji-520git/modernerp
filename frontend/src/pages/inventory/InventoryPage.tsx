@@ -219,7 +219,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
   };
 
   const statusBadge = () => {
-    if (row.sellableQty <= 0)
+    if (row.qty <= 0)
       return <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium"><XCircle className="w-3 h-3" /> Out</span>;
     if (row.isLowStock)
       return <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium"><AlertTriangle className="w-3 h-3" /> Low</span>;
@@ -244,7 +244,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
         <td className="px-4 py-3 text-slate-500 font-mono text-xs">{row.product.sku}</td>
         <td className="px-4 py-3 text-slate-600">{row.warehouse.name}</td>
         <td className="px-4 py-3 text-right font-semibold">
-          {row.sellableQty.toLocaleString()}
+          {row.qty.toLocaleString()}
           <span className="ml-1 text-xs text-slate-400 font-normal">{row.product.unit.shortCode}</span>
         </td>
         <td className="px-4 py-3 text-right">
@@ -420,9 +420,9 @@ function StockTab({ onAdjust }: { onAdjust: (productId: string, warehouseId: str
   // ── KPIs — always from unfiltered allRows, never change when table is filtered ─
   const totalSkus     = new Set(allRows.map((r) => r.product.id)).size;
   const lowStockCount = allRows.filter(
-    (r) => r.sellableQty > 0 && r.product.reorderLevel > 0 && r.sellableQty <= r.product.reorderLevel,
+    (r) => r.qty > 0 && r.product.reorderLevel > 0 && r.qty <= r.product.reorderLevel,
   ).length;
-  const outOfStock    = allRows.filter((r) => r.sellableQty <= 0).length;
+  const outOfStock    = allRows.filter((r) => r.qty <= 0).length;
   const expiringSoon  = allRows.filter((r) => r.expiringSoonQty > 0).length;
 
   // ── Table: client-side filter + paginate allRows ──────────────────────────────
@@ -431,7 +431,7 @@ function StockTab({ onAdjust }: { onAdjust: (productId: string, warehouseId: str
     .filter((r) => !warehouseId || r.warehouse.id === warehouseId)
     .filter((r) => !lc || r.product.name.toLowerCase().includes(lc) || r.product.sku.toLowerCase().includes(lc))
     .filter((r) => !lowOnly || r.isLowStock)
-    .filter((r) => !outOnly || r.sellableQty <= 0);
+    .filter((r) => !outOnly || r.qty <= 0);
 
   const totalFiltered = filteredRows.length;
   const totalPages    = Math.ceil(totalFiltered / PAGE_SIZE);

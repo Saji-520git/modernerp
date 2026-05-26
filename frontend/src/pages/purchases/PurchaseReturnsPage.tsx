@@ -23,7 +23,7 @@ function NewReturnDrawer({ onClose }: { onClose: () => void }) {
 
   const { data: purchases = [] } = useQuery({
     queryKey: ['purchases-for-return'],
-    queryFn:  () => purchasesApi.listPurchases({ status: 'CONFIRMED', page: 1, pageSize: 200 }).then((r) => r.data),
+    queryFn:  () => purchasesApi.listPurchases({ status: 'CONFIRMED', page: 1, pageSize: 100 }).then((r) => r.data),
   });
 
   const { data: selectedPO } = useQuery({

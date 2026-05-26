@@ -12,7 +12,7 @@ export const listProductsSchema = z.object({
 export const createProductSchema = z.object({
   name:         z.string().min(1, 'Name is required'),
   sku:          z.string().optional(),
-  barcode:      z.string().optional().nullable(),
+  barcode:      z.string().optional().nullable().transform((v) => (!v || v.trim() === '') ? null : v.trim()),
   description:  z.string().optional().nullable(),
   categoryId:   z.string().optional().nullable(),
   brandId:      z.string().optional().nullable(),

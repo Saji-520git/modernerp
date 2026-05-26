@@ -5,6 +5,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 
 export const categoriesService = {
   list: () => prisma.category.findMany({
+    where:   { isActive: true },
     orderBy: { name: 'asc' },
     include: { _count: { select: { products: true } } },
   }),
@@ -26,9 +27,10 @@ export const categoriesService = {
   delete: async (id: string) => {
     const existing = await prisma.category.findUnique({ where: { id }, include: { _count: { select: { products: true } } } });
     if (!existing) throw new HttpError(404, 'Category not found');
+    if (!existing.isActive) throw new HttpError(409, 'Category already deleted');
     if (existing._count.products > 0)
       throw new HttpError(409, `Cannot delete — ${existing._count.products} product(s) use this category`);
-    return prisma.category.delete({ where: { id } });
+    return prisma.category.update({ where: { id }, data: { isActive: false } });
   },
 };
 
@@ -36,6 +38,7 @@ export const categoriesService = {
 
 export const brandsService = {
   list: () => prisma.brand.findMany({
+    where:   { isActive: true },
     orderBy: { name: 'asc' },
     include: { _count: { select: { products: true } } },
   }),
@@ -57,9 +60,10 @@ export const brandsService = {
   delete: async (id: string) => {
     const existing = await prisma.brand.findUnique({ where: { id }, include: { _count: { select: { products: true } } } });
     if (!existing) throw new HttpError(404, 'Brand not found');
+    if (!existing.isActive) throw new HttpError(409, 'Brand already deleted');
     if (existing._count.products > 0)
       throw new HttpError(409, `Cannot delete — ${existing._count.products} product(s) use this brand`);
-    return prisma.brand.delete({ where: { id } });
+    return prisma.brand.update({ where: { id }, data: { isActive: false } });
   },
 };
 
@@ -67,6 +71,7 @@ export const brandsService = {
 
 export const unitsService = {
   list: () => prisma.unit.findMany({
+    where:   { isActive: true },
     orderBy: { name: 'asc' },
     include: { _count: { select: { products: true } } },
   }),
@@ -92,8 +97,9 @@ export const unitsService = {
   delete: async (id: string) => {
     const existing = await prisma.unit.findUnique({ where: { id }, include: { _count: { select: { products: true } } } });
     if (!existing) throw new HttpError(404, 'Unit not found');
+    if (!existing.isActive) throw new HttpError(409, 'Unit already deleted');
     if (existing._count.products > 0)
       throw new HttpError(409, `Cannot delete — ${existing._count.products} product(s) use this unit`);
-    return prisma.unit.delete({ where: { id } });
+    return prisma.unit.update({ where: { id }, data: { isActive: false } });
   },
 };

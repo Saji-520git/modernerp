@@ -8,7 +8,8 @@ import ProductsPage from './pages/products/ProductsPage';
 import POSPage from './pages/pos/POSPage';
 import InventoryPage from './pages/inventory/InventoryPage';
 import PurchasesPage from './pages/purchases/PurchasesPage';
-import ContactsPage from './pages/contacts/ContactsPage';
+import SuppliersPage from './pages/contacts/SuppliersPage';
+import CustomersPage from './pages/contacts/CustomersPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
 import ReportsPage from './pages/reports/ReportsPage';
@@ -22,6 +23,8 @@ import WarehousesPage from './pages/warehouses/WarehousesPage';
 import AlertsPage from './pages/alerts/AlertsPage';
 import ImportPage from './pages/settings/ImportPage';
 import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
+import CategoriesPage from './pages/settings/CategoriesPage';
+import BrandsPage from './pages/settings/BrandsPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -152,15 +155,15 @@ export default function App() {
         {/* PEOPLE */}
         <Route path="customers" element={
           <ErrorBoundary fallbackTitle="Customers page failed to load">
-            <ContactsPage />
+            <CustomersPage />
           </ErrorBoundary>
         } />
         <Route path="suppliers" element={
           <ErrorBoundary fallbackTitle="Suppliers page failed to load">
-            <ContactsPage />
+            <SuppliersPage />
           </ErrorBoundary>
         } />
-        <Route path="contacts" element={<ContactsPage />} />
+        <Route path="contacts" element={<Navigate to="/suppliers" replace />} />
 
         {/* REPORTS */}
         <Route path="reports">
@@ -199,7 +202,9 @@ export default function App() {
               <ReportsPage />
             </ErrorBoundary>
           } />
+          {/* Disabled — POS shift report not yet implemented
           <Route path="shifts" element={<ComingSoon title="POS Shift Reports" />} />
+          */}
         </Route>
 
         {/* SYSTEM */}
@@ -218,6 +223,8 @@ export default function App() {
             <ImportPage />
           </ErrorBoundary>
         } />
+        <Route path="settings/categories" element={<CategoriesPage />} />
+        <Route path="settings/brands" element={<BrandsPage />} />
 
         {/* Legacy */}
         <Route path="units" element={<UnitsPage />} />
