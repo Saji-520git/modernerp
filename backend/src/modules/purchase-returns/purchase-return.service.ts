@@ -145,18 +145,31 @@ export const purchaseReturnService = {
             productId:   line.productId,
             warehouseId: ret.warehouseId,
             type:        'RETURN_OUT',
-            qty:         -qty,
+            qty:         qty,
             refType:     'PurchaseReturn',
             refId:       ret.id,
+            note:        `PRET ${ret.number}`,
           },
         }),
       );
 
-      // 2. Decrease Stock.qty
+      // 2. Decrease Stock.qty — upsert so a missing row is created (negative) rather than silently skipped
       ops.push(
-        prisma.stock.updateMany({
-          where: { productId: line.productId, warehouseId: ret.warehouseId },
-          data:  { qty: { decrement: qty } },
+        prisma.stock.upsert({
+          where: {
+            productId_warehouseId: {
+              productId:   line.productId,
+              warehouseId: ret.warehouseId,
+            },
+          },
+          create: {
+            productId:   line.productId,
+            warehouseId: ret.warehouseId,
+            qty:         -qty,
+          },
+          update: {
+            qty: { decrement: qty },
+          },
         }),
       );
 
