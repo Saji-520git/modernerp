@@ -26,6 +26,7 @@ export interface PosProduct {
   categoryId: string | null;
   priceCents: number;
   costCents: number;
+  defaultDiscountCents: number;
   taxPercent: number;
   imageUrl: string | null;
   expiryDate: string | null;

@@ -1,31 +1,46 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 
 // ─── DiscountInput ─────────────────────────────────────────────────────────────
 // Fixes the "sticking" bug: internal state is always a STRING.
 // We only convert to number on blur or Enter — never on every keystroke.
 // This prevents React's controlled-input cursor-reset on each character.
+//
+// Supports forwardRef so parent components (CartLine, totals panel) can
+// imperatively focus this input for keyboard-driven cashier workflows.
 
 interface DiscountInputProps {
   mode:         'percent' | 'amount';
   value:        number;          // committed value (% or display-currency amount)
   maxAmount?:   number;          // cart/line subtotal in cents, used to cap amount mode
   onChange:     (value: number) => void;
+  onEnter?:     () => void;      // called after commit when Enter pressed (e.g. navigate to barcode)
   placeholder?: string;
   disabled?:    boolean;
 }
 
-export default function DiscountInput({
+export interface DiscountInputHandle {
+  focus: () => void;
+  select: () => void;
+}
+
+const DiscountInput = forwardRef<DiscountInputHandle, DiscountInputProps>(function DiscountInput({
   mode,
   value,
   maxAmount,
   onChange,
+  onEnter,
   placeholder = '0',
   disabled    = false,
-}: DiscountInputProps) {
+}, ref) {
   // String — never a number while typing
   const [draft,   setDraft]   = useState(() => value > 0 ? String(value) : '');
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus:  () => { inputRef.current?.focus();  },
+    select: () => { inputRef.current?.select(); },
+  }));
 
   // Sync display when external value changes (e.g. mode switch resets parent to 0)
   useEffect(() => {
@@ -86,6 +101,7 @@ export default function DiscountInput({
           e.preventDefault();
           commit(draft);
           inputRef.current?.blur();
+          onEnter?.();
         }
         if (e.key === 'Escape') {
           // Revert to last committed value
@@ -110,4 +126,6 @@ export default function DiscountInput({
       }}
     />
   );
-}
+});
+
+export default DiscountInput;

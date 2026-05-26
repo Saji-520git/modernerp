@@ -207,9 +207,10 @@ model Product {
   defaultSupplierId String?
   defaultSupplier   Supplier? @relation("ProductDefaultSupplier", fields: [defaultSupplierId], references: [id])
 
-  costCents     Int   @default(0)   // last cost
-  priceCents    Int   @default(0)   // selling price
-  taxPercent    Float @default(0)
+  costCents              Int   @default(0)   // last cost
+  priceCents             Int   @default(0)   // selling price
+  defaultDiscountCents   Int   @default(0)   // auto-applied discount at POS (cashier can override)
+  taxPercent             Float @default(0)
   reorderLevel  Int   @default(0)
   reorderQty    Int   @default(0)   // suggested order quantity when stock hits reorder level
   isActive      Boolean @default(true)

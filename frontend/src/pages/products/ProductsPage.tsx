@@ -47,6 +47,7 @@ interface FormState {
   salesUnitId: string;
   cost: string;
   price: string;
+  defaultDiscount: string;
   taxPercent: string;
   reorderLevel: string;
   reorderQty: string;
@@ -73,7 +74,7 @@ function emptyForm(): FormState {
     name: '', sku: '', barcode: '', description: '',
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
-    cost: '', price: '', taxPercent: '0',
+    cost: '', price: '', defaultDiscount: '', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
     expiryDate: '', expiryAlertDays: '30',
     isBatchTracked: false,
@@ -96,6 +97,7 @@ function formFromProduct(p: Product): FormState {
     salesUnitId: p.salesUnitId ?? '',
     cost: (p.costCents / 100).toFixed(2),
     price: (p.priceCents / 100).toFixed(2),
+    defaultDiscount: p.defaultDiscountCents > 0 ? (p.defaultDiscountCents / 100).toFixed(2) : '',
     taxPercent: String(p.taxPercent),
     reorderLevel: String(p.reorderLevel),
     reorderQty: String(p.reorderQty),
@@ -406,8 +408,9 @@ export default function ProductsPage() {
     if (!form.name.trim()) { setFormErr('Product name is required'); return; }
     if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); return; }
 
-    const costCents  = Math.round(parseFloat(form.cost  || '0') * 100);
-    const priceCents = Math.round(parseFloat(form.price || '0') * 100);
+    const costCents            = Math.round(parseFloat(form.cost  || '0') * 100);
+    const priceCents           = Math.round(parseFloat(form.price || '0') * 100);
+    const defaultDiscountCents = Math.round(parseFloat(form.defaultDiscount || '0') * 100);
     if (isNaN(costCents) || isNaN(priceCents)) {
       setFormErr('Enter valid cost and price');
       return;
@@ -426,6 +429,7 @@ export default function ProductsPage() {
       salesUnitId:    form.salesUnitId || null,
       costCents,
       priceCents,
+      defaultDiscountCents,
       taxPercent:   parseFloat(form.taxPercent) || 0,
       reorderLevel: parseInt(form.reorderLevel) || 0,
       reorderQty:   parseInt(form.reorderQty) || 0,
@@ -1257,6 +1261,25 @@ export default function ProductsPage() {
                     )}
                   </div>
                 )}
+
+                {/* Default Discount */}
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Default Discount (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.defaultDiscount}
+                    onChange={(e) => setForm((f) => ({ ...f, defaultDiscount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Auto-applied at POS checkout. Cashier can override.
+                  </p>
+                </div>
               </section>
 
               {/* ── Unit Roles ──────────────────────────────────────────── */}
