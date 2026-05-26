@@ -25,3 +25,48 @@
     @apply rounded-lg bg-white shadow-sm border border-slate-200 p-4;
   }
 }
+
+/* ── Print styles ─────────────────────────────────────────────────────────── */
+
+.print-header {
+  display: none;
+}
+
+@media print {
+  /* Hide sidebar, nav, header, action UI */
+  nav, aside,
+  [data-sidebar],
+  .sidebar,
+  header,
+  .topbar,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hide interactive buttons */
+  button, .print-hide {
+    display: none !important;
+  }
+
+  /* Clean white background */
+  body {
+    background: white !important;
+  }
+
+  /* Table fills the page */
+  table {
+    width: 100% !important;
+    font-size: 11px !important;
+  }
+
+  /* Show print-only header */
+  .print-header {
+    display: block !important;
+  }
+
+  /* Remove decorative shadows and radii */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}
