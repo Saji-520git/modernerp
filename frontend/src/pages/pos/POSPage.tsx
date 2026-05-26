@@ -190,8 +190,8 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
         onClick={handleClick}
         className="relative flex flex-col rounded-xl border text-left transition-all active:scale-95 bg-white border-slate-200 hover:border-indigo-400 hover:shadow-md"
         style={{
-          padding: '10px 10px 8px',
-          minHeight: 108,
+          padding: '16px 16px 12px',
+          minHeight: 120,
           opacity: isDisabled ? 0.4 : 1,
           cursor:  isDisabled ? 'not-allowed' : 'pointer',
         }}
@@ -225,7 +225,7 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
         </div>
 
         {/* Row 2: product name */}
-        <p style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.3,
+        <p style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           color: '#1e293b', marginBottom: 3 }}>
           {product.name}
@@ -233,7 +233,7 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
 
         {/* Row 3: price + stock badge */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#4338ca' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#2563eb' }}>
             {formatCents(product.priceCents)}
           </span>
           <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
@@ -2026,7 +2026,7 @@ export default function POSPage() {
             <div className="pt-1 border-t border-slate-200">
               <div className="flex justify-between items-baseline">
                 <span className="text-base font-bold text-slate-700">TOTAL</span>
-                <span className="text-2xl font-black text-slate-900">{formatCents(grandTotal)}</span>
+                <span className="text-3xl font-black text-slate-800">{formatCents(grandTotal)}</span>
               </div>
             </div>
 
@@ -2059,13 +2059,12 @@ export default function POSPage() {
               }}
               disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending}
               className={cls(
-                'w-full font-bold text-base rounded-xl flex items-center justify-center gap-2 transition',
-                'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500',
+                'w-full py-4 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
+                'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
                 cart.length === 0 || !warehouseId
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-100 active:scale-[0.98]',
+                  : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-[0.98]',
               )}
-              style={{ height: 52 }}
             >
               {checkoutMutation.isPending
                 ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>

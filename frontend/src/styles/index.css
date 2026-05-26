@@ -4,7 +4,13 @@
 
 @layer base {
   body {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  table td {
+    font-size: 14px;
   }
 }
 
@@ -23,6 +29,10 @@
   }
   .card {
     @apply rounded-lg bg-white shadow-sm border border-slate-200 p-4;
+  }
+  .font-money {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 }
 
