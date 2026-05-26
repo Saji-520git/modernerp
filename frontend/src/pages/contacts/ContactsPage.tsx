@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Pencil, ToggleLeft, ToggleRight, X,
@@ -504,7 +505,10 @@ function CustomerTable() {
 type Tab = 'suppliers' | 'customers';
 
 export default function ContactsPage() {
-  const [tab, setTab] = useState<Tab>('suppliers');
+  const location = useLocation();
+  const [tab, setTab] = useState<Tab>(
+    location.pathname.includes('customers') ? 'customers' : 'suppliers',
+  );
 
   return (
     <div className="p-6">

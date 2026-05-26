@@ -502,388 +502,268 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 bg-slate-50 min-h-screen">
+    <div className="h-full flex flex-col gap-4 p-4 overflow-y-auto">
 
-      {/* ── Header ───────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
+      {/* ── Header ─────────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <p className="text-sm text-slate-500">{greeting}, {user?.fullName?.split(' ')[0] ?? 'there'}</p>
-          <h1 className="text-2xl font-bold text-slate-800 mt-0.5">Dashboard</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500">{greeting}, {user?.fullName?.split(' ')[0] ?? 'there'}</p>
+          <h1 className="text-xl font-bold text-slate-800 leading-tight">Dashboard</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
-        </div>
-        <button onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm">
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
-
-      {/* ── KPI Stat Cards ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
-        <StatCard
-          label="Total Revenue"
-          value={formatCurrencyShort(kpis?.monthRevenueCents ?? 0)}
-          sub={`${kpis?.monthOrders ?? 0} orders this month`}
-          trend={kpis?.trends.monthRevenue}
-          icon={BarChart2} iconBg="bg-blue-500"
-        />
-        <StatCard
-          label="Total Orders"
-          value={String(kpis?.monthOrders ?? 0)}
-          sub={`${kpis?.todayOrders ?? 0} orders today`}
-          trend={kpis?.trends.todayRevenue}
-          icon={ShoppingCart} iconBg="bg-green-500"
-          to="/sales"
-        />
-        <StatCard
-          label="Total Customers"
-          value={String(data?.counts.customers ?? 0)}
-          sub={`${data?.counts.suppliers ?? 0} active suppliers`}
-          icon={Users} iconBg="bg-purple-500"
-          to="/contacts"
-        />
-        <StatCard
-          label="Inventory Value"
-          value={formatCurrencyShort(kpis?.inventoryValueCents ?? 0)}
-          sub={`${data?.counts.products ?? 0} active products`}
-          icon={Warehouse} iconBg="bg-orange-500"
-          to="/inventory"
-        />
-        <StatCard
-          label="This Month Expenses"
-          value={formatCurrencyShort(expenseSummary?.totalCents ?? 0)}
-          sub={expenseSummary?.changePct !== null && expenseSummary?.changePct !== undefined
-            ? `${expenseSummary.changePct > 0 ? '+' : ''}${expenseSummary.changePct}% vs last month`
-            : `${expenseSummary?.count ?? 0} transactions`}
-          trend={expenseSummary?.changePct ?? undefined}
-          icon={TrendingDown} iconBg="bg-red-500"
-          to="/expenses"
-        />
-        <StatCard
-          label="Low Stock"
-          value={String(lowStockData?.total ?? 0)}
-          sub="Items below reorder level"
-          icon={PackageOpen} iconBg="bg-orange-400"
-          to="/inventory"
-        />
-        <StatCard
-          label="Expiring Soon"
-          value={String(expiryAlerts.filter(a => a.expiryStatus === 'expiring' || a.expiryStatus === 'has_expired_batch').length)}
-          sub="Products with expiry alerts"
-          icon={AlertTriangle} iconBg="bg-red-400"
-          to="/inventory"
-        />
-        <StatCard
-          label="Receivables"
-          value={formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0)}
-          sub="Outstanding from customers"
-          icon={CreditCard} iconBg="bg-cyan-500"
-          to="/sales"
-        />
-        <StatCard
-          label="Payables"
-          value={formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0)}
-          sub="Due to suppliers"
-          icon={Truck} iconBg="bg-amber-600"
-          to="/purchases"
-        />
-      </div>
-
-      {/* ── Row 2: Revenue Chart + Top Products ──────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-        {/* Revenue Overview */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">Revenue Overview</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Revenue vs expenses</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
-                {([30, 60, 90] as const).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setChartDays(d)}
-                    className={`px-2.5 py-1 transition ${chartDays === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                  >
-                    {d}d
-                  </button>
-                ))}
-              </div>
-              <Link to="/reports"
-                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition">
-                Full Report <ArrowUpRight size={12} />
-              </Link>
-            </div>
-          </div>
-          {chartData ? <LineChart data={chartData} /> : (
-            <div className="h-44 flex items-center justify-center text-slate-400 text-sm">No chart data</div>
-          )}
-        </div>
-
-        {/* Top Products donut */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">Top Products</h2>
-              <p className="text-xs text-slate-400 mt-0.5">By revenue this month</p>
-            </div>
-            <Link to="/products"
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold">
-              View all <ArrowRight size={12} />
-            </Link>
-          </div>
-          <DonutChart data={data?.topProducts ?? []} />
+          </span>
+          <button onClick={() => refetch()}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm">
+            <RefreshCw size={13} /> Refresh
+          </button>
         </div>
       </div>
 
-      {/* ── Row 3: Recent Activities + Recent Orders + Stock ─────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-        {/* Recent Activities */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-slate-800">Recent Activities</h2>
-            <Link to="/sales"
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold">
-              View all <ArrowRight size={12} />
-            </Link>
-          </div>
-          <ActivityFeed sales={data?.recentSales ?? []} />
-        </div>
-
-        {/* Recent Orders Table */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-slate-800">Recent Orders</h2>
-            <Link to="/sales"
-              className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition">
-              View All <ArrowUpRight size={12} />
-            </Link>
-          </div>
-          <RecentOrdersTable sales={data?.recentSales ?? []} />
-        </div>
-
-        {/* Right col: stock alerts + metrics */}
-        <div className="lg:col-span-3 flex flex-col gap-4">
-
-          {/* Stock Alerts card */}
-          {showAlertsInDashboard && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex-1">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Bell size={15} className="text-indigo-500" />
-                <h2 className="text-sm font-bold text-slate-800">Stock Alerts</h2>
-                {(alertsData?.unreadCount ?? 0) > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
-                    {alertsData?.unreadCount}
-                  </span>
-                )}
-              </div>
-              <Link to="/alerts" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
-                View All <ArrowRight size={10} />
-              </Link>
-            </div>
-
-            {/* Summary row */}
-            {(alertsData?.criticalCount ?? 0) > 0 || (alertsData?.total ?? 0) > 0 ? (
-              <div className="flex gap-3 mb-3 text-xs">
-                {(alertsData?.criticalCount ?? 0) > 0 && (
-                  <span className="flex items-center gap-1 text-red-600 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    {alertsData!.criticalCount} Critical
-                  </span>
-                )}
-                {((alertsData?.total ?? 0) - (alertsData?.criticalCount ?? 0)) > 0 && (
-                  <span className="flex items-center gap-1 text-amber-600 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    {(alertsData!.total - alertsData!.criticalCount)} Warnings
-                  </span>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-emerald-600 flex items-center gap-1 mb-3">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> All Clear
-              </p>
-            )}
-
-            {/* Top 5 alerts */}
-            <div className="space-y-1.5">
-              {(alertsData?.items ?? []).slice(0, 5).map(alert => (
-                <Link key={alert.id} to="/alerts"
-                  className="flex items-start gap-2 p-2 rounded-lg hover:bg-slate-50 transition text-xs">
-                  <span className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${alert.severity === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                  <span className="flex-1 min-w-0">
-                    <span className="font-medium text-slate-800 truncate block">{alert.product.name}</span>
-                    <span className="text-slate-400 truncate block">{alert.message}</span>
-                  </span>
-                  <span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${alert.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {alert.severity}
-                  </span>
-                </Link>
-              ))}
-              {(alertsData?.items ?? []).length === 0 && (
-                <div className="text-center py-4 text-emerald-600">
-                  <Package size={24} className="mx-auto mb-1" />
-                  <p className="text-xs font-medium">✅ All stock levels OK</p>
-                </div>
-              )}
-            </div>
-
-            <p className="text-[10px] text-slate-300 mt-2">Last checked: just now</p>
-          </div>
-          )}
-
-          {/* Quick metrics */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">Quick Metrics</h2>
-            <div className="space-y-2.5">
-              {[
-                { label: 'Pending Invoices', value: kpis?.pendingOrders ?? 0, icon: Receipt, color: 'text-amber-600 bg-amber-50', to: '/sales' },
-                { label: 'Open POs',         value: kpis?.openPOs ?? 0,      icon: Truck,   color: 'text-blue-600 bg-blue-50',   to: '/purchases' },
-                { label: 'Active Users',     value: kpis?.activeUsers ?? 0,  icon: UserCheck, color: 'text-purple-600 bg-purple-50', to: '/users' },
-                { label: 'Unpaid Balance',   value: formatCurrencyShort(kpis?.unpaidCents ?? 0), icon: CreditCard, color: 'text-red-600 bg-red-50', to: '/sales' },
-              ].map(m => (
-                <Link key={m.label} to={m.to}
-                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 transition group">
-                  <div className={cls('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', m.color.split(' ')[1])}>
-                    <m.icon size={13} className={m.color.split(' ')[0]} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-slate-500">{m.label}</p>
-                    <p className="text-xs font-bold text-slate-800">{m.value}</p>
-                  </div>
-                  <ArrowUpRight size={12} className="text-slate-300 group-hover:text-slate-500 transition shrink-0" />
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Row 4: Quick Actions + Promo ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-        {/* Quick Actions */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h2>
-          <div className="grid grid-cols-4 gap-3">
-            {QUICK.map(q => (
-              <Link key={q.label} to={q.to}
-                className="flex flex-col items-center gap-2 py-4 px-2 rounded-xl text-center transition hover:opacity-90 active:scale-95"
-                style={{ background: q.color + '15', border: `1px solid ${q.color}25` }}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: q.color }}>
-                  <q.icon size={17} color="white" />
-                </div>
-                <span className="text-[11px] font-semibold text-slate-700 leading-tight">{q.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Count pills */}
-        <div className="lg:col-span-4 grid grid-cols-2 gap-3">
-          {[
-            { label: 'Active Products',  value: data?.counts.products,  icon: Package,   bg: 'bg-indigo-500', to: '/products' },
-            { label: 'Customers',        value: data?.counts.customers, icon: UserCheck, bg: 'bg-green-500',  to: '/contacts' },
-            { label: 'Suppliers',        value: data?.counts.suppliers, icon: Truck,     bg: 'bg-blue-500',   to: '/contacts' },
-            { label: 'Month Purchases',  value: kpis?.monthPurchaseCount ?? 0, icon: Receipt, bg: 'bg-purple-500', to: '/purchases' },
-          ].map(c => (
-            <Link key={c.label} to={c.to}
-              className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-3 hover:shadow-md transition shadow-sm">
-              <div className={cls('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', c.bg)}>
-                <c.icon size={15} className="text-white" />
+      {/* ── 6 KPI tiles ────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-6 gap-3 flex-shrink-0">
+        {([
+          { label: 'Total Revenue',    value: formatCurrencyShort(kpis?.monthRevenueCents ?? 0),           bg: 'bg-blue-50',    iconColor: 'text-blue-600',    Icon: BarChart2,   to: '/sales' },
+          { label: "Today's Orders",   value: String(kpis?.todayOrders ?? 0),                              bg: 'bg-violet-50',  iconColor: 'text-violet-600',  Icon: ShoppingCart,to: '/sales' },
+          { label: 'Inventory Value',  value: formatCurrencyShort(kpis?.inventoryValueCents ?? 0),         bg: 'bg-emerald-50', iconColor: 'text-emerald-600', Icon: Warehouse,   to: '/inventory' },
+          { label: 'Low Stock',        value: String(lowStockData?.total ?? 0),                            bg: 'bg-amber-50',   iconColor: 'text-amber-600',   Icon: PackageOpen, to: '/inventory' },
+          { label: 'Receivables',      value: formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0), bg: 'bg-cyan-50', iconColor: 'text-cyan-600',  Icon: CreditCard,  to: '/sales' },
+          { label: 'Payables',         value: formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0),   bg: 'bg-rose-50', iconColor: 'text-rose-600',   Icon: Truck,       to: '/purchases' },
+        ] as const).map(({ label, value, bg, iconColor, Icon, to }) => (
+          <Link key={label} to={to} className="block">
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3 flex items-center gap-3 hover:shadow-md transition-shadow">
+              <div className={cls('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', bg)}>
+                <Icon size={18} className={iconColor} />
               </div>
               <div className="min-w-0">
-                <p className="text-xl font-bold text-slate-800 leading-tight">{c.value ?? '—'}</p>
-                <p className="text-[11px] text-slate-500 truncate">{c.label}</p>
+                <p className="text-xs text-slate-500 truncate">{label}</p>
+                <p className="text-lg font-bold text-slate-800 leading-tight">{value}</p>
               </div>
-            </Link>
-          ))}
-        </div>
-
-        {/* Promo card */}
-        <div className="lg:col-span-3 rounded-2xl p-6 flex flex-col justify-between overflow-hidden relative shadow-sm"
-          style={{ background: 'linear-gradient(135deg, #1e40af 0%, #2563EB 50%, #3b82f6 100%)' }}>
-          <div style={{
-            position: 'absolute', top: -30, right: -30, width: 140, height: 140,
-            borderRadius: '50%', background: 'rgba(255,255,255,0.06)',
-          }} />
-          <div style={{
-            position: 'absolute', bottom: -20, left: -20, width: 100, height: 100,
-            borderRadius: '50%', background: 'rgba(255,255,255,0.06)',
-          }} />
-          <div className="relative">
-            <h3 className="text-white font-bold text-base leading-snug">
-              Optimize Your<br />Business Operations
-            </h3>
-            <p className="text-blue-200 text-xs mt-2 leading-relaxed">
-              Get insights and make data-driven decisions with your ERP solution.
-            </p>
-          </div>
-          <Link to="/reports"
-            className="relative mt-4 inline-flex items-center gap-2 bg-white text-blue-700 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-blue-50 transition w-fit">
-            View Reports <ArrowUpRight size={13} />
+            </div>
           </Link>
-        </div>
+        ))}
       </div>
 
-      {/* ── Expiry Alerts (only shown if alerts exist) ── */}
-      {showAlertsInDashboard && expiryAlerts.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={16} className="text-red-500" />
-              <h3 className="font-bold text-slate-800 text-sm">Expiry Alerts</h3>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
-                {expiryAlerts.length}
-              </span>
+      {/* ── Main 2-column layout ───────────────────────────────────────────────── */}
+      <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+
+        {/* ── Left 2/3 ─────────────────────────────────────────────────────────── */}
+        <div className="col-span-2 flex flex-col gap-4">
+
+          {/* Revenue Chart */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex-shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Revenue Overview</h2>
+                <p className="text-xs text-slate-400">Revenue vs expenses</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+                  {([30, 60, 90] as const).map((d) => (
+                    <button key={d} onClick={() => setChartDays(d)}
+                      className={`px-2.5 py-1 transition ${chartDays === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+                <Link to="/reports"
+                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition">
+                  Full Report <ArrowUpRight size={12} />
+                </Link>
+              </div>
             </div>
-            {expiryAlerts.some(a => a.expiryStatus === 'has_expired_batch') && (
-              <button
-                onClick={() => dismissExpiredMut.mutate()}
-                disabled={dismissExpiredMut.isPending}
-                className="text-xs text-slate-500 hover:text-red-600 border border-slate-200 rounded-lg px-2 py-1 transition"
-              >
-                Dismiss All Expired
-              </button>
-            )}
+            {chartData
+              ? <LineChart data={chartData} />
+              : <div className="h-40 flex items-center justify-center text-slate-400 text-sm">No chart data</div>
+            }
           </div>
-          <div className="space-y-2">
-            {expiryAlerts.filter(a => a.expiryStatus === 'has_expired_batch').map((a, i) => (
-              <Link key={`exp-${i}`} to="/inventory"
-                className="flex items-center justify-between text-sm hover:bg-slate-50 rounded-lg px-2 py-1 transition">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                  <span className="font-medium text-slate-800">{a.product.name}</span>
-                  <span className="text-slate-500 text-xs">({a.warehouse.name})</span>
-                </div>
-                <span className="text-red-600 font-semibold text-xs">{a.expiredQty} units expired</span>
-              </Link>
-            ))}
-            {expiryAlerts.filter(a => a.expiryStatus === 'expiring').map((a, i) => (
-              <Link key={`soon-${i}`} to="/inventory"
-                className="flex items-center justify-between text-sm hover:bg-slate-50 rounded-lg px-2 py-1 transition">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                  <span className="font-medium text-slate-800">{a.product.name}</span>
-                  <span className="text-slate-500 text-xs">({a.warehouse.name})</span>
-                </div>
-                <span className="text-amber-600 font-semibold text-xs">
-                  {a.expiringSoonQty} units exp.{' '}
-                  {a.nearestExpiry ? new Date(a.nearestExpiry).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-                </span>
-              </Link>
-            ))}
+
+          {/* Bottom row: Top Products + Recent Activity */}
+          <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
+
+            {/* Top Products — horizontal bar list */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-slate-800">Top Products</h2>
+                <Link to="/products"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                  View all <ArrowRight size={11} />
+                </Link>
+              </div>
+              {(data?.topProducts ?? []).length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-slate-400 text-sm">No sales data yet</div>
+              ) : (() => {
+                const maxRev = Math.max(...(data?.topProducts ?? []).map(p => p.revenueCents), 1);
+                return (
+                  <div className="space-y-3">
+                    {(data?.topProducts ?? []).slice(0, 4).map(p => (
+                      <div key={p.productId}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-slate-600 truncate max-w-[140px]">{p.name}</span>
+                          <span className="text-slate-500 font-medium ml-2 flex-shrink-0">
+                            {formatCurrencyShort(p.revenueCents)}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 rounded-full"
+                            style={{ width: `${Math.round((p.revenueCents / maxRev) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-3 flex-shrink-0">
+                <h2 className="text-sm font-bold text-slate-800">Recent Activity</h2>
+                <Link to="/sales"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                  View all <ArrowRight size={11} />
+                </Link>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                <ActivityFeed sales={(data?.recentSales ?? []).slice(0, 5)} />
+              </div>
+            </div>
+
           </div>
-          <Link to="/inventory" className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium">
-            View Inventory <ArrowRight size={11} />
-          </Link>
         </div>
-      )}
+
+        {/* ── Right 1/3 ────────────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-4">
+
+          {/* Stock Alerts */}
+          {showAlertsInDashboard && (
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Bell size={14} className="text-indigo-500" />
+                  <h2 className="text-sm font-bold text-slate-800">Stock Alerts</h2>
+                  {(alertsData?.unreadCount ?? 0) > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
+                      {alertsData!.unreadCount}
+                    </span>
+                  )}
+                </div>
+                <Link to="/alerts" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+                  View All <ArrowRight size={10} />
+                </Link>
+              </div>
+              <div className="space-y-1">
+                {(alertsData?.items ?? []).slice(0, 4).map(alert => (
+                  <Link key={alert.id} to="/alerts"
+                    className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition text-xs">
+                    <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${alert.severity === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium text-slate-800 truncate block">{alert.product.name}</span>
+                      <span className="text-slate-400 truncate block text-[10px]">{alert.message}</span>
+                    </span>
+                    <span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${alert.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {alert.severity}
+                    </span>
+                  </Link>
+                ))}
+                {(alertsData?.items ?? []).length === 0 && (
+                  <div className="text-center py-3 text-emerald-600">
+                    <Package size={20} className="mx-auto mb-1" />
+                    <p className="text-xs font-medium">All stock levels OK</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Actions — 2×2 grid */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <h2 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK.map(q => (
+                <Link key={q.label} to={q.to}
+                  className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-center transition hover:opacity-90 active:scale-95"
+                  style={{ background: q.color + '15', border: `1px solid ${q.color}25` }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: q.color }}>
+                    <q.icon size={15} color="white" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-700 leading-tight">{q.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Metrics */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <h2 className="text-sm font-bold text-slate-800 mb-2">Quick Metrics</h2>
+            <div className="space-y-1.5">
+              {[
+                { label: 'Pending Invoices', value: kpis?.pendingOrders ?? 0,                         icon: Receipt,   color: 'text-amber-600 bg-amber-50',   to: '/sales' },
+                { label: 'Open POs',         value: kpis?.openPOs ?? 0,                               icon: Truck,     color: 'text-blue-600 bg-blue-50',     to: '/purchases' },
+                { label: 'Active Users',     value: kpis?.activeUsers ?? 0,                            icon: UserCheck, color: 'text-purple-600 bg-purple-50', to: '/users' },
+                { label: 'Unpaid Balance',   value: formatCurrencyShort(kpis?.unpaidCents ?? 0),      icon: CreditCard,color: 'text-red-600 bg-red-50',       to: '/sales' },
+              ].map(m => (
+                <Link key={m.label} to={m.to}
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition group">
+                  <div className={cls('w-6 h-6 rounded-md flex items-center justify-center shrink-0', m.color.split(' ')[1])}>
+                    <m.icon size={11} className={m.color.split(' ')[0]} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-slate-500">{m.label}</p>
+                    <p className="text-xs font-bold text-slate-800">{m.value}</p>
+                  </div>
+                  <ArrowUpRight size={10} className="text-slate-300 group-hover:text-slate-500 transition shrink-0" />
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Expiry Alerts — compact, max 2 items */}
+          {showAlertsInDashboard && expiryAlerts.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={13} className="text-red-500" />
+                  <h2 className="text-sm font-bold text-slate-800">Expiry Alerts</h2>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
+                    {expiryAlerts.length}
+                  </span>
+                </div>
+                {expiryAlerts.some(a => a.expiryStatus === 'has_expired_batch') && (
+                  <button
+                    onClick={() => dismissExpiredMut.mutate()}
+                    disabled={dismissExpiredMut.isPending}
+                    className="text-[10px] text-slate-500 hover:text-red-600 border border-slate-200 rounded px-1.5 py-0.5 transition">
+                    Dismiss
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {expiryAlerts.slice(0, 2).map((a, i) => (
+                  <Link key={i} to="/inventory"
+                    className="flex items-center justify-between text-xs hover:bg-slate-50 rounded px-1.5 py-1 transition">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.expiryStatus === 'has_expired_batch' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                      <span className="font-medium text-slate-700 truncate">{a.product.name}</span>
+                    </div>
+                    <span className={`shrink-0 ml-1 font-semibold text-[10px] ${a.expiryStatus === 'has_expired_batch' ? 'text-red-600' : 'text-amber-600'}`}>
+                      {a.expiryStatus === 'has_expired_batch' ? `${a.expiredQty} exp.` : `${a.expiringSoonQty} soon`}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <Link to="/inventory"
+                className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium">
+                View all <ArrowRight size={10} />
+              </Link>
+            </div>
+          )}
+
+        </div>
+      </div>
 
     </div>
   );
