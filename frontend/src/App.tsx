@@ -8,7 +8,8 @@ import ProductsPage from './pages/products/ProductsPage';
 import POSPage from './pages/pos/POSPage';
 import InventoryPage from './pages/inventory/InventoryPage';
 import PurchasesPage from './pages/purchases/PurchasesPage';
-import ContactsPage from './pages/contacts/ContactsPage';
+import SuppliersPage from './pages/contacts/SuppliersPage';
+import CustomersPage from './pages/contacts/CustomersPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
 import ReportsPage from './pages/reports/ReportsPage';
@@ -154,15 +155,15 @@ export default function App() {
         {/* PEOPLE */}
         <Route path="customers" element={
           <ErrorBoundary fallbackTitle="Customers page failed to load">
-            <ContactsPage />
+            <CustomersPage />
           </ErrorBoundary>
         } />
         <Route path="suppliers" element={
           <ErrorBoundary fallbackTitle="Suppliers page failed to load">
-            <ContactsPage />
+            <SuppliersPage />
           </ErrorBoundary>
         } />
-        <Route path="contacts" element={<ContactsPage />} />
+        <Route path="contacts" element={<Navigate to="/suppliers" replace />} />
 
         {/* REPORTS */}
         <Route path="reports">
