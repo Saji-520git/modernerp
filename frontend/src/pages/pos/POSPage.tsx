@@ -455,11 +455,13 @@ const CartLine = forwardRef<CartLineHandle, {
           {formatCents(lineTotal)}
         </span>
 
-        {/* Trash */}
-        <button type="button" onClick={() => { sfx.remove(); onRemove(); }}
-          className="text-slate-300 hover:text-red-600 transition shrink-0">
-          <Trash2 size={14} />
-        </button>
+        {/* Trash — hidden for auto service-charge lines (removed when parent is removed) */}
+        {!item.isServiceCharge && (
+          <button type="button" onClick={() => { sfx.remove(); onRemove(); }}
+            className="text-slate-300 hover:text-red-600 transition shrink-0">
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
 
       {/* Amber warning when qty was capped to max stock */}
