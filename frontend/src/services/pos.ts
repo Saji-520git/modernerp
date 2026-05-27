@@ -27,6 +27,9 @@ export interface PosProduct {
   priceCents: number;
   costCents: number;
   defaultDiscountCents: number;
+  serviceChargeCents: number;
+  serviceChargeLabel: string | null;
+  receiptName: string | null;
   taxPercent: number;
   imageUrl: string | null;
   expiryDate: string | null;
@@ -79,7 +82,7 @@ export interface CheckoutPayload {
 }
 
 export interface ReceiptLine {
-  product: { id: string; name: string; sku: string };
+  product: { id: string; name: string; sku: string; receiptName?: string | null };
   qty: number;
   unitPriceCents: number;
   taxPercent: number;

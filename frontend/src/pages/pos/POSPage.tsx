@@ -82,6 +82,8 @@ interface CartItem {
   itemDiscountType:   'percent' | 'amount';
   itemDiscountValue:  number;  // % or display-currency amount
   itemDiscountCents:  number;  // computed cents
+  isServiceCharge?:   boolean; // service charge line (display only — excluded from checkout items)
+  linkedProductId?:   string;  // product ID this service charge belongs to
 }
 
 interface CustomerOption {
@@ -316,11 +318,13 @@ const CartLine = forwardRef<CartLineHandle, {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
 
-  const [editing, setEditing]   = useState(false);
-  const [draft, setDraft]       = useState('');
-  const [cappedAt, setCappedAt] = useState<number | null>(null);
-  const inputRef                = useRef<HTMLInputElement>(null);
-  const discountRef             = useRef<DiscountInputHandle>(null);
+  const [editing, setEditing]       = useState(false);
+  const [draft, setDraft]           = useState('');
+  const [cappedAt, setCappedAt]     = useState<number | null>(null);
+  // Show discount row only when there's an active discount or it's being edited
+  const [showDiscount, setShowDiscount] = useState(() => item.itemDiscountCents > 0);
+  const inputRef                    = useRef<HTMLInputElement>(null);
+  const discountRef                 = useRef<DiscountInputHandle>(null);
   const stock                   = totalStock(item.product);
   const lineSubtotal            = item.qty * item.unitPriceCents;
   const lineAfterDisc           = lineSubtotal - item.itemDiscountCents;
@@ -329,7 +333,11 @@ const CartLine = forwardRef<CartLineHandle, {
   useImperativeHandle(cartLineRef, () => ({
     focusQty:      () => startEdit(),
     // 150ms delay: must fire after refocusBarcode's 100ms timeout
-    focusDiscount: () => { setTimeout(() => { discountRef.current?.focus(); discountRef.current?.select(); }, 150); },
+    focusDiscount: () => {
+      if (item.isServiceCharge) return; // service charge items have no discount
+      setShowDiscount(true);
+      setTimeout(() => { discountRef.current?.focus(); discountRef.current?.select(); }, 150);
+    },
   }));
 
   const startEdit = () => {
@@ -391,11 +399,16 @@ const CartLine = forwardRef<CartLineHandle, {
         borderRadius: 8,
         border: '1px solid #f1f5f9',
       }}>
-        {/* Product name — no subtitle */}
-        <span className="text-sm font-semibold text-slate-800 truncate">{item.product.name}</span>
+        {/* Product name — service charge gets amber styling */}
+        <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
+          {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
+          {item.product.name}
+        </span>
 
-        {/* Fix 3: editable qty box — no + / - buttons */}
-        {editing ? (
+        {/* Editable qty box — service charge items show fixed qty (not editable) */}
+        {item.isServiceCharge ? (
+          <span style={{ ...qtyBoxStyle, cursor: 'default', opacity: 0.6 }}>1</span>
+        ) : editing ? (
           <input
             ref={inputRef}
             type="number"
@@ -405,10 +418,11 @@ const CartLine = forwardRef<CartLineHandle, {
             onChange={e => setDraft(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={e => {
-              if (e.key === 'd' || e.key === 'D') {
+              if ((e.key === 'd' || e.key === 'D') && !item.isServiceCharge) {
                 e.preventDefault();
                 commitEdit();
                 // Delay past refocusBarcode's 100ms timeout so discount focus wins
+                setShowDiscount(true);
                 setTimeout(() => {
                   discountRef.current?.focus();
                   discountRef.current?.select();
@@ -455,47 +469,61 @@ const CartLine = forwardRef<CartLineHandle, {
         </p>
       )}
 
-      {/* Per-item discount row */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '2px 14px 4px',
-      }}>
-        <span style={{ fontSize: 10, color: '#94a3b8', marginRight: 2 }}>Item disc.</span>
-        {/* Type toggle: % / Rs. */}
-        <button
-          type="button"
-          onClick={() => onUpdateDiscount('percent', 0)}
-          style={{
-            padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
-            background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
-            color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
-            border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-          }}
-        >%</button>
-        <button
-          type="button"
-          onClick={() => onUpdateDiscount('amount', 0)}
-          style={{
-            padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
-            background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
-            color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
-            border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-          }}
-        >₨</button>
-        <DiscountInput
-          ref={discountRef}
-          mode={item.itemDiscountType}
-          value={item.itemDiscountValue}
-          maxAmount={lineSubtotal}
-          onChange={(v) => onUpdateDiscount(item.itemDiscountType, v)}
-          onEnter={onNavigateToBarcode}
-        />
-        {item.itemDiscountCents > 0 && (
-          <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginLeft: 2 }}>
-            -{formatCents(item.itemDiscountCents)}
-          </span>
-        )}
-      </div>
+      {/* Per-item discount row — hidden for service charge items; shown when discount exists or being edited */}
+      {!item.isServiceCharge && (showDiscount || editing) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '2px 14px 4px',
+        }}>
+          <span style={{ fontSize: 10, color: '#94a3b8', marginRight: 2 }}>Item disc.</span>
+          {/* Type toggle: % / Rs. */}
+          <button
+            type="button"
+            onClick={() => onUpdateDiscount('percent', 0)}
+            style={{
+              padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
+              background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
+              color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
+              border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+            }}
+          >%</button>
+          <button
+            type="button"
+            onClick={() => onUpdateDiscount('amount', 0)}
+            style={{
+              padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
+              background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
+              color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
+              border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+            }}
+          >₨</button>
+          <DiscountInput
+            ref={discountRef}
+            mode={item.itemDiscountType}
+            value={item.itemDiscountValue}
+            maxAmount={lineSubtotal}
+            onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
+            onEnter={onNavigateToBarcode}
+          />
+          {item.itemDiscountCents > 0 && (
+            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginLeft: 2 }}>
+              -{formatCents(item.itemDiscountCents)}
+            </span>
+          )}
+        </div>
+      )}
+      {/* For items without active discount, show a small "D" hint when in qty-edit mode */}
+      {!item.isServiceCharge && !showDiscount && !editing && item.itemDiscountCents === 0 && (
+        <div style={{ padding: '0 14px 2px' }}>
+          <button
+            type="button"
+            onClick={() => setShowDiscount(true)}
+            style={{ fontSize: 9, color: '#cbd5e1', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+          >
+            + disc
+          </button>
+        </div>
+      )}
     </div>
   );
 });
@@ -1090,6 +1118,9 @@ function productToPosProduct(p: Product): PosProduct {
     priceCents:           p.priceCents,
     costCents:            p.costCents,
     defaultDiscountCents: p.defaultDiscountCents ?? 0,
+    serviceChargeCents:   p.serviceChargeCents ?? 0,
+    serviceChargeLabel:   p.serviceChargeLabel ?? null,
+    receiptName:          p.receiptName ?? null,
     taxPercent:           p.taxPercent,
     imageUrl:        p.imageUrl ?? null,
     expiryDate:      p.expiryDate ?? null,
@@ -1353,18 +1384,41 @@ export default function POSPage() {
       // Pre-fill default discount set on the product (cashier can override)
       const defDisc      = product.defaultDiscountCents ?? 0;
       const defDiscCents = Math.min(defDisc, product.priceCents);
-      return [...prev, {
+      const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: product.priceCents,
         itemDiscountType:  (defDiscCents > 0 ? 'amount' : 'percent') as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
       }];
+      // Auto-add service charge item if configured
+      const svcCents = product.serviceChargeCents ?? 0;
+      if (svcCents > 0) {
+        // Create a pseudo-product for the service charge line
+        const svcProduct: PosProduct = {
+          ...product,
+          id:         `svc_${product.id}`,
+          name:       product.serviceChargeLabel || 'Service Charge',
+          priceCents: svcCents,
+          defaultDiscountCents: 0,
+          serviceChargeCents: 0,
+        };
+        newItems.push({
+          product: svcProduct, qty: 1, unitPriceCents: svcCents,
+          itemDiscountType: 'percent', itemDiscountValue: 0, itemDiscountCents: 0,
+          isServiceCharge: true, linkedProductId: product.id,
+        });
+      }
+      return [...prev, ...newItems];
     });
     refocusBarcode();
   }, [appSettings, refocusBarcode]);
 
   const removeFromCart = useCallback((productId: string) => {
-    setCart(prev => prev.filter(i => i.product.id !== productId));
+    setCart(prev => prev.filter(i =>
+      i.product.id !== productId &&
+      // Also remove any service charge linked to this product
+      i.linkedProductId !== productId,
+    ));
     refocusBarcode();
   }, [refocusBarcode]);
 
@@ -1548,12 +1602,19 @@ export default function POSPage() {
       cartDiscountCents,
       cartDiscountPercent: cartDiscountType === 'percent' ? cartDiscountValue : 0,
       isStaffSale:         isStaffSale && isAdmin,
-      items: cart.map(i => ({
-        productId:      i.product.id,
-        qty:            i.qty,
-        unitPriceCents: i.unitPriceCents,
-        discountCents:  i.itemDiscountCents,
-      })),
+      items: cart
+        .filter(i => !i.isServiceCharge)
+        .map(i => {
+          // Fold any service charge for this product into its unitPriceCents
+          const svcItem = cart.find(sc => sc.isServiceCharge && sc.linkedProductId === i.product.id);
+          const svcCents = svcItem ? svcItem.unitPriceCents : 0;
+          return {
+            productId:      i.product.id,
+            qty:            i.qty,
+            unitPriceCents: i.unitPriceCents + svcCents,
+            discountCents:  i.itemDiscountCents,
+          };
+        }),
     } satisfies Parameters<typeof posApi.checkout>[0];
     checkoutMutation.mutate(payload);
   }, [warehouseId, cart, customer, cartDiscountCents, cartDiscountType, cartDiscountValue, isStaffSale, isAdmin, checkoutMutation]);

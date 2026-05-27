@@ -34,6 +34,9 @@ export interface Product {
   costCents: number;
   priceCents: number;
   defaultDiscountCents: number;
+  serviceChargeCents: number;
+  serviceChargeLabel: string | null;
+  receiptName: string | null;
   taxPercent: number;
   reorderLevel: number;
   reorderQty: number;
@@ -75,6 +78,9 @@ export interface CreateProductPayload {
   costCents: number;
   priceCents: number;
   defaultDiscountCents?: number;
+  serviceChargeCents?: number;
+  serviceChargeLabel?: string | null;
+  receiptName?: string | null;
   taxPercent: number;
   reorderLevel: number;
   reorderQty?: number;

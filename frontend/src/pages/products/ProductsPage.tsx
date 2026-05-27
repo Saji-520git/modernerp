@@ -45,9 +45,12 @@ interface FormState {
   baseUnitId: string;
   purchaseUnitId: string;
   salesUnitId: string;
+  receiptName: string;
   cost: string;
   price: string;
   defaultDiscount: string;
+  serviceCharge: string;
+  serviceChargeLabel: string;
   taxPercent: string;
   reorderLevel: string;
   reorderQty: string;
@@ -74,7 +77,8 @@ function emptyForm(): FormState {
     name: '', sku: '', barcode: '', description: '',
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
-    cost: '', price: '', defaultDiscount: '', taxPercent: '0',
+    receiptName: '',
+    cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
     expiryDate: '', expiryAlertDays: '30',
     isBatchTracked: false,
@@ -95,9 +99,12 @@ function formFromProduct(p: Product): FormState {
     baseUnitId: p.baseUnitId ?? '',
     purchaseUnitId: p.purchaseUnitId ?? '',
     salesUnitId: p.salesUnitId ?? '',
+    receiptName: p.receiptName ?? '',
     cost: (p.costCents / 100).toFixed(2),
     price: (p.priceCents / 100).toFixed(2),
     defaultDiscount: p.defaultDiscountCents > 0 ? (p.defaultDiscountCents / 100).toFixed(2) : '',
+    serviceCharge: (p.serviceChargeCents ?? 0) > 0 ? ((p.serviceChargeCents ?? 0) / 100).toFixed(2) : '',
+    serviceChargeLabel: p.serviceChargeLabel ?? '',
     taxPercent: String(p.taxPercent),
     reorderLevel: String(p.reorderLevel),
     reorderQty: String(p.reorderQty),
@@ -411,6 +418,7 @@ export default function ProductsPage() {
     const costCents            = Math.round(parseFloat(form.cost  || '0') * 100);
     const priceCents           = Math.round(parseFloat(form.price || '0') * 100);
     const defaultDiscountCents = Math.round(parseFloat(form.defaultDiscount || '0') * 100);
+    const serviceChargeCents   = Math.round(parseFloat(form.serviceCharge || '0') * 100);
     if (isNaN(costCents) || isNaN(priceCents)) {
       setFormErr('Enter valid cost and price');
       return;
@@ -427,9 +435,12 @@ export default function ProductsPage() {
       baseUnitId:     form.baseUnitId || null,
       purchaseUnitId: form.purchaseUnitId || null,
       salesUnitId:    form.salesUnitId || null,
+      receiptName:   form.receiptName.trim() || null,
       costCents,
       priceCents,
       defaultDiscountCents,
+      serviceChargeCents,
+      serviceChargeLabel: form.serviceChargeLabel.trim() || null,
       taxPercent:   parseFloat(form.taxPercent) || 0,
       reorderLevel: parseInt(form.reorderLevel) || 0,
       reorderQty:   parseInt(form.reorderQty) || 0,
@@ -1096,6 +1107,18 @@ export default function ProductsPage() {
                     />
                   </div>
 
+                  {/* Receipt Name */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Receipt Name</label>
+                    <input
+                      type="text"
+                      value={form.receiptName}
+                      onChange={(e) => setForm((f) => ({ ...f, receiptName: e.target.value }))}
+                      placeholder="Printed on receipt (leave blank to use product name)"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     {/* SKU */}
                     <div>
@@ -1279,6 +1302,36 @@ export default function ProductsPage() {
                   <p className="text-xs text-slate-400 mt-1">
                     Auto-applied at POS checkout. Cashier can override.
                   </p>
+                </div>
+
+                {/* Service Charge */}
+                <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Service Charge</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Amount (Rs.)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.serviceCharge}
+                        onChange={(e) => setForm((f) => ({ ...f, serviceCharge: e.target.value }))}
+                        className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Label</label>
+                      <input
+                        type="text"
+                        value={form.serviceChargeLabel}
+                        onChange={(e) => setForm((f) => ({ ...f, serviceChargeLabel: e.target.value }))}
+                        className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                        placeholder="e.g. Delivery, Service"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-amber-700">Added as a separate line in the POS cart per item.</p>
                 </div>
               </section>
 
