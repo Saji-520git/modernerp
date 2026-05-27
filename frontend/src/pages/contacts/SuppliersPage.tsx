@@ -186,7 +186,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
