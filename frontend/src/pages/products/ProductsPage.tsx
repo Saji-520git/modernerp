@@ -369,13 +369,6 @@ export default function ProductsPage() {
 
   function handleBarcodeChange(value: string) {
     setForm((f) => ({ ...f, barcode: value }));
-    if (!value.trim()) {
-      // Immediately cancel any in-flight check
-      checkIdRef.current++;
-      setBarcodeCheck(null);
-    } else {
-      checkBarcode(value);
-    }
   }
 
   // ── Open modal helpers ────────────────────────────────────────────────────────
