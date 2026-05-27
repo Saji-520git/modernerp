@@ -62,6 +62,8 @@ export interface AppSettings {
   receiptQrEnabled: boolean;
   receiptHeaderLine1: string | null;
   receiptHeaderLine2: string | null;
+  // Returns
+  returnPolicy: string;
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────

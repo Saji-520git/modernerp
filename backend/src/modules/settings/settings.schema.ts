@@ -67,6 +67,9 @@ export const updateSettingsSchema = z.object({
   receiptQrEnabled:      z.boolean().optional(),
   receiptHeaderLine1:    z.string().max(200).nullable().optional(),
   receiptHeaderLine2:    z.string().max(200).nullable().optional(),
+
+  // Returns
+  returnPolicy:          z.string().max(500).optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

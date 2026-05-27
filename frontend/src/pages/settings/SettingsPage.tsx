@@ -1,12 +1,13 @@
-import { useState, Fragment } from 'react';
+import React, { useState, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Percent, ShoppingCart, FileText,
   ShieldCheck, ChevronRight, Check, AlertCircle,
-  Lock, Eye, Printer, Bell,
+  Lock, Eye, Printer, Bell, X,
 } from 'lucide-react';
 import { settingsApi, type AppSettings } from '../../services/settings';
+import { attachmentsApi, getFileUrl } from '../../services/attachments';
 import { useAuthStore } from '../../store/authStore';
 
 // ─── Permission matrix data (mirrors backend/src/config/permissions.ts) ───────
@@ -143,8 +144,10 @@ function CompanyPanel({ settings, onSave, isPending, readOnly }: {
     businessEmail:   settings.businessEmail ?? '',
     logoUrl:         settings.logoUrl ?? '',
   });
-  const [success, setSuccess] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [success, setSuccess]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef = React.useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
     setSuccess(false); setError(null);
@@ -164,10 +167,29 @@ function CompanyPanel({ settings, onSave, isPending, readOnly }: {
     }
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo file must be under 2 MB');
+      return;
+    }
+    setLogoUploading(true);
+    setError(null);
+    try {
+      const att = await attachmentsApi.upload('Settings', 'logo', file);
+      const url = getFileUrl(att.storedName);
+      setF(p => ({ ...p, logoUrl: url }));
+    } catch {
+      setError('Logo upload failed. Try again.');
+    } finally {
+      setLogoUploading(false);
+      if (logoFileRef.current) logoFileRef.current.value = '';
+    }
+  };
+
   const u = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setF(p => ({ ...p, [k]: e.target.value }));
-
-  const logoValid = f.logoUrl && (f.logoUrl.startsWith('http://') || f.logoUrl.startsWith('https://'));
 
   return (
     <div className="space-y-4">
@@ -190,12 +212,70 @@ function CompanyPanel({ settings, onSave, isPending, readOnly }: {
           <input disabled={readOnly} className={inp(readOnly)} type="email" value={f.businessEmail} onChange={u('businessEmail')} placeholder="info@company.com" />
         </Field>
       </div>
-      <Field label="Logo URL">
-        <input disabled={readOnly} className={inp(readOnly)} value={f.logoUrl} onChange={u('logoUrl')} placeholder="https://example.com/logo.png" />
-        {logoValid && (
-          <img src={f.logoUrl!} alt="Logo preview" className="mt-2 h-10 w-10 rounded object-contain border border-slate-200" onError={e => (e.currentTarget.style.display = 'none')} />
-        )}
-      </Field>
+
+      {/* Logo — file upload + URL input */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">Business Logo</label>
+        <div className="flex items-center gap-3">
+          {/* Preview */}
+          {f.logoUrl ? (
+            <div className="relative shrink-0">
+              <img
+                src={f.logoUrl}
+                alt="Logo"
+                className="h-14 w-14 rounded-lg object-contain border border-slate-200 bg-slate-50"
+                onError={e => (e.currentTarget.style.display = 'none')}
+              />
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setF(p => ({ ...p, logoUrl: '' }))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600"
+                  title="Remove logo"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="h-14 w-14 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center bg-slate-50 shrink-0">
+              <Building2 size={20} className="text-slate-300" />
+            </div>
+          )}
+          {!readOnly && (
+            <div className="flex-1 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => logoFileRef.current?.click()}
+                disabled={logoUploading}
+                className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                {logoUploading
+                  ? <><div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" /> Uploading…</>
+                  : <><Building2 size={14} /> Upload from PC</>
+                }
+              </button>
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleLogoUpload}
+                className="sr-only"
+              />
+              <p className="text-xs text-slate-400">PNG, JPG, WebP · max 2 MB</p>
+            </div>
+          )}
+        </div>
+        {/* Fallback URL input */}
+        <input
+          disabled={readOnly}
+          className={inp(readOnly)}
+          value={f.logoUrl}
+          onChange={u('logoUrl')}
+          placeholder="Or paste a logo URL (https://…)"
+        />
+      </div>
+
       <SectionFooter onSave={handleSave} isPending={isPending} success={success} error={error} readOnly={readOnly} />
     </div>
   );
@@ -623,6 +703,7 @@ function ReceiptPanel({ settings, onSave, isPending, readOnly }: {
     receiptShowBarcode: settings.receiptShowBarcode  ?? true,
     receiptQrEnabled:   settings.receiptQrEnabled    ?? false,
     posReceiptFooter:   settings.posReceiptFooter    ?? '',
+    returnPolicy:       settings.returnPolicy        ?? '',
   });
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -643,6 +724,7 @@ function ReceiptPanel({ settings, onSave, isPending, readOnly }: {
         receiptShowBarcode: f.receiptShowBarcode,
         receiptQrEnabled:   f.receiptQrEnabled,
         posReceiptFooter:   f.posReceiptFooter   || null,
+        returnPolicy:       f.returnPolicy       || '',
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -736,12 +818,21 @@ function ReceiptPanel({ settings, onSave, isPending, readOnly }: {
       {/* Footer */}
       <div className="border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Footer</p>
-        <Field label="Receipt Footer Text">
-          <textarea disabled={readOnly} rows={2} maxLength={300} className={inp(readOnly)}
-            value={f.posReceiptFooter}
-            onChange={e => setF(p => ({ ...p, posReceiptFooter: e.target.value }))}
-            placeholder="Thank you for your purchase!" />
-        </Field>
+        <div className="space-y-3">
+          <Field label="Receipt Footer Text">
+            <textarea disabled={readOnly} rows={2} maxLength={300} className={inp(readOnly)}
+              value={f.posReceiptFooter}
+              onChange={e => setF(p => ({ ...p, posReceiptFooter: e.target.value }))}
+              placeholder="Thank you for your purchase!" />
+          </Field>
+          <Field label="Return Policy">
+            <textarea disabled={readOnly} rows={2} maxLength={500} className={inp(readOnly)}
+              value={f.returnPolicy}
+              onChange={e => setF(p => ({ ...p, returnPolicy: e.target.value }))}
+              placeholder="e.g. Returns accepted within 7 days with receipt." />
+            <p className="text-xs text-slate-400 mt-1">Printed at the bottom of every receipt.</p>
+          </Field>
+        </div>
       </div>
 
       {/* Barcode & QR */}
@@ -796,10 +887,24 @@ function ReceiptPanel({ settings, onSave, isPending, readOnly }: {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 12 }}>
               <span>TOTAL</span><span>{fmt(150000)}</span>
             </div>
+            <p style={{ borderTop: '1px dashed #999', margin: '4px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}>
+              <span>Tendered</span><span>{fmt(160000)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700 }}>
+              <span>Change</span><span>{fmt(10000)}</span>
+            </div>
+            <p style={{ fontSize: 9, margin: '2px 0' }}>Items: 2</p>
             {f.posReceiptFooter && (
               <>
                 <p style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />
                 <p style={{ textAlign: 'center', fontSize: 9 }}>{f.posReceiptFooter}</p>
+              </>
+            )}
+            {f.returnPolicy && (
+              <>
+                <p style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />
+                <p style={{ textAlign: 'center', fontSize: 9, color: '#555' }}>{f.returnPolicy}</p>
               </>
             )}
           </div>

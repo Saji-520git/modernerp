@@ -59,9 +59,13 @@ export const posService = {
           sku: true,
           barcode: true,
           name: true,
+          receiptName: true,
           categoryId: true,
           priceCents: true,
           costCents: true,
+          defaultDiscountCents: true,
+          serviceChargeCents: true,
+          serviceChargeLabel: true,
           taxPercent: true,
           imageUrl: true,
           expiryDate: true,
@@ -350,7 +354,7 @@ export const posService = {
           lines: { create: lineData },
         },
         include: {
-          lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
+          lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true } } } },
           customer: { select: { id: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
@@ -451,7 +455,7 @@ export const posService = {
     const sale = await prisma.sale.findFirst({
       where: { id, isPos: true },
       include: {
-        lines: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true } } } },
         customer: { select: { id: true, name: true } },
         createdBy: { select: { fullName: true } },
       },

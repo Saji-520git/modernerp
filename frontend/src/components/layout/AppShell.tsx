@@ -202,11 +202,11 @@ export default function AppShell() {
                       end={item.end}
                       title={collapsed ? item.label : undefined}
                       className={({ isActive }) =>
-                        `relative flex items-center gap-3 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                           collapsed ? 'justify-center' : ''
                         } ${
                           isActive
-                            ? 'bg-brand-50 text-brand-700'
+                            ? 'bg-blue-600 text-white'
                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
                         }`
                       }

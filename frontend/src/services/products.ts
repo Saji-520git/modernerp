@@ -33,6 +33,10 @@ export interface Product {
   salesUnit:    ProductUnit | null;
   costCents: number;
   priceCents: number;
+  defaultDiscountCents: number;
+  serviceChargeCents: number;
+  serviceChargeLabel: string | null;
+  receiptName: string | null;
   taxPercent: number;
   reorderLevel: number;
   reorderQty: number;
@@ -73,6 +77,10 @@ export interface CreateProductPayload {
   salesUnitId?:    string | null;
   costCents: number;
   priceCents: number;
+  defaultDiscountCents?: number;
+  serviceChargeCents?: number;
+  serviceChargeLabel?: string | null;
+  receiptName?: string | null;
   taxPercent: number;
   reorderLevel: number;
   reorderQty?: number;

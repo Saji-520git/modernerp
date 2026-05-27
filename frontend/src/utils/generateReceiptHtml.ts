@@ -102,8 +102,9 @@ export function generateReceiptHtml(
   </div>`;
 
   const itemRows = receipt.lines.map(line => {
+    const displayName = line.product.receiptName || line.product.name;
     let html = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;align-items:flex-start;">
-      <span style="flex:1;overflow-wrap:break-word;word-break:break-word;padding-right:4px;">${esc(line.product.name)}</span>
+      <span style="flex:1;overflow-wrap:break-word;word-break:break-word;padding-right:4px;">${esc(displayName)}</span>
       <span style="width:28px;text-align:center;flex-shrink:0;">${line.qty}</span>
       <span style="width:60px;text-align:right;flex-shrink:0;white-space:nowrap;">${fmt(line.lineTotalCents)}</span>
     </div>`;
@@ -130,9 +131,13 @@ export function generateReceiptHtml(
   </div>`;
   totals += divider();
 
-  if (receipt.paymentMethod === 'CASH' && receipt.paidCents > 0) {
-    totals += row(L.tendered, money(receipt.paidCents, sym, symPos));
-    if (changeCents > 0) totals += row(L.change, money(changeCents, sym, symPos), true);
+  if (receipt.paymentMethod === 'CASH') {
+    // tenderedCents = total + change (change is recorded in frontend at checkout time)
+    const tenderedCents = receipt.totalCents + changeCents;
+    if (tenderedCents > 0) {
+      totals += row(L.tendered, money(tenderedCents, sym, symPos));
+      if (changeCents > 0) totals += row(L.change, money(changeCents, sym, symPos), true);
+    }
   }
   if (receipt.isCreditSale) {
     totals += row(L.balance, money(receipt.totalCents, sym, symPos), true);
@@ -158,6 +163,10 @@ export function generateReceiptHtml(
   if (settings.posReceiptFooter) {
     footer += divider();
     footer += `<p style="text-align:center;font-size:10px;margin:2px 0;">${esc(settings.posReceiptFooter)}</p>`;
+  }
+  if (settings.returnPolicy) {
+    footer += divider();
+    footer += `<p style="text-align:center;font-size:9px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
   }
 
   footer += divider();
