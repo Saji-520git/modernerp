@@ -381,7 +381,7 @@ export const inventoryService = {
       });
       if (!outMove) continue; // no out movements — seeded stock, not inflated
 
-      logger.warn(
+      logger.debug(
         {
           productId: s.productId,
           productName: s.product.name,
@@ -390,8 +390,7 @@ export const inventoryService = {
           warehouseName: s.warehouse.name,
           qty: Number(s.qty),
         },
-        'Possible inflated stock: qty > 0 with OUT movements but no batch or IN movement. ' +
-        'Verify via Adjust Stock.',
+        'Stock history incomplete (seed data or manual adjust)',
       );
     }
   },
