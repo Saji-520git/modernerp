@@ -328,7 +328,8 @@ const CartLine = forwardRef<CartLineHandle, {
 
   useImperativeHandle(cartLineRef, () => ({
     focusQty:      () => startEdit(),
-    focusDiscount: () => { discountRef.current?.focus(); discountRef.current?.select(); },
+    // 150ms delay: must fire after refocusBarcode's 100ms timeout
+    focusDiscount: () => { setTimeout(() => { discountRef.current?.focus(); discountRef.current?.select(); }, 150); },
   }));
 
   const startEdit = () => {
@@ -407,8 +408,11 @@ const CartLine = forwardRef<CartLineHandle, {
               if (e.key === 'd' || e.key === 'D') {
                 e.preventDefault();
                 commitEdit();
-                discountRef.current?.focus();
-                discountRef.current?.select();
+                // Delay past refocusBarcode's 100ms timeout so discount focus wins
+                setTimeout(() => {
+                  discountRef.current?.focus();
+                  discountRef.current?.select();
+                }, 150);
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 commitEdit();
