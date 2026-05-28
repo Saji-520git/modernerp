@@ -125,12 +125,12 @@ export function generateReceiptHtml(
     </tr>`;
     if (Number(line.qty) > 1) {
       rows += `<tr>
-      <td colspan="3" style="font-size:11px;color:#666;padding:0 0 2px 6px;font-style:italic;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}</td>
+      <td colspan="3" style="font-size:11px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}</td>
     </tr>`;
     }
     if (line.discountCents > 0) {
       rows += `<tr>
-      <td colspan="3" style="font-size:11px;color:#008800;padding:0 0 3px 6px;font-style:italic;">  * You save: ${esc(money(line.discountCents, sym, symPos))}</td>
+      <td colspan="3" style="font-size:12px;color:#16a34a;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
     </tr>`;
     }
     return rows;
@@ -165,8 +165,8 @@ export function generateReceiptHtml(
     totalsRows += `<tr>
     <td colspan="2" style="padding:4px 0 3px">
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;color:#16a34a;font-weight:bold">🎉 You Saved</span>
-        <span style="font-size:13px;color:#16a34a;font-weight:bold">${fmt(totalSavingsCents)}</span>
+        <span style="font-size:13px;color:#16a34a;font-weight:bold">🎉 You Saved</span>
+        <span style="font-size:14px;color:#16a34a;font-weight:bold">${fmt(totalSavingsCents)}</span>
       </div>
     </td>
   </tr>
