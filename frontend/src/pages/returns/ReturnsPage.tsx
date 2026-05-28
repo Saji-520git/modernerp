@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   RotateCcw, Plus, Search, X, ChevronLeft, ChevronRight,
@@ -435,6 +435,19 @@ function NewReturnModal({ onClose, prefillSaleId }: NewReturnModalProps) {
 
 export default function ReturnsPage() {
   const [search, setSearch]         = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' &&
+          e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [page, setPage]             = useState(1);
   const [detailId, setDetailId]     = useState<string | null>(null);
   const [showNew, setShowNew]       = useState(false);
@@ -502,6 +515,8 @@ export default function ReturnsPage() {
       <div className="relative max-w-xs">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
+          ref={searchRef}
+          autoFocus
           type="text"
           placeholder="Search by return # or invoice #…"
           value={search}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CornerUpLeft, Plus, X, CheckCircle, XCircle, Trash2, Eye,
@@ -287,6 +287,19 @@ export default function PurchaseReturnsPage() {
   const [showNew, setShowNew]         = useState(false);
   const [selected, setSelected]       = useState<PurchaseReturn | null>(null);
   const [search, setSearch]           = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' &&
+          e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [statusFilter, setStatusFilter] = useState<ReturnStatus | 'ALL'>('ALL');
 
   const { data: returns = [], isLoading } = useQuery<PurchaseReturn[]>({
@@ -329,6 +342,8 @@ export default function PurchaseReturnsPage() {
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
+            ref={searchRef}
+            autoFocus
             type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by number, supplier, PO…"
             className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"

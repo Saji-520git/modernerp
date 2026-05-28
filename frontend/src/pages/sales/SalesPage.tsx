@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -863,6 +863,19 @@ export default function SalesPage() {
 
   // ── Filters state ──
   const [search, setSearch]         = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' &&
+          e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [status, setStatus]         = useState('');
   const [payMethod, setPayMethod]   = useState('');
   const [fromDate, setFromDate]     = useState('');
@@ -989,7 +1002,7 @@ export default function SalesPage() {
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input type="text" placeholder="Search or scan invoice barcode…" value={search}
+            <input ref={searchRef} autoFocus type="text" placeholder="Search or scan invoice barcode…" value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
