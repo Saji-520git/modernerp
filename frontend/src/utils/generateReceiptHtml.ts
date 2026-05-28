@@ -61,7 +61,7 @@ export function generateReceiptHtml(
   });
 
   const divider = (dashed = true) =>
-    `<div style="border-top:${dashed ? '1px dashed #aaa' : '2px solid #000'};margin:5px 0;"></div>`;
+    `<div style="border-top:${dashed ? '1px dashed #999' : '2px solid #000'};margin:5px 0;"></div>`;
 
   const row = (label: string, value: string, bold = false) =>
     `<div style="display:flex;justify-content:space-between;font-size:14px;${bold ? 'font-weight:700;' : ''}margin-bottom:1px;">
@@ -74,7 +74,7 @@ export function generateReceiptHtml(
   // 1. Logo — only when base64 available and enabled
   if (logoBase64 && settings.receiptShowLogo) {
     header += `<div style="text-align:center;margin:0 0 3px 0;padding:0;">
-      <img src="${logoBase64}" style="max-height:70px;max-width:160px;display:block;margin:0 auto;" alt="" />
+      <img src="${logoBase64}" style="max-height:100px;max-width:220px;display:block;margin:0 auto;" alt="" />
     </div>`;
   }
 
@@ -222,7 +222,7 @@ export function generateReceiptHtml(
       ${esc(L.itemCount)}: ${totalItemsQty}
     </td>
   </tr>
-  <tr><td colspan="2" style="border-top:1px dashed #ccc;padding:3px 0"></td></tr>`;
+  <tr><td colspan="2" style="border-top:1px dashed #999;padding:3px 0"></td></tr>`;
 
   const totalsTable = `<table style="width:100%;border-collapse:collapse;margin-top:2px;">
   ${totalsRows}
