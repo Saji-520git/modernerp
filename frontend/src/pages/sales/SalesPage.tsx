@@ -333,15 +333,28 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
     queryFn: () => salesApi.getSale(saleId),
   });
   const [showPayment, setShowPayment] = useState(false);
+  const [modalErr, setModalErr]       = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const confirmMutation = useMutation({
     mutationFn: () => salesApi.confirmSale(saleId),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['sales'] }); queryClient.invalidateQueries({ queryKey: ['sale', saleId] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['sale', saleId] });
+      onClose();
+    },
+    onError: (err: any) => {
+      setModalErr(err?.response?.data?.message ?? 'Failed to confirm invoice');
+      setTimeout(() => setModalErr(null), 4000);
+    },
   });
   const cancelMutation = useMutation({
     mutationFn: () => salesApi.cancelSale(saleId),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['sales'] }); queryClient.invalidateQueries({ queryKey: ['sale', saleId] }); },
+    onError: (err: any) => {
+      setModalErr(err?.response?.data?.message ?? 'Failed to cancel invoice');
+      setTimeout(() => setModalErr(null), 4000);
+    },
   });
 
   if (isLoading) return (
@@ -439,6 +452,11 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
         </div>
 
         {/* Footer actions */}
+        {modalErr && (
+          <div className="mx-6 mb-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {modalErr}
+          </div>
+        )}
         {!sale.isPos && (
           <div className="px-6 py-4 border-t border-slate-200 flex gap-2 flex-wrap">
             {sale.status === 'DRAFT' && (
@@ -862,11 +880,24 @@ export default function SalesPage() {
   const [paymentSaleId, setPaymentSaleId] = useState<string | null>(null);
   const [confirmSaleId, setConfirmSaleId] = useState<string | null>(null);
   const [deleteSaleId, setDeleteSaleId]   = useState<string | null>(null);
+  const [pageToast, setPageToast]         = useState<{ msg: string; ok: boolean } | null>(null);
   const queryClient = useQueryClient();
+
+  const showToast = (msg: string, ok: boolean) => {
+    setPageToast({ msg, ok });
+    setTimeout(() => setPageToast(null), 3000);
+  };
 
   const inlineConfirmMutation = useMutation({
     mutationFn: (id: string) => salesApi.confirmSale(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['sales'] }); setConfirmSaleId(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      setConfirmSaleId(null);
+      showToast('Invoice confirmed', true);
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.message ?? 'Failed to confirm invoice', false);
+    },
   });
 
   const inlineCancelMutation = useMutation({
@@ -958,8 +989,14 @@ export default function SalesPage() {
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input type="text" placeholder="Search invoice # or customer…" value={search}
+            <input type="text" placeholder="Search or scan invoice barcode…" value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && search.trim()) {
+                  const match = sales.find(s => s.number.toLowerCase() === search.trim().toLowerCase());
+                  if (match) { setDetailId(match.id); setSearch(''); setPage(1); }
+                }
+              }}
               className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
           </div>
 
@@ -1202,6 +1239,15 @@ export default function SalesPage() {
           </div>
         );
       })()}
+
+      {/* Page-level toast */}
+      {pageToast && (
+        <div className={`fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-sm font-medium z-[9999] transition-all ${
+          pageToast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {pageToast.msg}
+        </div>
+      )}
     </div>
   );
 }
