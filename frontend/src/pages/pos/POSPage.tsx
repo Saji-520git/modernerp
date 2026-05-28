@@ -1408,6 +1408,11 @@ export default function POSPage() {
           }
           return prev; // don't add
         }
+        // Non-batch products: cap at total physical stock
+        if (maxQty === null && newQty > availableQty) {
+          setBatchCapToast(`Only ${availableQty} available`);
+          return prev;
+        }
         const next = [...prev];
         next[idx] = { ...next[idx], qty: newQty };
         return next;
