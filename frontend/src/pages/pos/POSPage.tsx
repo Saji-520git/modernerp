@@ -1189,6 +1189,7 @@ export default function POSPage() {
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const barcodeRef      = useRef<HTMLInputElement>(null);
   const whDropdownRef   = useRef<HTMLDivElement>(null);
+  const cartPanelRef    = useRef<HTMLDivElement>(null);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -1212,7 +1213,7 @@ export default function POSPage() {
       return [];
     }
   });
-  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('amount');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
   const [customer, setCustomer]                 = useState<CustomerOption | null>(null);
@@ -1407,7 +1408,7 @@ export default function POSPage() {
       const defDiscCents = Math.min(defDisc, product.priceCents);
       const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: product.priceCents,
-        itemDiscountType:  (defDiscCents > 0 ? 'amount' : 'percent') as 'amount' | 'percent',
+        itemDiscountType:  'amount' as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
       }];
@@ -1760,6 +1761,30 @@ export default function POSPage() {
         || showExitBlocked || showQuickAddCustomer || showHolds
         || showReceipt || showCustomer || !!quickAddBarcode;
       if (anyDialog) return;
+
+      // ArrowDown — scroll product grid down
+      if (e.key === 'ArrowDown' && !showPayment && !showReceipt) {
+        const activeTag  = (document.activeElement as HTMLElement)?.tagName;
+        const activeType = (document.activeElement as HTMLInputElement)?.type;
+        const isTextInput = activeTag === 'TEXTAREA' ||
+          (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
+        if (!isTextInput) {
+          e.preventDefault();
+          cartPanelRef.current?.scrollBy({ top: 80, behavior: 'smooth' });
+        }
+      }
+
+      // ArrowUp — scroll product grid up
+      if (e.key === 'ArrowUp' && !showPayment && !showReceipt) {
+        const activeTag  = (document.activeElement as HTMLElement)?.tagName;
+        const activeType = (document.activeElement as HTMLInputElement)?.type;
+        const isTextInput = activeTag === 'TEXTAREA' ||
+          (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
+        if (!isTextInput) {
+          e.preventDefault();
+          cartPanelRef.current?.scrollBy({ top: -80, behavior: 'smooth' });
+        }
+      }
 
       // F2 — focus barcode/scanner input
       if (e.key === 'F2') {
@@ -2133,7 +2158,7 @@ export default function POSPage() {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div ref={cartPanelRef} className="flex-1 overflow-y-auto px-3 py-2">
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-2">
                 <ShoppingCart size={44} />
@@ -2271,58 +2296,9 @@ export default function POSPage() {
           BOTTOM QUICK BAR
       ═══════════════════════════════════════════════════════════════ */}
       <footer style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#f8fafc', borderTop: '.5px solid #e2e8f0' }}>
-
-        {/* Hold — F4 */}
-        <button type="button"
-          onClick={() => { if (cart.length > 0) setShowHoldModal(true); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
-          ⏸ Hold
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F4</span>
-        </button>
-
-        {/* Void & New — F5 */}
-        <button type="button"
-          onClick={() => { if (cart.length > 0 && window.confirm('Clear current cart and start a new sale?')) clearCart(); else if (cart.length === 0) clearCart(); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
-          ⊗ Void & New
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F5</span>
-        </button>
-
-        {/* Drafts — L */}
-        <button type="button"
-          onClick={() => setShowHolds(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
-          📋 Drafts
-          {holds.length > 0 && (
-            <span style={{ background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{holds.length}</span>
-          )}
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>L</span>
-        </button>
-
-        {/* Right side */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {/* Shortcuts — F1 */}
-          <button type="button"
-            onClick={() => setShowShortcuts(prev => !prev)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
-              border: showShortcuts ? '.5px solid #818cf8' : '.5px solid #e2e8f0',
-              borderRadius: 6,
-              background: showShortcuts ? '#eef2ff' : '#fff',
-              fontSize: 12, color: showShortcuts ? '#4338ca' : '#64748b', cursor: 'pointer',
-            }}>
-            ⌨ Shortcuts
-            <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F1</span>
-          </button>
-
-          {/* Close Shift — Ctrl+Shift+X */}
-          <button type="button"
-            onClick={() => setShowCloseShift(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: '#fff', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
-            ⏱ Close Shift
-            <span style={{ fontSize: 10, color: '#fca5a5', background: '#fff1f2', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
-          </button>
-        </div>
+        <span style={{ fontSize: 11, color: '#94a3b8', letterSpacing: '0.01em' }}>
+          F2 Barcode · F4/F8 Pay · F5 New Sale · F6 Clear · D Discount · Shift+↵ Total Disc · Space Drawer · ↑↓ Scroll Cart · ←→ Method · Del Remove
+        </span>
       </footer>
 
       {/* ═══════════════════════════════════════════════════════════════
