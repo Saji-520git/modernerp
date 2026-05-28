@@ -64,26 +64,19 @@ export function generateReceiptHtml(
     `<div style="border-top:${dashed ? '1px dashed #aaa' : '2px solid #000'};margin:5px 0;"></div>`;
 
   const row = (label: string, value: string, bold = false) =>
-    `<div style="display:flex;justify-content:space-between;font-size:11px;${bold ? 'font-weight:700;' : ''}margin-bottom:1px;">
+    `<div style="display:flex;justify-content:space-between;font-size:13px;${bold ? 'font-weight:700;' : ''}margin-bottom:1px;">
        <span>${esc(label)}</span><span>${esc(value)}</span>
      </div>`;
 
   // Header
   let header = '';
-  // Only include logo in print window if it's an absolute URL — relative paths
-  // won't resolve in a new window (different origin / no server context).
-  // Prefer base64 data URL (auth-safe); fall back to absolute URL for non-gated logos
-  const logoSrc = logoBase64 ?? (
-    settings.receiptShowLogo && settings.logoUrl &&
-    (settings.logoUrl.startsWith('http://') || settings.logoUrl.startsWith('https://'))
-      ? settings.logoUrl : null
-  );
-  if (settings.receiptShowLogo && logoSrc) {
-    header += `<div style="text-align:center;margin-bottom:4px;">
-      <img src="${esc(logoSrc)}" style="max-height:48px;max-width:80%;object-fit:contain;" onerror="this.style.display='none'">
+  // Only render logo when base64 was successfully fetched — avoids auth-401 broken images
+  if (logoBase64 && settings.receiptShowLogo) {
+    header += `<div style="text-align:center;margin-bottom:6px;margin-top:0;">
+      <img src="${logoBase64}" style="max-height:80px;max-width:200px;display:block;margin:0 auto;" alt="logo">
     </div>`;
   }
-  header += `<p style="text-align:center;font-weight:700;font-size:14px;margin:0 0 1px;">${esc(settings.businessName || 'My Business')}</p>`;
+  header += `<p style="text-align:center;font-weight:700;font-size:16px;margin:0 0 1px;">${esc(settings.businessName || 'My Business')}</p>`;
   if (settings.businessAddress) header += `<p style="text-align:center;font-size:9px;margin:0 0 1px;">${esc(settings.businessAddress)}</p>`;
   const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join(' | ');
   if (contact) header += `<p style="text-align:center;font-size:9px;margin:0 0 1px;">${esc(contact)}</p>`;
@@ -107,7 +100,7 @@ export function generateReceiptHtml(
 
   const itemRows = receipt.lines.map(line => {
     const displayName = line.product.receiptName || line.product.name;
-    let html = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;align-items:flex-start;">
+    let html = `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px;align-items:flex-start;">
       <span style="flex:1;overflow-wrap:break-word;word-break:break-word;padding-right:4px;">${esc(displayName)}</span>
       <span style="width:28px;text-align:center;flex-shrink:0;">${line.qty}</span>
       <span style="width:60px;text-align:right;flex-shrink:0;white-space:nowrap;">${fmt(line.lineTotalCents)}</span>
@@ -191,7 +184,7 @@ export function generateReceiptHtml(
       margin: 0;
       padding: 4mm;
       font-family: ${fontFam};
-      font-size: 11px;
+      font-size: 13px;
       color: #000;
       background: #fff;
       line-height: 1.5;
