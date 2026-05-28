@@ -992,9 +992,12 @@ export default function SalesPage() {
             <input type="text" placeholder="Search or scan invoice barcode…" value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               onKeyDown={e => {
-                if (e.key === 'Enter' && search.trim()) {
-                  const match = sales.find(s => s.number.toLowerCase() === search.trim().toLowerCase());
-                  if (match) { setDetailId(match.id); setSearch(''); setPage(1); }
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (search.trim()) {
+                    const match = sales.find(s => s.number.toLowerCase() === search.trim().toLowerCase());
+                    if (match) { setDetailId(match.id); }
+                  }
                 }
               }}
               className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />

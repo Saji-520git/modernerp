@@ -506,6 +506,7 @@ export default function ReturnsPage() {
           placeholder="Search by return # or invoice #…"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
+          onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
           className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
         />
       </div>
