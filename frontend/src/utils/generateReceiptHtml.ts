@@ -38,6 +38,7 @@ export function generateReceiptHtml(
   receipt: Receipt,
   settings: AppSettings,
   changeCents: number,
+  logoBase64: string | null = null,
 ): string {
   const lang    = (settings.receiptLanguage ?? 'en') as ReceiptLang;
   const L       = receiptLabels[lang];
@@ -71,12 +72,15 @@ export function generateReceiptHtml(
   let header = '';
   // Only include logo in print window if it's an absolute URL — relative paths
   // won't resolve in a new window (different origin / no server context).
-  const logoForPrint = settings.receiptShowLogo && settings.logoUrl &&
+  // Prefer base64 data URL (auth-safe); fall back to absolute URL for non-gated logos
+  const logoSrc = logoBase64 ?? (
+    settings.receiptShowLogo && settings.logoUrl &&
     (settings.logoUrl.startsWith('http://') || settings.logoUrl.startsWith('https://'))
-    ? settings.logoUrl : null;
-  if (logoForPrint) {
+      ? settings.logoUrl : null
+  );
+  if (settings.receiptShowLogo && logoSrc) {
     header += `<div style="text-align:center;margin-bottom:4px;">
-      <img src="${esc(logoForPrint)}" style="max-height:48px;max-width:80%;object-fit:contain;" onerror="this.style.display='none'">
+      <img src="${esc(logoSrc)}" style="max-height:48px;max-width:80%;object-fit:contain;" onerror="this.style.display='none'">
     </div>`;
   }
   header += `<p style="text-align:center;font-weight:700;font-size:14px;margin:0 0 1px;">${esc(settings.businessName || 'My Business')}</p>`;

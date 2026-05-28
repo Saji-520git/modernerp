@@ -1140,6 +1140,25 @@ function productToPosProduct(p: Product): PosProduct {
   };
 }
 
+// ─── Logo base64 helper ───────────────────────────────────────────────────────
+
+async function fetchLogoAsBase64(url: string, token: string | null): Promise<string | null> {
+  if (!url || !token) return null;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror  = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main POSPage ─────────────────────────────────────────────────────────────
 
 export default function POSPage() {
@@ -1560,7 +1579,30 @@ export default function POSPage() {
     mutationFn: (payload: Parameters<typeof posApi.checkout>[0]) => posApi.checkout(payload),
     onSuccess: (data) => {
       sfx.checkout();
-      setLastReceipt(data.receipt);
+      // Augment receipt: split service-charge amounts back out as separate lines for display
+      const svcItems = cart.filter(i => i.isServiceCharge);
+      if (svcItems.length > 0) {
+        const augLines = data.receipt.lines.flatMap(line => {
+          const svc = svcItems.find(sc => sc.linkedProductId === line.product.id);
+          if (!svc) return [line];
+          const svcCents = svc.unitPriceCents;
+          const mainUnit = line.unitPriceCents - svcCents;
+          return [
+            { ...line, unitPriceCents: mainUnit, lineTotalCents: mainUnit * line.qty },
+            {
+              product:        { id: svc.product.id, name: svc.product.name, sku: svc.product.sku, receiptName: svc.product.receiptName },
+              qty:            line.qty,
+              unitPriceCents: svcCents,
+              taxPercent:     0,
+              discountCents:  0,
+              lineTotalCents: svcCents * line.qty,
+            },
+          ];
+        });
+        setLastReceipt({ ...data.receipt, lines: augLines });
+      } else {
+        setLastReceipt(data.receipt);
+      }
       setLastChangeCents(pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0);
       setShowPayment(false);
       setShowReceipt(true);
@@ -1627,9 +1669,13 @@ export default function POSPage() {
     setShowReceipt(false);
   }, [clearCart]);
 
-  const printReceipt = useCallback(() => {
+  const printReceipt = useCallback(async () => {
     if (!lastReceipt || !appSettings) return;
-    const html = generateReceiptHtml(lastReceipt, appSettings, lastChangeCents);
+    let logoBase64: string | null = null;
+    if (appSettings.receiptShowLogo && appSettings.logoUrl) {
+      logoBase64 = await fetchLogoAsBase64(appSettings.logoUrl, useAuthStore.getState().accessToken);
+    }
+    const html = generateReceiptHtml(lastReceipt, appSettings, lastChangeCents, logoBase64);
     const win  = window.open('', '_blank', 'width=420,height=640');
     if (!win) return;
     win.document.write(html);
