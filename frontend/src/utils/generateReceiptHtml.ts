@@ -64,7 +64,7 @@ export function generateReceiptHtml(
     `<div style="border-top:${dashed ? '1px dashed #aaa' : '2px solid #000'};margin:5px 0;"></div>`;
 
   const row = (label: string, value: string, bold = false) =>
-    `<div style="display:flex;justify-content:space-between;font-size:13px;${bold ? 'font-weight:700;' : ''}margin-bottom:1px;">
+    `<div style="display:flex;justify-content:space-between;font-size:14px;${bold ? 'font-weight:700;' : ''}margin-bottom:1px;">
        <span>${esc(label)}</span><span>${esc(value)}</span>
      </div>`;
 
@@ -79,30 +79,30 @@ export function generateReceiptHtml(
   }
 
   // 2. Business name
-  header += `<p style="font-size:18px;font-weight:bold;text-align:center;margin:2px 0;">${esc(settings.businessName || 'My Business')}</p>`;
+  header += `<p style="font-size:19px;font-weight:bold;text-align:center;margin:2px 0;">${esc(settings.businessName || 'My Business')}</p>`;
 
   // 3. Address
   if (settings.businessAddress) {
-    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(settings.businessAddress)}</p>`;
+    header += `<p style="font-size:13px;text-align:center;margin:1px 0;">${esc(settings.businessAddress)}</p>`;
   }
 
   // 4. Phone / Email
   const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join(' | ');
   if (contact) {
-    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(contact)}</p>`;
+    header += `<p style="font-size:13px;text-align:center;margin:1px 0;">${esc(contact)}</p>`;
   }
 
   // 5. Tagline — after phone
   if (settings.receiptTagline) {
-    header += `<p style="font-size:11px;text-align:center;margin:1px 0;color:#444;">${esc(settings.receiptTagline)}</p>`;
+    header += `<p style="font-size:12px;text-align:center;margin:1px 0;color:#444;">${esc(settings.receiptTagline)}</p>`;
   }
 
   // 6. Extra header lines
   if (settings.receiptHeaderLine1) {
-    header += `<p style="font-size:11px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine1)}</p>`;
+    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine1)}</p>`;
   }
   if (settings.receiptHeaderLine2) {
-    header += `<p style="font-size:11px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine2)}</p>`;
+    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine2)}</p>`;
   }
 
   // ── Meta (invoice, cashier, customer, date) ───────────────────────────────
@@ -110,22 +110,22 @@ export function generateReceiptHtml(
   if (settings.receiptShowCashier) meta += row(L.cashier, receipt.cashier);
   meta += row(L.customer, receipt.customer?.name ?? L.walkIn);
   meta += row(L.date, dateStr);
-  if (receipt.warehouseName) meta += `<p style="font-size:9px;color:#555;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
+  if (receipt.warehouseName) meta += `<p style="font-size:10px;color:#555;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
 
   // ── Items table (fixed layout, 58 / 14 / 28 %) ───────────────────────────
   const itemRowsHtml = receipt.lines.map(line => {
     const displayName = line.product.receiptName || line.product.name;
     const skuLine = settings.receiptShowSku
-      ? `<br><span style="font-size:9px;color:#666;">${esc(line.product.sku)}</span>`
+      ? `<br><span style="font-size:10px;color:#666;">${esc(line.product.sku)}</span>`
       : '';
     let rows = `<tr>
-      <td style="font-size:12px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
-      <td style="font-size:12px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}</td>
-      <td style="font-size:12px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
+      <td style="font-size:13px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
+      <td style="font-size:13px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}</td>
+      <td style="font-size:13px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
     </tr>`;
     if (line.discountCents > 0) {
       rows += `<tr>
-      <td colspan="3" style="font-size:10px;color:#008800;padding:0 0 3px 6px;font-style:italic;">  * You save: ${esc(money(line.discountCents, sym, symPos))}</td>
+      <td colspan="3" style="font-size:11px;color:#008800;padding:0 0 3px 6px;font-style:italic;">  * You save: ${esc(money(line.discountCents, sym, symPos))}</td>
     </tr>`;
     }
     return rows;
@@ -133,9 +133,9 @@ export function generateReceiptHtml(
 
   const itemsTable = `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
   <tr>
-    <td style="width:58%;font-size:12px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
-    <td style="width:14%;font-size:12px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
-    <td style="width:28%;font-size:12px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
+    <td style="width:58%;font-size:13px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
+    <td style="width:14%;font-size:13px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
+    <td style="width:28%;font-size:13px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
   </tr>
   ${itemRowsHtml}
   <tr>
@@ -150,56 +150,58 @@ export function generateReceiptHtml(
 
   // Subtotal
   totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;">${esc(L.subtotal)}</td>
-    <td style="font-size:12px;text-align:right;padding:1px 0;">${fmt(receipt.subtotalCents)}</td>
+    <td style="font-size:13px;padding:1px 0;">${esc(L.subtotal)}</td>
+    <td style="font-size:13px;text-align:right;padding:1px 0;">${fmt(receipt.subtotalCents)}</td>
   </tr>`;
 
   // You Saved — all discounts combined (item-level + cart-level)
   const totalSavingsCents = receipt.lines.reduce((s, l) => s + l.discountCents, 0) + receipt.discountCents;
   if (totalSavingsCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;color:#008800;">You Saved</td>
-    <td style="font-size:12px;text-align:right;padding:1px 0;color:#008800;">-${fmt(totalSavingsCents)}</td>
-  </tr>`;
+    <td style="font-size:13px;padding:1px 0;color:#008800;">You Saved</td>
+    <td style="font-size:13px;text-align:right;padding:1px 0;color:#008800;">-${fmt(totalSavingsCents)}</td>
+  </tr>
+  <tr><td colspan="2" style="border-top:1px dashed #ccc;padding:1px 0"></td></tr>`;
   }
 
   // Tax
   if (settings.receiptShowTax && receipt.taxCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:11px;padding:1px 0;color:#555;">${esc(settings.taxLabel || L.tax)}</td>
-    <td style="font-size:11px;text-align:right;padding:1px 0;color:#555;">${fmt(receipt.taxCents)}</td>
+    <td style="font-size:12px;padding:1px 0;color:#555;">${esc(settings.taxLabel || L.tax)}</td>
+    <td style="font-size:12px;text-align:right;padding:1px 0;color:#555;">${fmt(receipt.taxCents)}</td>
   </tr>`;
   }
 
   // Thick separator + TOTAL row
   totalsRows += `<tr><td colspan="2" style="border-top:2px solid #000;padding:2px 0;"></td></tr>
   <tr>
-    <td style="font-size:16px;font-weight:bold;padding:2px 0;letter-spacing:0.5px;">${esc(L.total)}</td>
-    <td style="font-size:16px;font-weight:bold;text-align:right;padding:2px 0;">${fmt(receipt.totalCents)}</td>
+    <td style="font-size:17px;font-weight:bold;padding:2px 0;letter-spacing:0.5px;">${esc(L.total)}</td>
+    <td style="font-size:17px;font-weight:bold;text-align:right;padding:2px 0;">${fmt(receipt.totalCents)}</td>
   </tr>
   <tr><td colspan="2" style="border-top:1px dashed #999;padding:1px 0;"></td></tr>`;
 
   // Tendered + Change — CASH only, always show when tendered > 0
   if (receipt.paymentMethod === 'CASH' && tenderedCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;">${esc(L.tendered)}</td>
-    <td style="font-size:12px;text-align:right;padding:1px 0;">${fmt(tenderedCents)}</td>
+    <td style="font-size:13px;padding:1px 0;">${esc(L.tendered)}</td>
+    <td style="font-size:13px;text-align:right;padding:1px 0;">${fmt(tenderedCents)}</td>
   </tr>
   <tr>
-    <td style="font-size:13px;font-weight:bold;padding:1px 0;">${esc(L.change)}</td>
-    <td style="font-size:13px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(Math.max(0, tenderedCents - receipt.totalCents))}</td>
-  </tr>`;
+    <td style="font-size:14px;font-weight:bold;padding:1px 0;">${esc(L.change)}</td>
+    <td style="font-size:14px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(Math.max(0, tenderedCents - receipt.totalCents))}</td>
+  </tr>
+  <tr><td colspan="2" style="border-top:1px dashed #999;padding:2px 0"></td></tr>`;
   }
 
   // Credit sale badge
   if (receipt.isCreditSale) {
     totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;">${esc(L.balance)}</td>
-    <td style="font-size:12px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(receipt.totalCents)}</td>
+    <td style="font-size:13px;padding:1px 0;">${esc(L.balance)}</td>
+    <td style="font-size:13px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(receipt.totalCents)}</td>
   </tr>
   <tr>
     <td colspan="2" style="text-align:center;padding:4px 0;">
-      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
+      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:12px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
     </td>
   </tr>`;
   }
@@ -207,7 +209,7 @@ export function generateReceiptHtml(
   // Staff sale badge
   if (receipt.isStaffSale) {
     totalsRows += `<tr>
-    <td colspan="2" style="text-align:center;border:1px solid #4c1d95;border-radius:3px;padding:3px 6px;font-size:11px;font-weight:700;color:#4c1d95;">
+    <td colspan="2" style="text-align:center;border:1px solid #4c1d95;border-radius:3px;padding:3px 6px;font-size:12px;font-weight:700;color:#4c1d95;">
       &#9733; STAFF PURCHASE &#8212; COST PRICE &#9733;
     </td>
   </tr>`;
@@ -216,10 +218,11 @@ export function generateReceiptHtml(
   // Items count — sum qty across all lines
   const totalItemsQty = receipt.lines.reduce((s, l) => s + Number(l.qty), 0);
   totalsRows += `<tr>
-    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:11px;color:#444;">
+    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:12px;color:#444;">
       ${esc(L.itemCount)}: ${totalItemsQty}
     </td>
-  </tr>`;
+  </tr>
+  <tr><td colspan="2" style="border-top:1px dashed #ccc;padding:3px 0"></td></tr>`;
 
   const totalsTable = `<table style="width:100%;border-collapse:collapse;margin-top:2px;">
   ${totalsRows}
@@ -230,21 +233,21 @@ export function generateReceiptHtml(
 
   if (settings.receiptShowBarcode) {
     footer += barsFromString(receipt.number);
-    footer += `<p style="font-size:11px;text-align:center;margin:2px 0 0;letter-spacing:2px;">${esc(receipt.number)}</p>`;
+    footer += `<p style="font-size:12px;text-align:center;margin:2px 0 0;letter-spacing:2px;">${esc(receipt.number)}</p>`;
   }
 
   if (settings.posReceiptFooter) {
     footer += divider();
-    footer += `<p style="text-align:center;font-size:10px;margin:2px 0;">${esc(settings.posReceiptFooter)}</p>`;
+    footer += `<p style="text-align:center;font-size:11px;margin:2px 0;">${esc(settings.posReceiptFooter)}</p>`;
   }
   if (settings.returnPolicy) {
     footer += divider();
-    footer += `<p style="text-align:center;font-size:10px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
+    footer += `<p style="text-align:center;font-size:11px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
   }
 
   footer += divider();
-  footer += `<p style="text-align:center;font-size:13px;font-weight:500;margin:2px 0;">${esc(L.thankYou)}</p>`;
-  footer += `<p style="text-align:center;font-size:10px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
+  footer += `<p style="text-align:center;font-size:14px;font-weight:500;margin:2px 0;">${esc(L.thankYou)}</p>`;
+  footer += `<p style="text-align:center;font-size:11px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -260,7 +263,7 @@ export function generateReceiptHtml(
       margin: 0;
       padding: 2mm 3mm;
       font-family: ${fontFam};
-      font-size: 13px;
+      font-size: 14px;
       color: #000;
       background: #fff;
       line-height: 1.5;
