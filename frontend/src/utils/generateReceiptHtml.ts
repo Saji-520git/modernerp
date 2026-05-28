@@ -1,3 +1,4 @@
+import JsBarcode from 'jsbarcode';
 import { receiptLabels, type ReceiptLang } from './receiptI18n';
 import type { Receipt } from '../services/pos';
 import type { AppSettings } from '../services/settings';
@@ -7,23 +8,22 @@ function money(cents: number, sym: string, pos: string): string {
   return pos === 'before' ? `${sym} ${n}` : `${n} ${sym}`;
 }
 
-function barsFromString(s: string): string {
-  let html = '';
-  const start = [2, 2, 2];
-  [...start, ...start].forEach((w, i) => {
-    html += `<div style="width:${w}px;height:32px;background:${i % 2 === 0 ? '#000' : 'transparent'};display:inline-block;"></div>`;
-  });
-  for (let i = 0; i < s.length; i++) {
-    const code = s.charCodeAt(i);
-    const w1 = (code % 3) + 1;
-    const w2 = ((code >> 2) % 3) + 1;
-    const w3 = ((code >> 4) % 2) + 1;
-    html += `<div style="width:${w1}px;height:32px;background:#000;display:inline-block;"></div>`;
-    html += `<div style="width:${w2}px;height:32px;background:transparent;display:inline-block;"></div>`;
-    html += `<div style="width:${w3}px;height:32px;background:#000;display:inline-block;"></div>`;
-    html += `<div style="width:1px;height:32px;background:transparent;display:inline-block;"></div>`;
+function generateBarcodeHtml(text: string): string {
+  try {
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
+    JsBarcode(svgEl, text, {
+      format:       'CODE128',
+      width:        2.5,
+      height:       70,
+      displayValue: false,
+      margin:       10,
+      background:   '#ffffff',
+      lineColor:    '#000000',
+    });
+    return `<div style="text-align:center;margin:6px 0 2px;background:#fff;padding:0 10px;">${svgEl.outerHTML}</div>`;
+  } catch {
+    return '';
   }
-  return `<div style="text-align:center;margin:6px 0 2px">${html}</div>`;
 }
 
 function esc(s: string): string {
@@ -241,7 +241,7 @@ export function generateReceiptHtml(
   let footer = divider();
 
   if (settings.receiptShowBarcode) {
-    footer += barsFromString(receipt.number);
+    footer += generateBarcodeHtml(receipt.number);
     footer += `<p style="font-size:12px;text-align:center;margin:2px 0 0;letter-spacing:2px;">${esc(receipt.number)}</p>`;
   }
 
