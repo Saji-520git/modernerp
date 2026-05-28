@@ -1373,6 +1373,14 @@ export default function POSPage() {
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: PosProduct) => {
+    // Block out-of-stock products
+    const availableQty = totalStock(product);
+    if (availableQty <= 0) {
+      setQuickAddToast(`${product.name} is out of stock`);
+      setTimeout(() => setQuickAddToast(null), 3000);
+      setTimeout(() => barcodeRef.current?.focus(), 100);
+      return;
+    }
     const bs       = product.batchSummary;
     const policy   = (appSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
     const rawTotal = totalStock(product);
