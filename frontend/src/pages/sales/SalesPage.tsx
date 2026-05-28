@@ -944,7 +944,7 @@ export default function SalesPage() {
     <div className="min-h-screen bg-slate-50 p-6" id="sales-print-area">
       {/* Print-only header */}
       <div className="print-header mb-4 pb-4 border-b">
-        <h1 className="text-xl font-bold">ModernERP — Sales Report</h1>
+        <h1 className="text-xl font-bold">Brocode ERP — Sales Report</h1>
         <p className="text-sm text-slate-500">Printed: {new Date().toLocaleString()}</p>
       </div>
 

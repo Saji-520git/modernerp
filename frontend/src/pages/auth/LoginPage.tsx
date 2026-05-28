@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShoppingCart, Package, BarChart3, Truck } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 
@@ -41,27 +41,32 @@ export default function LoginPage() {
         {/* Logo area */}
         <div>
           <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center mb-6">
-            <span className="text-3xl font-black text-white">M</span>
+            <span className="text-3xl font-black text-white">B</span>
           </div>
           <h1 className="text-3xl font-black text-white leading-tight">
-            Modern<span className="text-blue-400">ERP</span>
+            Brocode<span className="text-blue-400"> ERP</span>
           </h1>
           <p className="text-blue-300/70 text-sm mt-2">
-            Retail &amp; Grocery Management
+            Retail &amp; Grocery ERP Platform
           </p>
         </div>
 
         {/* Feature list */}
-        <div className="space-y-4">
+        <div className="space-y-5 mt-8">
           {[
-            { icon: '🛒', text: 'Point of Sale' },
-            { icon: '📦', text: 'Inventory Management' },
-            { icon: '📊', text: 'Sales & Reports' },
-            { icon: '🏪', text: 'Supplier Management' },
+            { icon: ShoppingCart, title: 'Point of Sale',         desc: 'Fast barcode scanning, keyboard-driven checkout' },
+            { icon: Package,      title: 'Inventory Control',     desc: 'Real-time stock, batch tracking, expiry alerts' },
+            { icon: BarChart3,    title: 'Sales & Analytics',     desc: 'Revenue reports, top products, profit tracking' },
+            { icon: Truck,        title: 'Purchase Management',   desc: 'Supplier orders, GRN, payment tracking' },
           ].map(f => (
-            <div key={f.text} className="flex items-center gap-3 text-blue-200/80">
-              <span className="text-lg">{f.icon}</span>
-              <span className="text-sm">{f.text}</span>
+            <div key={f.title} className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <f.icon size={16} className="text-blue-200" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white leading-tight">{f.title}</p>
+                <p className="text-xs text-blue-200/70 mt-0.5 leading-relaxed">{f.desc}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -77,9 +82,9 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
             <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-3">
-              <span className="text-2xl font-black text-white">M</span>
+              <span className="text-2xl font-black text-white">B</span>
             </div>
-            <h1 className="text-2xl font-black text-slate-800">ModernERP</h1>
+            <h1 className="text-2xl font-black text-slate-800">Brocode ERP</h1>
           </div>
 
           {/* Form card */}
@@ -163,7 +168,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-slate-400 mt-6">
-            ModernERP v1.0.0 · Retail Management System
+            Brocode ERP v1.0.0 · Retail Management System
           </p>
         </div>
       </div>

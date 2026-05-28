@@ -23,7 +23,7 @@ import { router as purchaseReturnsRouter }   from './purchase-returns/purchase-r
 
 export const router: Router = Router();
 
-router.get('/', (_req, res) => res.json({ name: 'ModernERP API', version: 'v1' }));
+router.get('/', (_req, res) => res.json({ name: 'Brocode ERP API', version: 'v1' }));
 
 router.use('/auth', authRouter);
 router.use('/pos', posRouter);
