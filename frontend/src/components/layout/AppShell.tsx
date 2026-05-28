@@ -170,7 +170,7 @@ export default function AppShell() {
         >
           {!collapsed && (
             <span className="text-lg font-bold text-brand-700 truncate select-none">
-              {settings?.businessName || 'ModernERP'}
+              {settings?.businessName || 'Brocode ERP'}
             </span>
           )}
           <button

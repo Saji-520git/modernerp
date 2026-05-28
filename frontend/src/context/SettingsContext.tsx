@@ -29,7 +29,7 @@ const SettingsContext = createContext<SettingsContextValue>({
   formatMoney:       defaultFormat,
   formatMoneyShort:  defaultShort,
   currencySymbol:    'Rs.',
-  businessName:      'ModernERP',
+  businessName:      'Brocode ERP',
   receiptLanguage:   'en',
   receiptPaperWidth: '80mm',
 });
@@ -70,7 +70,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       formatMoney,
       formatMoneyShort,
       currencySymbol:    sym,
-      businessName:      settings?.businessName      ?? 'ModernERP',
+      businessName:      settings?.businessName      ?? 'Brocode ERP',
       receiptLanguage:   settings?.receiptLanguage   ?? 'en',
       receiptPaperWidth: settings?.receiptPaperWidth ?? '80mm',
     }}>

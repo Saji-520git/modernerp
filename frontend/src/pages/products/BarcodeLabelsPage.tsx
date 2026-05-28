@@ -86,7 +86,7 @@ function Label({ label, format }: { label: LabelData; format: Format }) {
     >
       {/* Business name */}
       <p style={{ fontSize: cfg.fontSize - 1, color: '#666', margin: 0, lineHeight: 1.1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-        ModernERP
+        Brocode ERP
       </p>
 
       {/* Product name */}
@@ -243,7 +243,7 @@ export default function BarcodeLabelsPage() {
       const unit    = esc(lbl.unitShort);
 
       return `<div style="width:${cfg.widthMm}mm;height:${cfg.heightMm}mm;border:0.3pt solid #ccc;box-sizing:border-box;padding:1mm 1.5mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;background:#fff;break-inside:avoid;page-break-inside:avoid;">
-  <p style="font-size:${cfg.fontSize - 1}pt;color:#666;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">ModernERP</p>
+  <p style="font-size:${cfg.fontSize - 1}pt;color:#666;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Brocode ERP</p>
   <p style="font-size:${cfg.fontSize + 1}pt;font-weight:700;color:#111;margin:0.5mm 0 0;line-height:1.2;overflow:hidden;">${name}</p>
   <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;margin:0.5mm 0;">${svgStr}</div>
   ${showSku ? `<p style="font-size:${cfg.fontSize - 1}pt;color:#888;margin:0;text-align:center;">SKU: ${sku}</p>` : ''}
