@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight, Download,
@@ -929,6 +929,19 @@ function PurchaseDetailModal({
 function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po: Purchase) => void }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' &&
+          e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [statusFilter, setStatusFilter] = useState<PurchaseStatus | ''>('');
   const [page, setPage] = useState(1);
   const [detailId, setDetailId]       = useState<string | null>(null);
@@ -990,6 +1003,8 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
+            ref={searchRef}
+            autoFocus
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search PO number or supplier…"
