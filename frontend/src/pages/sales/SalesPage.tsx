@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight,
   Trash2, CreditCard, AlertCircle, RotateCcw, Download, Filter,
-  FileText, Printer, ChevronDown, ShoppingCart, Receipt, RefreshCw,
+  FileText, Printer, ShoppingCart, Receipt, RefreshCw,
   DollarSign, TrendingUp, Package, Paperclip,
 } from 'lucide-react';
+import { PortalDropdown } from '../../components/ui/PortalDropdown';
 import {
   salesApi, formatCents, STATUS_LABELS, STATUS_COLORS, PAYMENT_LABELS,
   type SaleStatus, type PaymentMethod, type SaleProduct, type SaleLine, type SaleForReturn,
@@ -835,96 +836,13 @@ function RecordPaymentModal({
   );
 }
 
-// ─── Action Dropdown ───────────────────────────────────────────────────────────
-
-function ActionDropdown({ sale, onView, onReturn, onEdit, onConfirm, onDelete, onRecordPayment }: {
-  sale: any;
-  onView: () => void;
-  onReturn: () => void;
-  onEdit: () => void;
-  onConfirm: () => void;
-  onDelete: () => void;
-  onRecordPayment: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [openDirection, setOpenDirection] = useState<'down' | 'up'>('down');
-  const ref        = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const { user } = useAuthStore();
-  const isAdminOrManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
-  const isAdmin          = user?.role === 'ADMIN';
-  const balance = (sale.totalCents ?? 0) - (sale.paidCents ?? 0);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenDirection(spaceBelow < 180 ? 'up' : 'down');
-    }
-    setOpen(o => !o);
-  };
-
-  const item = (onClick: () => void, label: string, icon: React.ReactNode, cls = 'text-slate-700 hover:bg-slate-50') => (
-    <button onClick={() => { onClick(); setOpen(false); }}
-      className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${cls}`}>
-      {icon} {label}
-    </button>
-  );
-
-  return (
-    <div ref={ref} className="relative">
-      <button ref={triggerRef} onClick={handleToggle}
-        className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition">
-        Actions <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden py-1 ${openDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-          {item(onView, 'View Detail', <Eye className="w-3.5 h-3.5 text-slate-400" />)}
-
-          {sale.status === 'DRAFT' && !sale.isPos && (
-            <>
-              {item(onEdit, 'Edit Draft', <FileText className="w-3.5 h-3.5 text-slate-400" />)}
-              {isAdminOrManager && item(onConfirm, 'Confirm Invoice', <CheckCircle className="w-3.5 h-3.5 text-green-500" />)}
-              <div className="border-t border-slate-100 my-1" />
-              {isAdmin && item(onDelete, 'Delete Draft', <Trash2 className="w-3.5 h-3.5" />, 'text-red-600 hover:bg-red-50')}
-            </>
-          )}
-
-          {sale.status === 'CONFIRMED' && (
-            <>
-              {balance > 0 && item(onRecordPayment, 'Record Payment', <CreditCard className="w-3.5 h-3.5 text-indigo-500" />)}
-              {item(() => exportSaleInvoice(sale), 'Download PDF', <Download className="w-3.5 h-3.5 text-slate-400" />)}
-              {item(onReturn, 'Process Return', <RotateCcw className="w-3.5 h-3.5 text-orange-500" />, 'text-orange-600 hover:bg-orange-50')}
-              {isAdminOrManager && (
-                <>
-                  <div className="border-t border-slate-100 my-1" />
-                  {item(onConfirm, 'Cancel Invoice', <XCircle className="w-3.5 h-3.5" />, 'text-red-600 hover:bg-red-50')}
-                </>
-              )}
-            </>
-          )}
-
-          {sale.status === 'CANCELLED' && (
-            item(() => exportSaleInvoice(sale), 'Download PDF', <Download className="w-3.5 h-3.5 text-slate-400" />)
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Sales Page ───────────────────────────────────────────────────────────
 
 export default function SalesPage() {
+  const { user } = useAuthStore();
+  const isAdminOrManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const isAdmin          = user?.role === 'ADMIN';
+
   // ── Filters state ──
   const [search, setSearch]         = useState('');
   const [status, setStatus]         = useState('');
@@ -1193,18 +1111,16 @@ export default function SalesPage() {
                       {formatCents(sale.paidCents)}
                     </td>
                     <td className="px-4 py-3 text-center whitespace-nowrap sticky right-0 bg-white border-l border-slate-100">
-                      <ActionDropdown
-                        sale={sale}
-                        onView={() => setDetailId(sale.id)}
-                        onReturn={() => setReturnId(sale.id)}
-                        onEdit={() => { const s = sales.find(x => x.id === sale.id); if (s) { setEditSale(s); setShowNewInvoice(true); } }}
-                        onConfirm={() => {
-                          if (sale.status === 'DRAFT') inlineConfirmMutation.mutate(sale.id);
-                          else inlineCancelMutation.mutate(sale.id);
-                        }}
-                        onDelete={() => setDeleteSaleId(sale.id)}
-                        onRecordPayment={() => setPaymentSaleId(sale.id)}
-                      />
+                      <PortalDropdown items={[
+                        { label: 'View Detail',      icon: <Eye size={14} />,        onClick: () => setDetailId(sale.id) },
+                        { label: 'Edit Draft',       icon: <FileText size={14} />,   onClick: () => { const s = sales.find(x => x.id === sale.id); if (s) { setEditSale(s); setShowNewInvoice(true); } }, hidden: sale.status !== 'DRAFT' || sale.isPos },
+                        { label: 'Confirm Invoice',  icon: <CheckCircle size={14} />,onClick: () => inlineConfirmMutation.mutate(sale.id),  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdminOrManager },
+                        { label: 'Delete Draft',     icon: <Trash2 size={14} />,     onClick: () => setDeleteSaleId(sale.id), danger: true,  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdmin },
+                        { label: 'Record Payment',   icon: <CreditCard size={14} />, onClick: () => setPaymentSaleId(sale.id),               hidden: sale.status !== 'CONFIRMED' || (sale.totalCents ?? 0) - (sale.paidCents ?? 0) <= 0 },
+                        { label: 'Download PDF',     icon: <Download size={14} />,   onClick: () => exportSaleInvoice(sale),                 hidden: sale.status === 'DRAFT' },
+                        { label: 'Process Return',   icon: <RotateCcw size={14} />,  onClick: () => setReturnId(sale.id),                    hidden: sale.status !== 'CONFIRMED' },
+                        { label: 'Cancel Invoice',   icon: <XCircle size={14} />,    onClick: () => inlineCancelMutation.mutate(sale.id), danger: true, hidden: sale.status !== 'CONFIRMED' || !isAdminOrManager },
+                      ]} />
                     </td>
                   </tr>
                 );
