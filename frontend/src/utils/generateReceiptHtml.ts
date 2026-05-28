@@ -125,7 +125,7 @@ export function generateReceiptHtml(
     </tr>`;
     if (line.discountCents > 0) {
       rows += `<tr>
-      <td colspan="3" style="font-size:10px;color:#c00;padding:0 0 3px 6px;font-style:italic;">Disc: -${esc(money(line.discountCents, sym, symPos))}</td>
+      <td colspan="3" style="font-size:10px;color:#008800;padding:0 0 3px 6px;font-style:italic;">  * You save: ${esc(money(line.discountCents, sym, symPos))}</td>
     </tr>`;
     }
     return rows;
@@ -154,11 +154,12 @@ export function generateReceiptHtml(
     <td style="font-size:12px;text-align:right;padding:1px 0;">${fmt(receipt.subtotalCents)}</td>
   </tr>`;
 
-  // Cart-level discount
-  if (receipt.discountCents > 0) {
+  // You Saved — all discounts combined (item-level + cart-level)
+  const totalSavingsCents = receipt.lines.reduce((s, l) => s + l.discountCents, 0) + receipt.discountCents;
+  if (totalSavingsCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;color:#c00;">${esc(L.discount)}</td>
-    <td style="font-size:12px;text-align:right;padding:1px 0;color:#c00;">-${fmt(receipt.discountCents)}</td>
+    <td style="font-size:12px;padding:1px 0;color:#008800;">You Saved</td>
+    <td style="font-size:12px;text-align:right;padding:1px 0;color:#008800;">-${fmt(totalSavingsCents)}</td>
   </tr>`;
   }
 

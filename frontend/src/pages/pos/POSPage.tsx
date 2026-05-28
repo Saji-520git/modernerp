@@ -450,9 +450,9 @@ const CartLine = forwardRef<CartLineHandle, {
           {formatCents(item.unitPriceCents)}
         </span>
 
-        {/* Line total — bold */}
+        {/* Line total — bold, full price before discount */}
         <span style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', minWidth: 60, textAlign: 'right' }}>
-          {formatCents(lineTotal)}
+          {formatCents(lineSubtotal)}
         </span>
 
         {/* Trash — hidden for auto service-charge lines (removed when parent is removed) */}
@@ -1371,6 +1371,11 @@ export default function POSPage() {
     : 0;
   const grandTotal = taxableAmount + effectiveTaxCents;
 
+  // Gross subtotal: full prices before any discounts (display only — math uses cartSubtotalCents)
+  const cartGrossSubtotalCents = cart.reduce((s, i) => s + i.qty * i.unitPriceCents, 0);
+  // Total item-level savings (sum of per-line discount cents)
+  const totalItemDiscountCents = cart.reduce((s, i) => s + i.itemDiscountCents, 0);
+
   // ── Cart helpers ──────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: PosProduct) => {
     // Block out-of-stock products
@@ -2166,10 +2171,10 @@ export default function POSPage() {
 
           {/* Totals + PAY NOW */}
           <div className="border-t-2 border-slate-100 px-4 py-4 space-y-2.5 shrink-0">
-            {/* Subtotal (after per-item discounts) */}
+            {/* Gross subtotal — full prices before any discounts */}
             <div className="flex justify-between text-sm text-slate-500">
               <span>Subtotal</span>
-              <span className="font-medium text-slate-700">{formatCents(cartSubtotalCents)}</span>
+              <span className="font-medium text-slate-700">{formatCents(cartGrossSubtotalCents)}</span>
             </div>
 
             {/* Cart-level discount — toggle [%][₨] + DiscountInput */}
@@ -2213,6 +2218,14 @@ export default function POSPage() {
                 />
               </div>
             </div>
+
+            {/* You Saved — sum of all item discounts + cart discount */}
+            {(totalItemDiscountCents + cartDiscountCents) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-green-700 font-medium">You Saved</span>
+                <span className="text-green-700 font-semibold">-{formatCents(totalItemDiscountCents + cartDiscountCents)}</span>
+              </div>
+            )}
 
             {/* Tax — show only when non-zero */}
             {effectiveTaxCents > 0 && (
