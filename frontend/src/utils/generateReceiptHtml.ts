@@ -120,12 +120,12 @@ export function generateReceiptHtml(
       : '';
     let rows = `<tr>
       <td style="font-size:13px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
-      <td style="font-size:13px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}</td>
+      <td style="font-size:13px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
       <td style="font-size:13px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
     </tr>`;
     if (Number(line.qty) > 1) {
       rows += `<tr>
-      <td colspan="3" style="font-size:11px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}</td>
+      <td colspan="3" style="font-size:11px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
     </tr>`;
     }
     if (line.discountCents > 0) {
