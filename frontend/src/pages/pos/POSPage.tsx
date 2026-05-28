@@ -1093,14 +1093,6 @@ function ReceiptModal({
               <span className="ml-1 text-emerald-300 text-xs font-normal">F5</span>
             </button>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full flex items-center justify-center gap-2 border border-slate-200 rounded-xl py-2 text-xs text-slate-500 hover:bg-slate-50 transition"
-            >
-              ↩ Keep Cart
-              <span className="ml-1 text-slate-300 text-xs font-normal">Esc</span>
-            </button>
           </div>
         </div>
       </div>
@@ -1766,7 +1758,7 @@ export default function POSPage() {
         if (showQuickAddCustomer) { setShowQuickAddCustomer(false); return; }
         if (quickAddBarcode)      { setQuickAddBarcode(null);       return; }
         if (showHolds)            { setShowHolds(false);            return; }
-        if (showReceipt)          { setShowReceipt(false);          return; }
+        if (showReceipt)          { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); return; }
         if (showCustomer)         { setShowCustomer(false);         return; }
         refocusBarcode();
         return;
@@ -2395,7 +2387,7 @@ export default function POSPage() {
           receipt={lastReceipt}
           changeCents={lastChangeCents}
           onNewSale={newSale}
-          onClose={() => setShowReceipt(false)}
+          onClose={() => { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); }}
           onPrint={printReceipt}
         />
       )}
