@@ -847,7 +847,9 @@ function ActionDropdown({ sale, onView, onReturn, onEdit, onConfirm, onDelete, o
   onRecordPayment: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [openDirection, setOpenDirection] = useState<'down' | 'up'>('down');
+  const ref        = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const { user } = useAuthStore();
   const isAdminOrManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const isAdmin          = user?.role === 'ADMIN';
@@ -862,6 +864,15 @@ function ActionDropdown({ sale, onView, onReturn, onEdit, onConfirm, onDelete, o
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const handleToggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenDirection(spaceBelow < 180 ? 'up' : 'down');
+    }
+    setOpen(o => !o);
+  };
+
   const item = (onClick: () => void, label: string, icon: React.ReactNode, cls = 'text-slate-700 hover:bg-slate-50') => (
     <button onClick={() => { onClick(); setOpen(false); }}
       className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${cls}`}>
@@ -871,12 +882,12 @@ function ActionDropdown({ sale, onView, onReturn, onEdit, onConfirm, onDelete, o
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen(o => !o)}
+      <button ref={triggerRef} onClick={handleToggle}
         className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition">
         Actions <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-20 overflow-hidden py-1">
+        <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden py-1 ${openDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {item(onView, 'View Detail', <Eye className="w-3.5 h-3.5 text-slate-400" />)}
 
           {sale.status === 'DRAFT' && !sale.isPos && (
