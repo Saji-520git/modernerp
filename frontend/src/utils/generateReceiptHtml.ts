@@ -13,8 +13,8 @@ function generateBarcodeHtml(text: string): string {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
     JsBarcode(svgEl, text, {
       format:       'CODE128',
-      width:        2.5,
-      height:       70,
+      width:        1.8,
+      height:       45,
       displayValue: false,
       margin:       10,
       background:   '#ffffff',
@@ -94,15 +94,15 @@ export function generateReceiptHtml(
 
   // 5. Tagline — after phone
   if (settings.receiptTagline) {
-    header += `<p style="font-size:12px;text-align:center;margin:1px 0;color:#444;">${esc(settings.receiptTagline)}</p>`;
+    header += `<p style="font-size:13px;text-align:center;margin:1px 0;color:#444;">${esc(settings.receiptTagline)}</p>`;
   }
 
   // 6. Extra header lines
   if (settings.receiptHeaderLine1) {
-    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine1)}</p>`;
+    header += `<p style="font-size:13px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine1)}</p>`;
   }
   if (settings.receiptHeaderLine2) {
-    header += `<p style="font-size:12px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine2)}</p>`;
+    header += `<p style="font-size:13px;text-align:center;margin:1px 0;">${esc(settings.receiptHeaderLine2)}</p>`;
   }
 
   // ── Meta (invoice, cashier, customer, date) ───────────────────────────────
@@ -110,13 +110,13 @@ export function generateReceiptHtml(
   if (settings.receiptShowCashier) meta += row(L.cashier, receipt.cashier);
   meta += row(L.customer, receipt.customer?.name ?? L.walkIn);
   meta += row(L.date, dateStr);
-  if (receipt.warehouseName) meta += `<p style="font-size:10px;color:#555;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
+  if (receipt.warehouseName) meta += `<p style="font-size:13px;color:#555;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
 
   // ── Items table (fixed layout, 58 / 14 / 28 %) ───────────────────────────
   const itemRowsHtml = receipt.lines.map(line => {
     const displayName = line.product.receiptName || line.product.name;
     const skuLine = settings.receiptShowSku
-      ? `<br><span style="font-size:10px;color:#666;">${esc(line.product.sku)}</span>`
+      ? `<br><span style="font-size:13px;color:#666;">${esc(line.product.sku)}</span>`
       : '';
     let rows = `<tr>
       <td style="font-size:13px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
@@ -125,12 +125,12 @@ export function generateReceiptHtml(
     </tr>`;
     if (Number(line.qty) > 1) {
       rows += `<tr>
-      <td colspan="3" style="font-size:11px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
+      <td colspan="3" style="font-size:13px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
     </tr>`;
     }
     if (line.discountCents > 0) {
       rows += `<tr>
-      <td colspan="3" style="font-size:12px;color:#16a34a;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
+      <td colspan="3" style="font-size:13px;color:#16a34a;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
     </tr>`;
     }
     return rows;
@@ -176,8 +176,8 @@ export function generateReceiptHtml(
   // Tax
   if (settings.receiptShowTax && receipt.taxCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:12px;padding:1px 0;color:#555;">${esc(settings.taxLabel || L.tax)}</td>
-    <td style="font-size:12px;text-align:right;padding:1px 0;color:#555;">${fmt(receipt.taxCents)}</td>
+    <td style="font-size:13px;padding:1px 0;color:#555;">${esc(settings.taxLabel || L.tax)}</td>
+    <td style="font-size:13px;text-align:right;padding:1px 0;color:#555;">${fmt(receipt.taxCents)}</td>
   </tr>`;
   }
 
@@ -210,7 +210,7 @@ export function generateReceiptHtml(
   </tr>
   <tr>
     <td colspan="2" style="text-align:center;padding:4px 0;">
-      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:12px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
+      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:13px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
     </td>
   </tr>`;
   }
@@ -218,7 +218,7 @@ export function generateReceiptHtml(
   // Staff sale badge
   if (receipt.isStaffSale) {
     totalsRows += `<tr>
-    <td colspan="2" style="text-align:center;border:1px solid #4c1d95;border-radius:3px;padding:3px 6px;font-size:12px;font-weight:700;color:#4c1d95;">
+    <td colspan="2" style="text-align:center;border:1px solid #4c1d95;border-radius:3px;padding:3px 6px;font-size:13px;font-weight:700;color:#4c1d95;">
       &#9733; STAFF PURCHASE &#8212; COST PRICE &#9733;
     </td>
   </tr>`;
@@ -227,7 +227,7 @@ export function generateReceiptHtml(
   // Items count — sum qty across all lines
   const totalItemsQty = receipt.lines.reduce((s, l) => s + Number(l.qty), 0);
   totalsRows += `<tr>
-    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:12px;color:#444;">
+    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:13px;color:#444;">
       ${esc(L.itemCount)}: ${totalItemsQty}
     </td>
   </tr>
@@ -242,21 +242,21 @@ export function generateReceiptHtml(
 
   if (settings.receiptShowBarcode) {
     footer += generateBarcodeHtml(receipt.number);
-    footer += `<p style="font-size:12px;text-align:center;margin:2px 0 0;letter-spacing:2px;">${esc(receipt.number)}</p>`;
+    footer += `<p style="font-size:13px;text-align:center;margin:2px 0 0;letter-spacing:2px;">${esc(receipt.number)}</p>`;
   }
 
   if (settings.posReceiptFooter) {
     footer += divider();
-    footer += `<p style="text-align:center;font-size:11px;margin:2px 0;">${esc(settings.posReceiptFooter)}</p>`;
+    footer += `<p style="text-align:center;font-size:13px;margin:2px 0;">${esc(settings.posReceiptFooter)}</p>`;
   }
   if (settings.returnPolicy) {
     footer += divider();
-    footer += `<p style="text-align:center;font-size:11px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
+    footer += `<p style="text-align:center;font-size:13px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
   }
 
   footer += divider();
   footer += `<p style="text-align:center;font-size:14px;font-weight:500;margin:2px 0;">${esc(L.thankYou)}</p>`;
-  footer += `<p style="text-align:center;font-size:11px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
+  footer += `<p style="text-align:center;font-size:13px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
