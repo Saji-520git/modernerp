@@ -88,6 +88,7 @@ export interface ReceiptLine {
   taxPercent: number;
   discountCents: number;  // per-line discount (0 if none)
   lineTotalCents: number;
+  unitShortCode?: string;
 }
 
 export interface Receipt {

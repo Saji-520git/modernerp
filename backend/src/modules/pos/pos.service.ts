@@ -356,7 +356,7 @@ export const posService = {
           lines: { create: lineData },
         },
         include: {
-          lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true } } } },
+          lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } } } },
           customer: { select: { id: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
@@ -441,6 +441,7 @@ export const posService = {
           taxPercent:     l.taxPercent,
           discountCents:  l.discountCents,
           lineTotalCents: l.lineTotalCents,
+          unitShortCode:  l.product.unit?.shortCode ?? '',
         })),
         subtotalCents:  sale.subtotalCents,
         taxCents:       sale.taxCents,
