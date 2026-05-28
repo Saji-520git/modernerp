@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { productsApi, formatCents, type Product } from '../../services/products';
+import { useAppSettings } from '../../context/SettingsContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ function BarcodeImage({ value, height, fontSize }: { value: string; height: numb
 
 // ─── Single label ─────────────────────────────────────────────────────────────
 
-function Label({ label, format }: { label: LabelData; format: Format }) {
+function Label({ label, format, businessName }: { label: LabelData; format: Format; businessName?: string }) {
   const cfg        = FORMAT_CONFIG[format];
   const codeValue  = label.barcode || label.sku;
   const showAsSku  = !label.barcode;
@@ -86,7 +87,7 @@ function Label({ label, format }: { label: LabelData; format: Format }) {
     >
       {/* Business name */}
       <p style={{ fontSize: cfg.fontSize - 1, color: '#666', margin: 0, lineHeight: 1.1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-        Brocode ERP
+        {businessName || 'Brocode ERP'}
       </p>
 
       {/* Product name */}
@@ -126,6 +127,7 @@ function Label({ label, format }: { label: LabelData; format: Format }) {
 export default function BarcodeLabelsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { businessName } = useAppSettings();
 
   const [search,   setSearch]   = useState('');
   const [selected, setSelected] = useState<Map<string, SelectedEntry>>(new Map());
@@ -243,7 +245,7 @@ export default function BarcodeLabelsPage() {
       const unit    = esc(lbl.unitShort);
 
       return `<div style="width:${cfg.widthMm}mm;height:${cfg.heightMm}mm;border:0.3pt solid #ccc;box-sizing:border-box;padding:1mm 1.5mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;background:#fff;break-inside:avoid;page-break-inside:avoid;">
-  <p style="font-size:${cfg.fontSize - 1}pt;color:#666;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Brocode ERP</p>
+  <p style="font-size:${cfg.fontSize - 1}pt;color:#666;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(businessName || 'Brocode ERP')}</p>
   <p style="font-size:${cfg.fontSize + 1}pt;font-weight:700;color:#111;margin:0.5mm 0 0;line-height:1.2;overflow:hidden;">${name}</p>
   <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;margin:0.5mm 0;">${svgStr}</div>
   ${showSku ? `<p style="font-size:${cfg.fontSize - 1}pt;color:#888;margin:0;text-align:center;">SKU: ${sku}</p>` : ''}
@@ -475,7 +477,7 @@ export default function BarcodeLabelsPage() {
                 boxShadow:           '0 2px 20px rgba(0,0,0,0.1)',
               }}>
                 {labels.map((lbl, i) => (
-                  <Label key={`${lbl.productId}-${i}`} label={lbl} format={format} />
+                  <Label key={`${lbl.productId}-${i}`} label={lbl} format={format} businessName={businessName} />
                 ))}
               </div>
             )}

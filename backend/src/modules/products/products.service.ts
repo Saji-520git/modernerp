@@ -95,7 +95,10 @@ export const productsService = {
 
     const product = await prisma.product.findFirst({
       where: {
-        barcode: { in: [...variants] },
+        OR: [
+          { barcode: { in: [...variants] } },
+          { sku: barcode },
+        ],
         isActive: true,
       },
       include: {
