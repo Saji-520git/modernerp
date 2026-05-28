@@ -291,7 +291,7 @@ export const posService = {
           unitPriceCents: unitPrice,
           taxPercent:     product.taxPercent,
           discountCents:  lineDiscount,
-          lineTotalCents: lineAfterDisc, // after per-line discount, before tax
+          lineTotalCents: lineSubtotal, // gross (unitPrice × qty, before discount)
           unitId:         item.unitId ?? null,
           baseQty:        item.baseQty !== item.qty ? item.baseQty : null,
         };
@@ -310,7 +310,9 @@ export const posService = {
       ? Math.floor(grossTaxCents * taxableAmount / cartSubtotalCents)
       : 0;
 
-    const subtotalCents = cartSubtotalCents;
+    // Gross subtotal = Σ (unitPrice × qty) across all lines, before any discounts
+    const grossSubtotalCents = lineData.reduce((s, l) => s + l.lineTotalCents, 0);
+    const subtotalCents = grossSubtotalCents;
     const discountCents = computedCartDiscount;
     const taxCents      = effectiveTaxCents;
     const totalCents    = taxableAmount + effectiveTaxCents;
