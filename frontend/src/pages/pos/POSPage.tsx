@@ -84,6 +84,8 @@ interface CartItem {
   itemDiscountCents:  number;  // computed cents
   isServiceCharge?:   boolean; // service charge line (display only — excluded from checkout items)
   linkedProductId?:   string;  // product ID this service charge belongs to
+  costCents?:         number;  // product cost price — used for staff sale repricing
+  originalPriceCents?:number;  // selling price before staff sale toggle
 }
 
 interface CustomerOption {
@@ -1416,8 +1418,13 @@ export default function POSPage() {
       // Pre-fill default discount set on the product (cashier can override)
       const defDisc      = product.defaultDiscountCents ?? 0;
       const defDiscCents = Math.min(defDisc, product.priceCents);
+      const priceToUse   = isStaffSale
+        ? (product.costCents ?? product.priceCents)
+        : product.priceCents;
       const newItems: CartItem[] = [{
-        product, qty: 1, unitPriceCents: product.priceCents,
+        product, qty: 1, unitPriceCents: priceToUse,
+        originalPriceCents: product.priceCents,
+        costCents: product.costCents ?? 0,
         itemDiscountType:  'amount' as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
@@ -1443,7 +1450,7 @@ export default function POSPage() {
       return [...prev, ...newItems];
     });
     refocusBarcode();
-  }, [appSettings, refocusBarcode]);
+  }, [appSettings, refocusBarcode, isStaffSale]);
 
   const removeFromCart = useCallback((productId: string) => {
     setCart(prev => prev.filter(i =>
@@ -1679,6 +1686,19 @@ export default function POSPage() {
     setIsStaffSale(false);
     setShowReceipt(false);
   }, [clearCart]);
+
+  const handleStaffSaleChange = useCallback((checked: boolean) => {
+    setIsStaffSale(checked);
+    setCart(prev => prev.map(item => {
+      if (item.isServiceCharge) return item;
+      return {
+        ...item,
+        unitPriceCents: checked
+          ? (item.costCents ?? item.unitPriceCents)
+          : (item.originalPriceCents ?? item.unitPriceCents),
+      };
+    }));
+  }, []);
 
   const printReceipt = useCallback(async () => {
     if (!lastReceipt || !appSettings) return;
@@ -2271,7 +2291,7 @@ export default function POSPage() {
                 <input
                   type="checkbox"
                   checked={isStaffSale}
-                  onChange={e => setIsStaffSale(e.target.checked)}
+                  onChange={e => handleStaffSaleChange(e.target.checked)}
                   className="w-4 h-4 rounded accent-violet-600 cursor-pointer"
                 />
                 <span className={`text-sm font-medium ${isStaffSale ? 'text-violet-700' : 'text-slate-600'}`}>
