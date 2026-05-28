@@ -1189,7 +1189,7 @@ export default function POSPage() {
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const barcodeRef      = useRef<HTMLInputElement>(null);
   const whDropdownRef   = useRef<HTMLDivElement>(null);
-  const productGridRef  = useRef<HTMLDivElement>(null);
+  const cartPanelRef    = useRef<HTMLDivElement>(null);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -1213,7 +1213,7 @@ export default function POSPage() {
       return [];
     }
   });
-  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('amount');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
   const [customer, setCustomer]                 = useState<CustomerOption | null>(null);
@@ -1408,7 +1408,7 @@ export default function POSPage() {
       const defDiscCents = Math.min(defDisc, product.priceCents);
       const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: product.priceCents,
-        itemDiscountType:  (defDiscCents > 0 ? 'amount' : 'percent') as 'amount' | 'percent',
+        itemDiscountType:  'amount' as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
       }];
@@ -1770,7 +1770,7 @@ export default function POSPage() {
           (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
         if (!isTextInput) {
           e.preventDefault();
-          productGridRef.current?.scrollBy({ top: 200, behavior: 'smooth' });
+          cartPanelRef.current?.scrollBy({ top: 200, behavior: 'smooth' });
         }
       }
 
@@ -1782,7 +1782,7 @@ export default function POSPage() {
           (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
         if (!isTextInput) {
           e.preventDefault();
-          productGridRef.current?.scrollBy({ top: -200, behavior: 'smooth' });
+          cartPanelRef.current?.scrollBy({ top: -200, behavior: 'smooth' });
         }
       }
 
@@ -2092,7 +2092,7 @@ export default function POSPage() {
           </div>
 
           {/* Product grid */}
-          <div ref={productGridRef} className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4">
             {loadingProducts && (
               <div className="flex items-center justify-center gap-2 h-32 text-slate-400 text-sm">
                 <div className="w-4 h-4 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin" />
@@ -2158,7 +2158,7 @@ export default function POSPage() {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div ref={cartPanelRef} className="flex-1 overflow-y-auto px-3 py-2">
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-2">
                 <ShoppingCart size={44} />
