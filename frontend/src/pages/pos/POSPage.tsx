@@ -1189,6 +1189,7 @@ export default function POSPage() {
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const barcodeRef      = useRef<HTMLInputElement>(null);
   const whDropdownRef   = useRef<HTMLDivElement>(null);
+  const productGridRef  = useRef<HTMLDivElement>(null);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -1761,6 +1762,30 @@ export default function POSPage() {
         || showReceipt || showCustomer || !!quickAddBarcode;
       if (anyDialog) return;
 
+      // ArrowDown — scroll product grid down
+      if (e.key === 'ArrowDown' && !showPayment && !showReceipt) {
+        const activeTag  = (document.activeElement as HTMLElement)?.tagName;
+        const activeType = (document.activeElement as HTMLInputElement)?.type;
+        const isTextInput = activeTag === 'TEXTAREA' ||
+          (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
+        if (!isTextInput) {
+          e.preventDefault();
+          productGridRef.current?.scrollBy({ top: 200, behavior: 'smooth' });
+        }
+      }
+
+      // ArrowUp — scroll product grid up
+      if (e.key === 'ArrowUp' && !showPayment && !showReceipt) {
+        const activeTag  = (document.activeElement as HTMLElement)?.tagName;
+        const activeType = (document.activeElement as HTMLInputElement)?.type;
+        const isTextInput = activeTag === 'TEXTAREA' ||
+          (activeTag === 'INPUT' && activeType !== 'button' && activeType !== 'submit' && activeType !== 'checkbox');
+        if (!isTextInput) {
+          e.preventDefault();
+          productGridRef.current?.scrollBy({ top: -200, behavior: 'smooth' });
+        }
+      }
+
       // F2 — focus barcode/scanner input
       if (e.key === 'F2') {
         e.preventDefault();
@@ -2067,7 +2092,7 @@ export default function POSPage() {
           </div>
 
           {/* Product grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div ref={productGridRef} className="flex-1 overflow-y-auto p-4">
             {loadingProducts && (
               <div className="flex items-center justify-center gap-2 h-32 text-slate-400 text-sm">
                 <div className="w-4 h-4 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin" />
