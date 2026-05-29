@@ -29,6 +29,17 @@ export interface Customer {
   _count?: { sales: number };
 }
 
+/** Extended customer returned by GET /customers/:id — includes aggregates */
+export interface CustomerDetail extends Customer {
+  _count: { sales: number; customerPayments: number };
+  totalSalesAmount: number;
+  totalPaid: number;
+  outstandingBalance: number;
+  lastPurchaseDate: string | null;
+  creditUsedCents: number;
+  updatedAt: string;
+}
+
 export interface ContactListResponse<T> {
   total: number;
   page: number;
@@ -71,6 +82,9 @@ export const suppliersApi = {
 export const customersApi = {
   list: (params?: { search?: string; page?: number; pageSize?: number }): Promise<ContactListResponse<Customer>> =>
     api.get('/customers', { params }).then((r) => r.data),
+
+  getOne: (id: string): Promise<CustomerDetail> =>
+    api.get(`/customers/${id}`).then((r) => r.data),
 
   create: (body: CustomerBody): Promise<Customer> =>
     api.post('/customers', body).then((r) => r.data),
