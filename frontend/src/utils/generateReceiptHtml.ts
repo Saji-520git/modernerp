@@ -13,14 +13,14 @@ function generateBarcodeHtml(text: string): string {
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
     JsBarcode(svgEl, text, {
       format:       'CODE128',
-      width:        1.8,
-      height:       45,
+      width:        1.5,
+      height:       42,
       displayValue: false,
       margin:       10,
       background:   '#ffffff',
       lineColor:    '#000000',
     });
-    return `<div style="text-align:center;margin:6px 0 2px;background:#fff;padding:0 10px;">${svgEl.outerHTML}</div>`;
+    return `<div style="text-align:center;margin:6px auto 2px;background:#fff;padding:0 10px;max-width:220px;">${svgEl.outerHTML}</div>`;
   } catch {
     return '';
   }
@@ -227,7 +227,7 @@ export function generateReceiptHtml(
   // Items count — sum qty across all lines
   const totalItemsQty = receipt.lines.reduce((s, l) => s + Number(l.qty), 0);
   totalsRows += `<tr>
-    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:13px;color:#444;">
+    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:13px;color:#444;font-weight:600;">
       ${esc(L.itemCount)}: ${totalItemsQty}
     </td>
   </tr>
