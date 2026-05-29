@@ -164,9 +164,11 @@ export function generateReceiptHtml(
   if (totalSavingsCents > 0) {
     totalsRows += `<tr>
     <td colspan="2" style="padding:4px 0 3px">
-      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;color:#16a34a;font-weight:bold">🎉 You Saved</span>
-        <span style="font-size:14px;color:#16a34a;font-weight:bold">${fmt(totalSavingsCents)}</span>
+      <div style="border:1px solid #d1d5db;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.10);padding:4px 8px;margin:4px 0;background:#f9fafb;">
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;color:#16a34a;font-weight:bold">🎉 You Saved</span>
+          <span style="font-size:14px;color:#16a34a;font-weight:bold">${fmt(totalSavingsCents)}</span>
+        </div>
       </div>
     </td>
   </tr>
