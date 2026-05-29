@@ -321,9 +321,9 @@ export default function AlertsPage() {
   ];
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Bell size={22} className="text-indigo-600" /> Stock Alerts

@@ -502,7 +502,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="h-full flex flex-col gap-4 p-4 overflow-y-auto">
+    <div className="h-full flex flex-col gap-4 p-4 overflow-y-auto text-base">
 
       {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-shrink-0">
@@ -522,7 +522,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── 6 KPI tiles ────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-6 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 flex-shrink-0">
         {([
           { label: 'Total Revenue',    value: formatCurrencyShort(kpis?.monthRevenueCents ?? 0),           bg: 'bg-blue-50',    iconColor: 'text-blue-600',    Icon: BarChart2,   to: '/sales' },
           { label: "Today's Orders",   value: String(kpis?.todayOrders ?? 0),                              bg: 'bg-violet-50',  iconColor: 'text-violet-600',  Icon: ShoppingCart,to: '/sales' },
