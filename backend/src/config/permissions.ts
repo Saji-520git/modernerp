@@ -66,6 +66,7 @@ export const ROLE_DEFAULTS: Record<AppRole, Permission[]> = {
     'view_products',
     'view_inventory',
     'pos_checkout',
+    'sell_on_credit',
     'record_payments',
     'view_sales',
     'view_contacts',
