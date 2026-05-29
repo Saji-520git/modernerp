@@ -71,7 +71,7 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
           return (
             <g key={t}>
               <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#f1f5f9" strokeWidth="1" />
-              <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="9" fill="#94a3b8">
+              <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
                 {formatCurrencyShort(maxR * (1 - t))}
               </text>
             </g>
@@ -98,7 +98,7 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
         <path d={fill} fill="url(#lg1)" />
         <path d={line} fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" />
         {xLabels.map((p, i) => (
-          <text key={i} x={p.x} y={H - 4} textAnchor="middle" fontSize="9" fill="#94a3b8">
+          <text key={i} x={p.x} y={H - 4} textAnchor="middle" fontSize="10" fill="#94a3b8">
             {formatDateShort(p.date)}
           </text>
         ))}
@@ -114,7 +114,7 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
                 <text x={p.x} y={p.y - 34} textAnchor="middle" fontSize="10" fontWeight="700" fill="white">
                   {formatCurrency(p.revenue)}
                 </text>
-                <text x={p.x} y={p.y - 20} textAnchor="middle" fontSize="9" fill="#94a3b8">
+                <text x={p.x} y={p.y - 20} textAnchor="middle" fontSize="10" fill="#94a3b8">
                   {formatDateShort(p.date)} · {p.orders} orders
                 </text>
                 {(data[i].expensesCents ?? 0) > 0 && (
@@ -130,10 +130,10 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
 
       {/* Legend */}
       <div className="flex items-center gap-4 mt-2 mb-1">
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5 text-sm text-slate-500">
           <span className="inline-block w-3 h-0.5 rounded bg-blue-600" /> Revenue
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5 text-sm text-slate-500">
           <span className="inline-block w-3 h-2.5 rounded-sm bg-orange-400 opacity-60" /> Expenses
         </span>
       </div>
@@ -145,8 +145,8 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
           { label: 'Net Profit',     value: formatCurrencyShort(netProfit), color: netProfit >= 0 ? 'text-emerald-700' : 'text-red-600' },
         ].map(s => (
           <div key={s.label}>
-            <p className="text-xs text-slate-400">{s.label}</p>
-            <p className={`text-sm font-bold mt-0.5 ${s.color ?? 'text-slate-800'}`}>{s.value}</p>
+            <p className="text-sm text-slate-400">{s.label}</p>
+            <p className={`text-base font-bold mt-0.5 ${s.color ?? 'text-slate-800'}`}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -524,21 +524,21 @@ export default function DashboardPage() {
       {/* ── 6 KPI tiles ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 flex-shrink-0">
         {([
-          { label: 'Total Revenue',    value: formatCurrencyShort(kpis?.monthRevenueCents ?? 0),           bg: 'bg-blue-50',    iconColor: 'text-blue-600',    Icon: BarChart2,   to: '/sales' },
-          { label: "Today's Orders",   value: String(kpis?.todayOrders ?? 0),                              bg: 'bg-violet-50',  iconColor: 'text-violet-600',  Icon: ShoppingCart,to: '/sales' },
-          { label: 'Inventory Value',  value: formatCurrencyShort(kpis?.inventoryValueCents ?? 0),         bg: 'bg-emerald-50', iconColor: 'text-emerald-600', Icon: Warehouse,   to: '/inventory' },
-          { label: 'Low Stock',        value: String(lowStockData?.total ?? 0),                            bg: 'bg-amber-50',   iconColor: 'text-amber-600',   Icon: PackageOpen, to: '/inventory' },
-          { label: 'Receivables',      value: formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0), bg: 'bg-cyan-50', iconColor: 'text-cyan-600',  Icon: CreditCard,  to: '/sales' },
-          { label: 'Payables',         value: formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0),   bg: 'bg-rose-50', iconColor: 'text-rose-600',   Icon: Truck,       to: '/purchases' },
-        ] as const).map(({ label, value, bg, iconColor, Icon, to }) => (
+          { label: 'Total Revenue',    value: formatCurrencyShort(kpis?.monthRevenueCents ?? 0),           bg: 'bg-blue-50',    iconColor: 'text-blue-600',    borderColor: '#2563EB', Icon: BarChart2,   to: '/sales' },
+          { label: "Today's Orders",   value: String(kpis?.todayOrders ?? 0),                              bg: 'bg-violet-50',  iconColor: 'text-violet-600',  borderColor: '#7C3AED', Icon: ShoppingCart,to: '/sales' },
+          { label: 'Inventory Value',  value: formatCurrencyShort(kpis?.inventoryValueCents ?? 0),         bg: 'bg-emerald-50', iconColor: 'text-emerald-600', borderColor: '#059669', Icon: Warehouse,   to: '/inventory' },
+          { label: 'Low Stock',        value: String(lowStockData?.total ?? 0),                            bg: 'bg-amber-50',   iconColor: 'text-amber-600',   borderColor: '#D97706', Icon: PackageOpen, to: '/inventory' },
+          { label: 'Receivables',      value: formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0), bg: 'bg-cyan-50', iconColor: 'text-cyan-600',  borderColor: '#0891B2', Icon: CreditCard,  to: '/sales' },
+          { label: 'Payables',         value: formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0),   bg: 'bg-rose-50', iconColor: 'text-rose-600',   borderColor: '#E11D48', Icon: Truck,       to: '/purchases' },
+        ] as const).map(({ label, value, bg, iconColor, borderColor, Icon, to }) => (
           <Link key={label} to={to} className="block">
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3 flex items-center gap-3 hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3 flex items-center gap-3 hover:shadow-md transition-shadow" style={{ borderLeft: `3px solid ${borderColor}` }}>
               <div className={cls('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', bg)}>
                 <Icon size={18} className={iconColor} />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">{label}</p>
-                <p className="text-lg font-bold text-slate-800 leading-tight">{value}</p>
+                <p className="text-sm text-slate-500 truncate">{label}</p>
+                <p className="text-xl font-bold text-slate-800 leading-tight">{value}</p>
               </div>
             </div>
           </Link>
@@ -553,9 +553,9 @@ export default function DashboardPage() {
 
           {/* Revenue Chart */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex-shrink-0">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-2">
               <div>
-                <h2 className="text-sm font-bold text-slate-800">Revenue Overview</h2>
+                <h2 className="text-base font-bold text-slate-800">Revenue Overview</h2>
                 <p className="text-xs text-slate-400">Revenue vs expenses</p>
               </div>
               <div className="flex items-center gap-2">
@@ -584,8 +584,8 @@ export default function DashboardPage() {
 
             {/* Top Products — horizontal bar list */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-slate-800">Top Products</h2>
+              <div className="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-2">
+                <h2 className="text-base font-bold text-slate-800">Top Products</h2>
                 <Link to="/products"
                   className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
                   View all <ArrowRight size={11} />
@@ -620,8 +620,8 @@ export default function DashboardPage() {
 
             {/* Recent Activity */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                <h2 className="text-sm font-bold text-slate-800">Recent Activity</h2>
+              <div className="flex items-center justify-between mb-3 flex-shrink-0 border-b-2 border-slate-200 pb-2">
+                <h2 className="text-base font-bold text-slate-800">Recent Activity</h2>
                 <Link to="/sales"
                   className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
                   View all <ArrowRight size={11} />
@@ -641,10 +641,10 @@ export default function DashboardPage() {
           {/* Stock Alerts */}
           {showAlertsInDashboard && (
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 border-b-2 border-slate-200 pb-2">
                 <div className="flex items-center gap-2">
                   <Bell size={14} className="text-indigo-500" />
-                  <h2 className="text-sm font-bold text-slate-800">Stock Alerts</h2>
+                  <h2 className="text-base font-bold text-slate-800">Stock Alerts</h2>
                   {(alertsData?.unreadCount ?? 0) > 0 && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
                       {alertsData!.unreadCount}
@@ -661,8 +661,8 @@ export default function DashboardPage() {
                     className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition text-xs">
                     <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${alert.severity === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-400'}`} />
                     <span className="flex-1 min-w-0">
-                      <span className="font-medium text-slate-800 truncate block">{alert.product.name}</span>
-                      <span className="text-slate-400 truncate block text-[10px]">{alert.message}</span>
+                      <span className="text-sm font-medium text-slate-800 truncate block">{alert.product.name}</span>
+                      <span className="text-slate-400 truncate block text-[11px]">{alert.message}</span>
                     </span>
                     <span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${alert.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                       {alert.severity}
@@ -681,7 +681,7 @@ export default function DashboardPage() {
 
           {/* Quick Actions — 2×2 grid */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h2>
+            <h2 className="text-base font-bold text-slate-800 mb-3 border-b-2 border-slate-200 pb-2">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-2">
               {QUICK.map(q => (
                 <Link key={q.label} to={q.to}
@@ -690,7 +690,7 @@ export default function DashboardPage() {
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: q.color }}>
                     <q.icon size={15} color="white" />
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-700 leading-tight">{q.label}</span>
+                  <span className="text-xs font-semibold text-slate-700 leading-tight">{q.label}</span>
                 </Link>
               ))}
             </div>
@@ -698,7 +698,7 @@ export default function DashboardPage() {
 
           {/* Quick Metrics */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-            <h2 className="text-sm font-bold text-slate-800 mb-2">Quick Metrics</h2>
+            <h2 className="text-base font-bold text-slate-800 mb-2 border-b-2 border-slate-200 pb-2">Quick Metrics</h2>
             <div className="space-y-1.5">
               {[
                 { label: 'Pending Invoices', value: kpis?.pendingOrders ?? 0,                         icon: Receipt,   color: 'text-amber-600 bg-amber-50',   to: '/sales' },
@@ -724,10 +724,10 @@ export default function DashboardPage() {
           {/* Expiry Alerts — compact, max 2 items */}
           {showAlertsInDashboard && expiryAlerts.length > 0 && (
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 border-b-2 border-slate-200 pb-2">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={13} className="text-red-500" />
-                  <h2 className="text-sm font-bold text-slate-800">Expiry Alerts</h2>
+                  <h2 className="text-base font-bold text-slate-800">Expiry Alerts</h2>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
                     {expiryAlerts.length}
                   </span>
