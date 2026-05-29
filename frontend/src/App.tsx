@@ -10,6 +10,7 @@ import InventoryPage from './pages/inventory/InventoryPage';
 import PurchasesPage from './pages/purchases/PurchasesPage';
 import SuppliersPage from './pages/contacts/SuppliersPage';
 import CustomersPage from './pages/contacts/CustomersPage';
+import CustomerDetailPage from './pages/contacts/CustomerDetailPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
 import ReportsPage from './pages/reports/ReportsPage';
@@ -156,6 +157,11 @@ export default function App() {
         <Route path="customers" element={
           <ErrorBoundary fallbackTitle="Customers page failed to load">
             <CustomersPage />
+          </ErrorBoundary>
+        } />
+        <Route path="customers/:id" element={
+          <ErrorBoundary fallbackTitle="Customer detail failed to load">
+            <CustomerDetailPage />
           </ErrorBoundary>
         } />
         <Route path="suppliers" element={
