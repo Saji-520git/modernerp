@@ -259,7 +259,7 @@ export function generateReceiptHtml(
   footer += divider();
   footer += `<p style="text-align:center;font-size:15px;font-weight:500;margin:2px 0;">${esc(L.thankYou)}</p>`;
   footer += `<p style="text-align:center;font-size:14px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
-  footer += `<p style="text-align:center;font-size:12px;color:#888888;margin-top:4px;">Powered by BRO_Code ERP | 0757187506</p>`;
+  footer += `<p style="font-size:11px;color:#000000;font-weight:600;text-align:center;margin-top:6px;border-top:1px dashed #000000;padding-top:4px;">Powered by BROcode Solutions</p>`;
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
