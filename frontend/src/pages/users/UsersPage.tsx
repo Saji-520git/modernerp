@@ -1001,7 +1001,7 @@ export default function UsersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-slate-400">
             <div className="w-6 h-6 border-2 border-slate-200 border-t-indigo-600 rounded-full animate-spin mr-3" />

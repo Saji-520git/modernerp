@@ -364,7 +364,7 @@ export default function PurchaseReturnsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-16 gap-2 text-slate-400">
             <RefreshCw className="w-5 h-5 animate-spin" /><span className="text-sm">Loading…</span>

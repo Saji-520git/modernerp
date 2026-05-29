@@ -762,7 +762,7 @@ function PurchaseDetailModal({
   if (isLoading || !po) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-8 w-[700px] max-h-[90vh] overflow-y-auto">
+        <div className="bg-white rounded-xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
           <div className="text-center text-slate-400 py-10">Loading…</div>
         </div>
       </div>
