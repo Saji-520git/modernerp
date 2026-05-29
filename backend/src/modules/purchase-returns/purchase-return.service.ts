@@ -232,11 +232,12 @@ export const purchaseReturnService = {
 
   // ── List returns ────────────────────────────────────────────────────────────
 
-  async listReturns(purchaseId?: string) {
+  async listReturns(purchaseId?: string, supplierId?: string) {
     return (prisma as any).purchaseReturn.findMany({
       where:   {
         isActive: true,
         ...(purchaseId ? { purchaseId } : {}),
+        ...(supplierId ? { supplierId } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: {

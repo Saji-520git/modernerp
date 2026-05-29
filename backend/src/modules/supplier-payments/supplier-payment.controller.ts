@@ -24,6 +24,11 @@ export const listByPurchase: RequestHandler = async (req, res) => {
   res.json(payments);
 };
 
+export const listBySupplier: RequestHandler = async (req, res) => {
+  const payments = await supplierPaymentService.listBySupplier(req.params.supplierId);
+  res.json(payments);
+};
+
 export const getVoucherData: RequestHandler = async (req, res) => {
   const data = await supplierPaymentService.getVoucherData(req.params.id);
   res.json(data);

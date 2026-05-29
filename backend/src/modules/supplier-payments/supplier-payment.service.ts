@@ -117,6 +117,19 @@ export const supplierPaymentService = {
     });
   },
 
+  // ── List payments for a supplier ───────────────────────────────────────────
+
+  async listBySupplier(supplierId: string) {
+    return prisma.supplierPayment.findMany({
+      where:   { supplierId, isActive: true },
+      orderBy: { paymentDate: 'desc' },
+      include: {
+        purchase:      { select: { id: true, number: true } },
+        createdByUser: { select: { id: true, fullName: true } },
+      },
+    });
+  },
+
   // ── Get full voucher data ────────────────────────────────────────────────────
 
   async getVoucherData(paymentId: string) {

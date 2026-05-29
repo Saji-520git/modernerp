@@ -30,9 +30,37 @@ export const suppliersService = {
   },
 
   getOne: async (id: string) => {
-    const supplier = await prisma.supplier.findUnique({ where: { id } });
+    const supplier = await prisma.supplier.findUnique({
+      where: { id },
+      include: { _count: { select: { purchases: true } } },
+    });
     if (!supplier) throw new HttpError(404, 'Supplier not found');
-    return supplier;
+
+    const purchasesAgg = await (prisma as any).purchase.aggregate({
+      where: { supplierId: id, status: 'CONFIRMED', deletedAt: null },
+      _sum: { totalCents: true, paidCents: true },
+      _max: { date: true },
+    });
+
+    const totalPurchaseAmount = purchasesAgg._sum.totalCents ?? 0;
+    const totalPaid           = purchasesAgg._sum.paidCents  ?? 0;
+    const outstandingBalance  = totalPurchaseAmount - totalPaid;
+    const lastOrderDate       = purchasesAgg._max.date ?? null;
+
+    const returnsAgg = await (prisma as any).purchaseReturn.aggregate({
+      where: { supplierId: id, isActive: true },
+      _count: { id: true },
+    });
+    const totalReturns = returnsAgg._count.id ?? 0;
+
+    return {
+      ...supplier,
+      totalPurchaseAmount,
+      totalPaid,
+      outstandingBalance,
+      lastOrderDate,
+      totalReturns,
+    };
   },
 
   create: async (input: SupplierBodyInput) => {
