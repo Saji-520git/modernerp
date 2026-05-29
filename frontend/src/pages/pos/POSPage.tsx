@@ -694,7 +694,7 @@ function PaymentDialog({
   const [tabsFocused, setTabsFocused] = useState(true);
   const [received, setReceived]       = useState(() => (totalCents / 100).toFixed(2));
   const [splitCash, setSplitCash]     = useState('');
-  const [splitSecondary, setSplitSecondary] = useState<'CARD' | 'BANK_TRANSFER' | 'QR_PAY'>('CARD');
+  const [splitSecondary, setSplitSecondary] = useState<'CARD' | 'BANK_TRANSFER' | 'QR_PAY' | 'CREDIT'>('CARD');
   const [creditNote, setCreditNote]   = useState('');
 
   const tabRefs    = useRef<(HTMLButtonElement | null)[]>([]);
@@ -928,6 +928,9 @@ function PaymentDialog({
                   <option value="CARD">Card</option>
                   <option value="BANK_TRANSFER">Bank Transfer</option>
                   <option value="QR_PAY">QR Pay</option>
+                  {customer?.creditEnabled === true && canSellOnCredit && (
+                    <option value="CREDIT">Credit</option>
+                  )}
                 </select>
               </div>
               <div className={cls(
@@ -937,8 +940,8 @@ function PaymentDialog({
               )}>
                 {splitCashC > 0
                   ? splitValid
-                    ? `${formatCents(splitCashC)} cash + ${formatCents(splitRemainder)} via ${splitSecondary === 'CARD' ? 'Card' : splitSecondary === 'BANK_TRANSFER' ? 'Bank' : 'QR Pay'} ✓`
-                    : `Remaining: ${formatCents(splitRemainder)} via ${splitSecondary === 'CARD' ? 'Card' : splitSecondary === 'BANK_TRANSFER' ? 'Bank' : 'QR Pay'}`
+                    ? `${formatCents(splitCashC)} cash + ${formatCents(splitRemainder)} via ${splitSecondary === 'CARD' ? 'Card' : splitSecondary === 'BANK_TRANSFER' ? 'Bank' : splitSecondary === 'CREDIT' ? 'Credit' : 'QR Pay'} ✓`
+                    : `Remaining: ${formatCents(splitRemainder)} via ${splitSecondary === 'CARD' ? 'Card' : splitSecondary === 'BANK_TRANSFER' ? 'Bank' : splitSecondary === 'CREDIT' ? 'Credit' : 'QR Pay'}`
                   : 'Enter cash amount'}
               </div>
             </div>
