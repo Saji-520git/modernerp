@@ -99,6 +99,14 @@ export const customerPaymentService = {
     });
   },
 
+  async listByCustomer(customerId: string) {
+    return (prisma as any).customerPayment.findMany({
+      where:   { customerId, isActive: true },
+      orderBy: { paymentDate: 'desc' },
+      include: { createdByUser: { select: { id: true, fullName: true } } },
+    });
+  },
+
   async voidPayment(id: string) {
     const cp = await (prisma as any).customerPayment.findUnique({
       where:  { id },

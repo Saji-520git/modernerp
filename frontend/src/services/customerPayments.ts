@@ -39,6 +39,9 @@ export const customerPaymentsApi = {
   listBySale: (saleId: string): Promise<CustomerPayment[]> =>
     api.get(`/customer-payments/sale/${saleId}`).then((r) => r.data),
 
+  listByCustomer: (customerId: string): Promise<CustomerPayment[]> =>
+    api.get(`/customer-payments/customer/${customerId}`).then((r) => r.data),
+
   void: (id: string): Promise<CustomerPayment> =>
     api.delete(`/customer-payments/${id}`).then((r) => r.data),
 };

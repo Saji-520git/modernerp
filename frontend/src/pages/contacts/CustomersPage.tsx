@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Pencil, ToggleLeft, ToggleRight, X,
@@ -194,7 +195,8 @@ function CustomerModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
-  const queryClient = useQueryClient();
+  const navigate     = useNavigate();
+  const queryClient  = useQueryClient();
   const PAGE_SIZE = 15;
   const [search, setSearch] = useState('');
   const [page, setPage]     = useState(1);
@@ -327,7 +329,12 @@ export default function CustomersPage() {
                   className={`hover:bg-slate-50 transition-colors ${!item.isActive ? 'opacity-50' : ''}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{item.name}</div>
+                    <button
+                      onClick={() => navigate(`/customers/${item.id}`)}
+                      className="font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left"
+                    >
+                      {item.name}
+                    </button>
                     <div className="text-xs text-slate-400 mt-0.5">{item.address || '—'}</div>
                   </td>
                   <td className="px-4 py-3">

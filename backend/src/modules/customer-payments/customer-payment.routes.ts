@@ -8,6 +8,7 @@ export const router = Router();
 
 router.use(requireAuth);
 
-router.post(  '/',               h(ctrl.createCustomerPayment));
-router.get(   '/sale/:saleId',   h(ctrl.listCustomerPayments));
-router.delete('/:id',            h(requirePermission('manage_settings')), h(ctrl.voidCustomerPayment));
+router.post(  '/',                              h(ctrl.createCustomerPayment));
+router.get(   '/sale/:saleId',                  h(ctrl.listCustomerPayments));
+router.get(   '/customer/:customerId',           h(ctrl.listPaymentsByCustomer));
+router.delete('/:id',                           h(requirePermission('manage_settings')), h(ctrl.voidCustomerPayment));

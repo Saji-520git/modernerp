@@ -207,6 +207,7 @@ export const salesApi = {
   listReturns: (params?: {
     search?: string;
     saleId?: string;
+    customerId?: string;
     page?: number;
     pageSize?: number;
   }): Promise<ReturnListResponse> =>
