@@ -177,7 +177,7 @@ function CustomerModal({
               <div className="space-y-3 bg-amber-50/50 border border-amber-100 rounded-xl p-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Credit Limit ($)</label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Credit Limit (Rs.)</label>
                     <input
                       type="number" min="0" step="0.01"
                       value={creditLimit}

@@ -681,13 +681,14 @@ function HoldModal({
 // ─── PaymentDialog ────────────────────────────────────────────────────────────
 
 function PaymentDialog({
-  totalCents, onConfirm, onClose, isPending, customer,
+  totalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
 }: {
   totalCents: number;
   onConfirm: (method: AllPaymentMethods, receivedCents?: number) => void;
   onClose: () => void;
   isPending: boolean;
   customer: CustomerOption | null;
+  canSellOnCredit: boolean;
 }) {
   const [activeTab, setActiveTab]     = useState<PayTab>('CASH');
   const [tabsFocused, setTabsFocused] = useState(true);
@@ -700,7 +701,14 @@ function PaymentDialog({
   const amountRef  = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
-  const creditOkForTab = customer?.creditEnabled === true;
+  const creditOkForTab = customer?.creditEnabled === true && canSellOnCredit;
+
+  const { data: creditInfo } = useQuery({
+    queryKey: ['customer-credit-dialog', customer?.id],
+    queryFn: () => posApi.getCustomerCredit(customer!.id),
+    enabled: !!customer && activeTab === 'CREDIT' && canSellOnCredit,
+    staleTime: 30_000,
+  });
 
   const PAY_TABS: { key: PayTab; label: string; icon: ReactNode; disabled?: boolean }[] = [
     { key: 'CASH',   label: 'Cash',   icon: <Banknote size={14} /> },
@@ -943,6 +951,24 @@ function PaymentDialog({
                 <p className="text-sm text-amber-800">
                   This sale will be recorded as credit. Payment due from customer.
                 </p>
+                {creditInfo && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white border border-amber-200 rounded-lg py-2 px-1">
+                      <p className="text-[10px] text-slate-500 font-medium">Limit</p>
+                      <p className="text-sm font-bold text-slate-800">{formatCents(creditInfo.limit)}</p>
+                    </div>
+                    <div className="bg-white border border-amber-200 rounded-lg py-2 px-1">
+                      <p className="text-[10px] text-slate-500 font-medium">Used</p>
+                      <p className="text-sm font-bold text-red-600">{formatCents(creditInfo.balance)}</p>
+                    </div>
+                    <div className={`border rounded-lg py-2 px-1 ${creditInfo.isOverLimit ? 'bg-red-50 border-red-300' : creditInfo.isNearLimit ? 'bg-yellow-50 border-yellow-300' : 'bg-green-50 border-green-200'}`}>
+                      <p className="text-[10px] text-slate-500 font-medium">Available</p>
+                      <p className={`text-sm font-bold ${creditInfo.isOverLimit ? 'text-red-600' : 'text-green-700'}`}>
+                        {creditInfo.available < 0 ? '∞' : formatCents(creditInfo.available)}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Notes (optional)</label>
@@ -1140,6 +1166,7 @@ export default function POSPage() {
   const qc        = useQueryClient();
 
   const isAdmin   = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canSellOnCredit = user?.permissions?.includes('sell_on_credit') ?? isAdmin;
 
   async function handleLogout() {
     try {
@@ -2363,6 +2390,7 @@ export default function POSPage() {
           onClose={() => setShowPayment(false)}
           isPending={checkoutMutation.isPending}
           customer={customer}
+          canSellOnCredit={canSellOnCredit}
         />
       )}
 
