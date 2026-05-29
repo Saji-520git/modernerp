@@ -418,13 +418,22 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sale.lines?.map(l => (
-                    <tr key={l.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5"><p className="font-medium text-slate-800">{l.product.name}</p><p className="text-xs text-slate-400">{l.product.sku}</p></td>
-                      <td className="px-4 py-2.5 text-right text-slate-700">{Number(l.qty)} {l.product.unit?.shortCode}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-700">{formatCents(l.unitPriceCents)}</td>
-                      {/* Tax% cell hidden */}
-                      <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{formatCents(l.lineTotalCents)}</td>
-                    </tr>
+                    <React.Fragment key={l.id}>
+                      <tr className="hover:bg-slate-50">
+                        <td className="px-4 py-2.5"><p className="font-medium text-slate-800">{l.product.name}</p><p className="text-xs text-slate-400">{l.product.sku}</p></td>
+                        <td className="px-4 py-2.5 text-right text-slate-700">{Number(l.qty)} {l.product.unit?.shortCode}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-700">{formatCents(l.unitPriceCents)}</td>
+                        {/* Tax% cell hidden */}
+                        <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{formatCents(l.lineTotalCents)}</td>
+                      </tr>
+                      {l.discountCents > 0 && (
+                        <tr className="bg-slate-50">
+                          <td colSpan={4} className="px-4 pb-2 pt-0">
+                            <span className="text-xs text-red-500 pl-2">Discount: −{formatCents(l.discountCents)}</span>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
