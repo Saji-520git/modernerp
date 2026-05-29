@@ -74,7 +74,7 @@ export function generateReceiptHtml(
   // 1. Logo — only when base64 available and enabled
   if (logoBase64 && settings.receiptShowLogo) {
     header += `<div style="text-align:center;margin:0 0 3px 0;padding:0;">
-      <img src="${logoBase64}" style="max-height:100px;max-width:220px;display:block;margin:0 auto;" alt="" />
+      <img src="${logoBase64}" style="max-height:102px;max-width:222px;display:block;margin:0 auto;" alt="" />
     </div>`;
   }
 
@@ -257,6 +257,7 @@ export function generateReceiptHtml(
   footer += divider();
   footer += `<p style="text-align:center;font-size:14px;font-weight:500;margin:2px 0;">${esc(L.thankYou)}</p>`;
   footer += `<p style="text-align:center;font-size:13px;color:#888;margin:1px 0 4px;">${esc(L.poweredBy)}</p>`;
+  footer += `<p style="text-align:center;font-size:11px;color:#888888;margin-top:4px;">Powered by BRO_Code ERP | 0757187506</p>`;
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
