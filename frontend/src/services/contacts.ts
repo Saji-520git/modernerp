@@ -40,6 +40,16 @@ export interface CustomerDetail extends Customer {
   updatedAt: string;
 }
 
+/** Extended supplier returned by GET /suppliers/:id — includes aggregates */
+export interface SupplierDetail extends Supplier {
+  _count: { purchases: number };
+  totalPurchaseAmount: number;
+  totalPaid: number;
+  outstandingBalance: number;
+  lastOrderDate: string | null;
+  totalReturns: number;
+}
+
 export interface ContactListResponse<T> {
   total: number;
   page: number;
@@ -72,6 +82,9 @@ export const suppliersApi = {
 
   update: (id: string, body: ContactBody): Promise<Supplier> =>
     api.put(`/suppliers/${id}`, body).then((r) => r.data),
+
+  getOne: (id: string): Promise<SupplierDetail> =>
+    api.get(`/suppliers/${id}`).then((r) => r.data),
 
   toggleActive: (id: string): Promise<Supplier> =>
     api.patch(`/suppliers/${id}/toggle-active`).then((r) => r.data),

@@ -28,6 +28,9 @@ export const supplierPaymentsApi = {
   listByPurchase: (purchaseId: string): Promise<SupplierPayment[]> =>
     api.get(`/supplier-payments/purchase/${purchaseId}`).then((r) => r.data),
 
+  listBySupplier: (supplierId: string): Promise<SupplierPayment[]> =>
+    api.get(`/supplier-payments/supplier/${supplierId}`).then((r) => r.data),
+
   getVoucherData: (paymentId: string): Promise<SupplierPaymentVoucher> =>
     api.get(`/supplier-payments/${paymentId}/voucher-data`).then((r) => r.data),
 

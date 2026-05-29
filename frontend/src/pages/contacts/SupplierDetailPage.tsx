@@ -1,0 +1,759 @@
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft, Pencil, Plus, X, Check,
+  Truck, AlertTriangle, Receipt, RotateCcw,
+  DollarSign, TrendingDown, Wallet, ChevronRight,
+  Package,
+} from 'lucide-react';
+import {
+  suppliersApi,
+  type SupplierDetail,
+  type ContactBody,
+} from '../../services/contacts';
+import {
+  purchasesApi,
+  type Purchase,
+  type PurchaseLine,
+} from '../../services/purchases';
+import {
+  supplierPaymentsApi,
+} from '../../services/supplierPayments';
+import type { SupplierPayment } from '../../services/purchases';
+import {
+  purchaseReturnsApi,
+  type PurchaseReturn,
+  RETURN_STATUS_COLORS,
+  RETURN_STATUS_LABELS,
+} from '../../services/purchaseReturns';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtCents(cents: number) {
+  return `Rs. ${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+}
+
+const PO_STATUS_CLS: Record<string, string> = {
+  DRAFT:     'bg-slate-100 text-slate-600',
+  CONFIRMED: 'bg-green-100 text-green-700',
+  CANCELLED: 'bg-red-100 text-red-600',
+};
+const PAY_STATUS_CLS: Record<string, string> = {
+  UNPAID:  'bg-red-50 text-red-600',
+  PARTIAL: 'bg-amber-50 text-amber-700',
+  PAID:    'bg-green-50 text-green-700',
+};
+const SPAY_LABELS: Record<string, string> = {
+  CASH: 'Cash', CHEQUE: 'Cheque', BANK_TRANSFER: 'Bank Transfer',
+  CARD: 'Card', QR_PAY: 'QR Pay', OTHER: 'Other',
+};
+
+// ─── Supplier Modal (ContactBody — no credit fields) ──────────────────────────
+
+function SupplierModal({
+  title, initial, onSave, onClose, loading, error,
+}: {
+  title: string;
+  initial?: SupplierDetail;
+  onSave: (body: ContactBody) => void;
+  onClose: () => void;
+  loading: boolean;
+  error: string;
+}) {
+  const [name, setName]       = useState(initial?.name ?? '');
+  const [phone, setPhone]     = useState(initial?.phone ?? '');
+  const [email, setEmail]     = useState(initial?.email ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      name,
+      phone: phone || undefined,
+      email: email || undefined,
+      address: address || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-y-auto max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="text-base font-semibold text-slate-800">{title}</h2>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+          )}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
+              <input required value={name} onChange={(e) => setName(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. ABC Traders" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="+94 77 000 0000" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="email@example.com" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                placeholder="Street, City, Country" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+              {loading ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Purchase View Modal (read-only) ─────────────────────────────────────────
+
+function PurchaseViewModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+  const { data: po, isLoading } = useQuery({
+    queryKey: ['purchase', poId],
+    queryFn: () => purchasesApi.getPurchase(poId),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-emerald-50">
+              <Package className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-800">{po?.number ?? '…'}</h2>
+              <p className="text-xs text-slate-400">{po ? fmtDate(po.date) : ''}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {isLoading && (
+            <div className="text-center py-12 text-slate-400">Loading…</div>
+          )}
+          {po && (
+            <>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Supplier</p>
+                  <p className="font-medium text-slate-800">{po.supplier.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Warehouse</p>
+                  <p className="font-medium text-slate-800">{po.warehouse.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Status</p>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PO_STATUS_CLS[po.status]}`}>
+                    {po.status}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Payment</p>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[po.paymentStatus]}`}>
+                    {po.paymentStatus}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Prepared by</p>
+                  <p className="font-medium text-slate-800">{po.createdBy.fullName}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Items</p>
+                <div className="rounded-xl overflow-hidden border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Product</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">Qty</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">Unit Cost</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(po.lines as PurchaseLine[] | undefined)?.map((l) => (
+                        <tr key={l.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-2.5">
+                            <p className="font-medium text-slate-800">{l.product.name}</p>
+                            <p className="text-xs text-slate-400">{l.product.sku}</p>
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-slate-700">{Number(l.qty)}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-700">{fmtCents(l.unitCostCents)}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{fmtCents(l.lineTotalCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
+                <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{fmtCents(po.subtotalCents)}</span></div>
+                <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800">
+                  <span>Total</span><span>{fmtCents(po.totalCents)}</span>
+                </div>
+                <div className="flex justify-between text-green-600 font-medium">
+                  <span>Paid</span><span>{fmtCents(po.paidCents)}</span>
+                </div>
+                {po.totalCents - po.paidCents > 0 && (
+                  <div className="flex justify-between text-red-600 font-bold">
+                    <span>Balance Due</span><span>{fmtCents(po.totalCents - po.paidCents)}</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 border border-slate-200 text-sm text-slate-600 rounded-lg hover:bg-slate-50">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+
+function StatCard({
+  icon, label, value, sub, accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: 'green' | 'orange' | 'red' | 'slate' | 'indigo' | 'emerald';
+}) {
+  const colors: Record<string, string> = {
+    green:   'bg-green-50  text-green-600',
+    orange:  'bg-amber-50  text-amber-600',
+    red:     'bg-red-50    text-red-600',
+    slate:   'bg-slate-100 text-slate-500',
+    indigo:  'bg-indigo-50 text-indigo-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+  };
+  const cls = colors[accent ?? 'slate'];
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4">
+      <div className={`p-3 rounded-xl ${cls}`}>{icon}</div>
+      <div>
+        <p className="text-xs text-slate-500 font-medium mb-0.5">{label}</p>
+        <p className="text-lg font-bold text-slate-800 leading-tight">{value}</p>
+        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Purchase Orders Tab ──────────────────────────────────────────────────────
+
+function PurchasesTab({
+  supplierId, onViewPO,
+}: {
+  supplierId: string;
+  onViewPO: (id: string) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['supplier-purchases', supplierId],
+    queryFn: () => purchasesApi.listPurchases({ supplierId, pageSize: 50 }),
+  });
+  const orders = data?.data ?? [];
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading…</div>;
+  if (orders.length === 0) {
+    return (
+      <div className="text-center py-16 text-slate-400">
+        <Package size={36} className="mx-auto mb-3 text-slate-300" />
+        <p className="font-medium text-slate-500">No purchase orders yet</p>
+        <p className="text-sm mt-1">Purchase orders for this supplier will appear here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">PO Number</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Items</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Paid</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {orders.map((po) => (
+            <tr key={po.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(po.date)}</td>
+              <td className="px-4 py-3">
+                <button onClick={() => onViewPO(po.id)}
+                  className="font-mono font-semibold text-emerald-600 hover:text-emerald-800 hover:underline">
+                  {po.number}
+                </button>
+              </td>
+              <td className="px-4 py-3 text-right text-slate-600">
+                {po._count?.lines ?? '—'}
+              </td>
+              <td className="px-4 py-3 text-right font-medium text-slate-800 whitespace-nowrap">
+                {fmtCents(po.totalCents)}
+              </td>
+              <td className="px-4 py-3 text-right font-medium text-emerald-600 whitespace-nowrap">
+                {fmtCents(po.paidCents)}
+              </td>
+              <td className="px-4 py-3 text-center">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[po.paymentStatus]}`}>
+                  {po.paymentStatus}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center">
+                <button onClick={() => onViewPO(po.id)}
+                  className="p-1.5 rounded hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors"
+                  title="View PO">
+                  <ChevronRight size={14} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {(data?.total ?? 0) > 50 && (
+        <p className="text-xs text-slate-400 text-center py-3">
+          Showing first 50 of {data?.total} orders
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Payments Tab ─────────────────────────────────────────────────────────────
+
+function PaymentsTab({ supplierId }: { supplierId: string }) {
+  const { data: payments = [], isLoading } = useQuery({
+    queryKey: ['supplier-payments-by', supplierId],
+    queryFn: () => supplierPaymentsApi.listBySupplier(supplierId),
+  });
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading…</div>;
+  if ((payments as SupplierPayment[]).length === 0) {
+    return (
+      <div className="text-center py-16 text-slate-400">
+        <Wallet size={36} className="mx-auto mb-3 text-slate-300" />
+        <p className="font-medium text-slate-500">No payments recorded</p>
+        <p className="text-sm mt-1">Payments against purchase orders will appear here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Reference</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">PO</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Amount</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Method</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {(payments as SupplierPayment[]).map((p) => (
+            <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(p.paymentDate)}</td>
+              <td className="px-4 py-3">
+                <p className="font-mono text-xs text-slate-600">{p.paymentNumber}</p>
+                {p.referenceNo && <p className="text-xs text-slate-400">{p.referenceNo}</p>}
+              </td>
+              <td className="px-4 py-3 font-mono text-xs text-emerald-600">
+                {/* purchaseId mapped via purchase relation — use paymentNumber prefix */}
+                {p.purchaseId}
+              </td>
+              <td className="px-4 py-3 text-right font-semibold text-emerald-600 whitespace-nowrap">
+                {fmtCents(p.amountCents)}
+              </td>
+              <td className="px-4 py-3 text-center">
+                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
+                  {SPAY_LABELS[p.paymentMethod] ?? p.paymentMethod}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-slate-500 text-xs">{p.notes ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Returns Tab ──────────────────────────────────────────────────────────────
+
+function ReturnsTab({ supplierId }: { supplierId: string }) {
+  const { data: returns = [], isLoading } = useQuery({
+    queryKey: ['supplier-returns', supplierId],
+    queryFn: () => purchaseReturnsApi.list(undefined, supplierId),
+  });
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading…</div>;
+  if ((returns as PurchaseReturn[]).length === 0) {
+    return (
+      <div className="text-center py-16 text-slate-400">
+        <RotateCcw size={36} className="mx-auto mb-3 text-slate-300" />
+        <p className="font-medium text-slate-500">No returns</p>
+        <p className="text-sm mt-1">Returns linked to this supplier's orders will appear here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Return No</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Against PO</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Items</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {(returns as PurchaseReturn[]).map((ret) => (
+            <tr key={ret.id} className="hover:bg-slate-50 transition-colors">
+              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(ret.createdAt)}</td>
+              <td className="px-4 py-3">
+                <span className="font-mono font-semibold text-rose-600">{ret.number}</span>
+              </td>
+              <td className="px-4 py-3 text-slate-600 font-mono text-xs">{ret.purchase.number}</td>
+              <td className="px-4 py-3 text-center">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RETURN_STATUS_COLORS[ret.status]}`}>
+                  {RETURN_STATUS_LABELS[ret.status]}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-right text-slate-600">
+                {ret._count?.lines ?? '—'}
+              </td>
+              <td className="px-4 py-3 text-right font-semibold text-rose-600 whitespace-nowrap">
+                − {fmtCents(ret.totalCents)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Account Info Tab ─────────────────────────────────────────────────────────
+
+function AccountInfoTab({
+  supplier, onEdit,
+}: {
+  supplier: SupplierDetail;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div className="bg-slate-50 rounded-xl p-5 space-y-3">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact Details</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">Full Name</p>
+            <p className="font-medium text-slate-800">{supplier.name}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">Phone</p>
+            <p className="font-medium text-slate-800">{supplier.phone ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">Email</p>
+            <p className="font-medium text-slate-800">{supplier.email ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">Status</p>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${supplier.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+              {supplier.isActive ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          {supplier.address && (
+            <div className="col-span-2">
+              <p className="text-xs text-slate-400 mb-0.5">Address</p>
+              <p className="font-medium text-slate-800">{supplier.address}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 rounded-xl p-5">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Supplier Since</h3>
+        <p className="text-sm text-slate-700">
+          Added on{' '}
+          <span className="font-medium">{fmtDate(supplier.createdAt)}</span>
+        </p>
+        {supplier.lastOrderDate && (
+          <p className="text-sm text-slate-500 mt-1">
+            Last order:{' '}
+            <span className="font-medium">{fmtDate(supplier.lastOrderDate)}</span>
+          </p>
+        )}
+      </div>
+
+      <div>
+        <button onClick={onEdit}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          <Pencil size={14} /> Edit Supplier
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+type TabKey = 'purchases' | 'payments' | 'returns' | 'account';
+
+const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'purchases', label: 'Purchase Orders', icon: <Package    size={14} /> },
+  { key: 'payments',  label: 'Payments',         icon: <Wallet     size={14} /> },
+  { key: 'returns',   label: 'Returns',           icon: <RotateCcw  size={14} /> },
+  { key: 'account',   label: 'Account Info',      icon: <Truck      size={14} /> },
+];
+
+export default function SupplierDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [tab, setTab]             = useState<TabKey>('purchases');
+  const [editOpen, setEditOpen]   = useState(false);
+  const [editError, setEditError] = useState('');
+  const [viewPoId, setViewPoId]   = useState<string | null>(null);
+
+  const { data: supplier, isLoading } = useQuery({
+    queryKey: ['supplier-detail', id],
+    queryFn: () => suppliersApi.getOne(id!),
+    enabled: !!id,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (body: ContactBody) => suppliersApi.update(id!, body),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['supplier-detail', id], (prev: SupplierDetail | undefined) =>
+        prev ? { ...prev, ...updated } : prev,
+      );
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      setEditOpen(false);
+      setEditError('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setEditError(msg ?? 'Failed to save');
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm">Loading supplier…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!supplier) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400">
+        <div className="text-center">
+          <Truck size={40} className="mx-auto mb-3 text-slate-300" />
+          <p className="font-medium text-slate-600">Supplier not found</p>
+          <button onClick={() => navigate('/suppliers')}
+            className="mt-3 text-sm text-indigo-600 hover:underline">← Back to Suppliers</button>
+        </div>
+      </div>
+    );
+  }
+
+  const outstanding = supplier.outstandingBalance;
+
+  return (
+    <div className="p-6 space-y-6">
+
+      {/* ── Page Header ────────────────────────────────────────────────────────── */}
+      <div>
+        <button onClick={() => navigate('/suppliers')}
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-4 transition-colors">
+          <ArrowLeft size={14} /> Suppliers
+        </button>
+
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+              <span className="text-emerald-600 font-bold text-xl">
+                {supplier.name.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-slate-800">{supplier.name}</h1>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${supplier.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {supplier.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
+                {supplier.phone && <span>{supplier.phone}</span>}
+                {supplier.phone && supplier.email && <span>·</span>}
+                {supplier.email && <span>{supplier.email}</span>}
+                {supplier._count.purchases > 0 && (
+                  <>
+                    <span>·</span>
+                    <span>{supplier._count.purchases} order{supplier._count.purchases !== 1 ? 's' : ''}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => navigate('/purchases')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+              <Plus size={14} /> New PO
+            </button>
+            <button onClick={() => { setEditError(''); setEditOpen(true); }}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+              <Pencil size={14} /> Edit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Summary Cards ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Receipt size={20} />}
+          label="Total Orders"
+          value={fmtCents(supplier.totalPurchaseAmount)}
+          sub={`${supplier._count.purchases} order${supplier._count.purchases !== 1 ? 's' : ''}`}
+          accent="emerald"
+        />
+        <StatCard
+          icon={<Check size={20} />}
+          label="Total Paid"
+          value={fmtCents(supplier.totalPaid)}
+          accent="green"
+        />
+        <StatCard
+          icon={outstanding > 0 ? <AlertTriangle size={20} /> : <DollarSign size={20} />}
+          label="Outstanding Balance"
+          value={fmtCents(outstanding)}
+          sub={outstanding === 0 ? 'All orders settled' : undefined}
+          accent={outstanding > 0 ? 'orange' : 'green'}
+        />
+        <StatCard
+          icon={<TrendingDown size={20} />}
+          label="Total Returns"
+          value={String(supplier.totalReturns)}
+          sub={supplier.totalReturns === 0 ? 'No returns' : `${supplier.totalReturns} debit note${supplier.totalReturns !== 1 ? 's' : ''}`}
+          accent={supplier.totalReturns > 0 ? 'red' : 'slate'}
+        />
+      </div>
+
+      {/* ── Tabs ───────────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex border-b border-slate-200">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-1.5 px-5 py-3.5 text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? 'border-b-2 border-emerald-600 text-emerald-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-[300px]">
+          {tab === 'purchases' && <PurchasesTab supplierId={id!} onViewPO={setViewPoId} />}
+          {tab === 'payments'  && <PaymentsTab  supplierId={id!} />}
+          {tab === 'returns'   && <ReturnsTab   supplierId={id!} />}
+          {tab === 'account'   && <AccountInfoTab supplier={supplier} onEdit={() => { setEditError(''); setEditOpen(true); }} />}
+        </div>
+      </div>
+
+      {/* ── Modals ─────────────────────────────────────────────────────────────── */}
+      {editOpen && (
+        <SupplierModal
+          title="Edit Supplier"
+          initial={supplier}
+          onSave={(body) => updateMutation.mutate(body)}
+          onClose={() => setEditOpen(false)}
+          loading={updateMutation.isPending}
+          error={editError}
+        />
+      )}
+
+      {viewPoId && (
+        <PurchaseViewModal
+          poId={viewPoId}
+          onClose={() => setViewPoId(null)}
+        />
+      )}
+    </div>
+  );
+}
