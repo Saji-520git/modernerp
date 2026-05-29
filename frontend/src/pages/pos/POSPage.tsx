@@ -1651,11 +1651,15 @@ export default function POSPage() {
     },
     onError: (err: unknown) => {
       sound.error();
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
       const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Checkout failed — please try again';
-      setQuickAddToast(msg);
-      setTimeout(() => setQuickAddToast(null), 5000);
+        data?.message
+        ?? data?.error
+        ?? (err as { message?: string })?.message
+        ?? 'Payment failed. Please try again.';
+      setQuickAddToast(`⚠ ${msg}`);
+      setTimeout(() => setQuickAddToast(null), 7000);
+      // do NOT call setShowPayment(false) — leave modal open so cashier can choose differently
     },
   });
 
