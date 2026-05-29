@@ -215,47 +215,44 @@ async function drawDocHeader(
   let leftY  = 14;
   let rightY = 14;
 
-  // ── Left: Logo or company name ────────────────────────────────────────────
+  // ── Left: Logo (if enabled) + company name + contact info ───────────────
+  // Logo sits above company name when available
   if (logoBase64 && settings.invoiceShowLogo) {
     try {
       doc.addImage(logoBase64, logoImgFormat(logoBase64), L, leftY, 30, 17);
       leftY += 20;
     } catch {
-      // Image decode failed — fall back to text name
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14);
-      doc.setTextColor(...TEXT);
-      doc.text(settings.businessName || 'My Business', L, leftY + 6);
-      leftY += 10;
+      // Image decode failed — company name still renders below
     }
-  } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(...TEXT);
-    doc.text(settings.businessName || 'My Business', L, leftY + 6);
-    leftY += 10;
   }
+
+  // Company name always renders (14pt bold #111827)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(17, 24, 39);
+  doc.text(settings.businessName || 'My Business', L, leftY + 6);
+  leftY += 10;
 
   if (settings.businessAddress) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LABEL);
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
     doc.text(settings.businessAddress, L, leftY);
     leftY += 5;
   }
 
   if (settings.businessPhone) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LABEL);
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
     doc.text(settings.businessPhone, L, leftY);
     leftY += 5;
   }
 
   if (settings.businessEmail) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...LABEL);
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
     doc.text(settings.businessEmail, L, leftY);
     leftY += 5;
   }
