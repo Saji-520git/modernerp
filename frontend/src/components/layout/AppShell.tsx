@@ -291,7 +291,7 @@ export default function AppShell() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto erp-content">
         <Outlet />
       </main>
     </div>

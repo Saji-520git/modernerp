@@ -36,6 +36,14 @@
   }
 }
 
+/* ── Large monitor scaling ────────────────────────────────────────────────── */
+
+@media (min-width: 1920px) {
+  .erp-content {
+    font-size: 15px;
+  }
+}
+
 /* ── Print styles ─────────────────────────────────────────────────────────── */
 
 .print-header {
