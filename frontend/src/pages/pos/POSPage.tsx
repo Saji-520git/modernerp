@@ -1169,18 +1169,37 @@ export default function POSPage() {
   const canSellOnCredit = user?.permissions?.includes('sell_on_credit') ?? isAdmin;
 
   async function handleLogout() {
-    try {
-      const result = await shiftsApi.list({ status: 'OPEN', userId: user?.id });
-      if (result.data && result.data.length > 0) {
-        window.alert('Please close your POS shift before logging out.');
-        return;
-      }
-    } catch {
-      // If shift check fails, allow logout
+    if (currentShift) {
+      setSignOutCash('');
+      setSignOutNote('');
+      setSignOutError(null);
+      setShowSignOutShift(true);
+      return;
     }
     exitPOS();
     logout();
     navigate('/login');
+  }
+
+  async function handleSignOutWithClose() {
+    if (!currentShift) return;
+    setSignOutPending(true);
+    setSignOutError(null);
+    try {
+      await shiftsApi.close({
+        shiftId:     currentShift.id,
+        closingCash: parseFloat(signOutCash) || 0,
+        note:        signOutNote.trim() || undefined,
+      });
+      storeCloseShift();
+      exitPOS();
+      logout();
+      navigate('/login');
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      setSignOutError(data?.message ?? data?.error ?? 'Failed to close shift. Please try again.');
+      setSignOutPending(false);
+    }
   }
 
   // ── Refs ──────────────────────────────────────────────────────────────────────
@@ -1229,6 +1248,11 @@ export default function POSPage() {
   const [showWhDropdown,      setShowWhDropdown]      = useState(false);
   const [showQuickAddCustomer,setShowQuickAddCustomer]= useState(false);
   const [showCloseShift,      setShowCloseShift]      = useState(false);
+  const [showSignOutShift,    setShowSignOutShift]    = useState(false);
+  const [signOutCash,         setSignOutCash]         = useState('');
+  const [signOutNote,         setSignOutNote]         = useState('');
+  const [signOutError,        setSignOutError]        = useState<string | null>(null);
+  const [signOutPending,      setSignOutPending]      = useState(false);
   const [quickAddBarcode,     setQuickAddBarcode]      = useState<string | null>(null);
   const [quickAddToast,       setQuickAddToast]        = useState<string | null>(null);
   const [barcodeLoading,      setBarcodeLoading]       = useState(false);
@@ -1650,11 +1674,15 @@ export default function POSPage() {
     },
     onError: (err: unknown) => {
       sound.error();
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
       const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Checkout failed — please try again';
-      setQuickAddToast(msg);
-      setTimeout(() => setQuickAddToast(null), 5000);
+        data?.message
+        ?? data?.error
+        ?? (err as { message?: string })?.message
+        ?? 'Payment failed. Please try again.';
+      setQuickAddToast(`⚠ ${msg}`);
+      setTimeout(() => setQuickAddToast(null), 7000);
+      // do NOT call setShowPayment(false) — leave modal open so cashier can choose differently
     },
   });
 
@@ -1766,13 +1794,11 @@ export default function POSPage() {
         return;
       }
 
-      // Ctrl+Shift+X — close shift
+      // Ctrl+Shift+X — close shift (any user who has an open shift)
       if (e.ctrlKey && e.shiftKey && e.key === 'X') {
         e.preventDefault();
-        if (user?.role === 'ADMIN' || user?.role === 'MANAGER') {
+        if (currentShift) {
           setShowCloseShift(true);
-        } else {
-          setShowExitBlocked(true);
         }
         return;
       }
@@ -1790,6 +1816,7 @@ export default function POSPage() {
         if (showHoldModal)        { setShowHoldModal(false);        return; }
         if (showShortcuts)        { setShowShortcuts(false);        return; }
         if (showExitBlocked)      { setShowExitBlocked(false);      return; }
+        if (showSignOutShift)     { setShowSignOutShift(false);     return; }
         if (showQuickAddCustomer) { setShowQuickAddCustomer(false); return; }
         if (quickAddBarcode)      { setQuickAddBarcode(null);       return; }
         if (showHolds)            { setShowHolds(false);            return; }
@@ -1802,7 +1829,7 @@ export default function POSPage() {
       // ── Don't fire remaining shortcuts when typing in an input ────────────────
       if (inInput) return;
 
-      const anyDialog = showCloseShift || showPayment || showHoldModal || showShortcuts
+      const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
         || showReceipt || showCustomer || !!quickAddBarcode;
       if (anyDialog) return;
@@ -1898,7 +1925,7 @@ export default function POSPage() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showCloseShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
+  }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
       showHolds, showReceipt, showCustomer, quickAddBarcode,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale]);
 
@@ -2494,6 +2521,62 @@ export default function POSPage() {
         </div>
       )}
 
+      {/* Close Shift & Sign Out modal */}
+      {showSignOutShift && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+          onClick={() => { if (!signOutPending) setShowSignOutShift(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-slate-800 text-lg mb-1">Close Shift &amp; Sign Out</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              You have an open shift. Close your shift before signing out.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Closing Cash (Rs.)
+                </label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={signOutCash}
+                  onChange={e => setSignOutCash(e.target.value)}
+                  placeholder="0.00"
+                  autoFocus
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-right font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={signOutNote}
+                  onChange={e => setSignOutNote(e.target.value)}
+                  placeholder="Add a note…"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              {signOutError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {signOutError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button type="button" onClick={() => setShowSignOutShift(false)} disabled={signOutPending}
+                className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition">
+                Cancel
+              </button>
+              <button type="button" onClick={handleSignOutWithClose}
+                disabled={signOutPending || signOutCash === ''}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition">
+                {signOutPending ? 'Closing…' : 'Close Shift & Sign Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showShortcuts && (
         <div className="fixed inset-0 z-50 pointer-events-none">
           {/* Clickable backdrop (only right panel area is interactive) */}
@@ -2580,8 +2663,8 @@ export default function POSPage() {
             storeCloseShift();
             qc.setQueryData(['current-shift', warehouseId], null);
             setShowCloseShift(false);
-            exitPOS();
-            navigate('/');
+            setQuickAddToast('✓ Shift closed');
+            setTimeout(() => setQuickAddToast(null), 3000);
           }}
         />
       )}
