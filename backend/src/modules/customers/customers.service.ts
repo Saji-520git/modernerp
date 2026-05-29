@@ -32,9 +32,46 @@ export const customersService = {
   },
 
   getOne: async (id: string) => {
-    const customer = await prisma.customer.findUnique({ where: { id } });
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: { _count: { select: { sales: true, customerPayments: true } } },
+    });
     if (!customer) throw new HttpError(404, 'Customer not found');
-    return customer;
+
+    // Aggregate totals across CONFIRMED sales
+    const salesAgg = await (prisma as any).sale.aggregate({
+      where: { customerId: id, status: 'CONFIRMED', deletedAt: null },
+      _sum: { totalCents: true, paidCents: true },
+      _max: { date: true },
+    });
+
+    const totalSalesAmount   = salesAgg._sum.totalCents  ?? 0;
+    const totalPaid          = salesAgg._sum.paidCents   ?? 0;
+    const outstandingBalance = totalSalesAmount - totalPaid;
+    const lastPurchaseDate   = salesAgg._max.date        ?? null;
+
+    // Credit used = outstanding balance on unpaid/partial confirmed sales
+    let creditUsedCents = 0;
+    if (customer.creditEnabled) {
+      const unpaidAgg = await (prisma as any).sale.aggregate({
+        where: {
+          customerId: id, status: 'CONFIRMED', deletedAt: null,
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        _sum: { totalCents: true, paidCents: true },
+      });
+      creditUsedCents =
+        (unpaidAgg._sum.totalCents ?? 0) - (unpaidAgg._sum.paidCents ?? 0);
+    }
+
+    return {
+      ...customer,
+      totalSalesAmount,
+      totalPaid,
+      outstandingBalance,
+      lastPurchaseDate,
+      creditUsedCents,
+    };
   },
 
   create: async (input: CustomerBodyInput) => {

@@ -42,6 +42,13 @@ export const listCustomerPayments: RequestHandler = async (req, res) => {
   res.json(items);
 };
 
+// ─── GET /customer-payments/customer/:customerId ─────────────────────────────
+
+export const listPaymentsByCustomer: RequestHandler = async (req, res) => {
+  const items = await customerPaymentService.listByCustomer(req.params.customerId);
+  res.json(items);
+};
+
 // ─── DELETE /customer-payments/:id ────────────────────────────────────────────
 
 export const voidCustomerPayment: RequestHandler = async (req, res) => {

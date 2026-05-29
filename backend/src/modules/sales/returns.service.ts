@@ -19,10 +19,11 @@ export const returnsService = {
   // ── List returns ───────────────────────────────────────────────────────────
 
   list: async (input: ListReturnsInput) => {
-    const { search, saleId, page, pageSize } = input;
+    const { search, saleId, customerId, page, pageSize } = input;
 
     const where = {
-      ...(saleId && { saleId }),
+      ...(saleId     && { saleId }),
+      ...(customerId && { sale: { customerId } }),
       ...(search && {
         OR: [
           { number: { contains: search, mode: 'insensitive' as const } },
