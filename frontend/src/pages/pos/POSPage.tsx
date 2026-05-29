@@ -1771,13 +1771,11 @@ export default function POSPage() {
         return;
       }
 
-      // Ctrl+Shift+X — close shift
+      // Ctrl+Shift+X — close shift (any user who has an open shift)
       if (e.ctrlKey && e.shiftKey && e.key === 'X') {
         e.preventDefault();
-        if (user?.role === 'ADMIN' || user?.role === 'MANAGER') {
+        if (currentShift) {
           setShowCloseShift(true);
-        } else {
-          setShowExitBlocked(true);
         }
         return;
       }
@@ -2609,8 +2607,8 @@ export default function POSPage() {
             storeCloseShift();
             qc.setQueryData(['current-shift', warehouseId], null);
             setShowCloseShift(false);
-            exitPOS();
-            navigate('/');
+            setQuickAddToast('✓ Shift closed');
+            setTimeout(() => setQuickAddToast(null), 3000);
           }}
         />
       )}
