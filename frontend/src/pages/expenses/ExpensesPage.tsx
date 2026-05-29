@@ -379,7 +379,7 @@ function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -579,7 +579,7 @@ function RecurringTab({ categories }: { categories: ExpenseCategory[] }) {
       <p className="text-sm text-slate-500">
         Recurring expenses that repeat monthly. Click <strong>Record Now</strong> to log this month's occurrence.
       </p>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>

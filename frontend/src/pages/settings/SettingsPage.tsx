@@ -1130,7 +1130,7 @@ export default function SettingsPage() {
 
       {/* ── Right content ── */}
       <main className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-2xl">
+        <div className="max-w-3xl">
           {/* Read-only banner */}
           {readOnly && (
             <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">

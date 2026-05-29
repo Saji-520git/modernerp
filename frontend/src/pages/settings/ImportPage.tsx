@@ -65,7 +65,7 @@ export default function ImportPage() {
   const canConfirm = preview && preview.valid.length > 0;
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6">
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-slate-800">Import Products &amp; Stock</h1>

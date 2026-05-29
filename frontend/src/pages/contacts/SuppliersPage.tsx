@@ -160,7 +160,7 @@ export default function SuppliersPage() {
     <div className="p-6">
 
       {/* ── Page header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Suppliers</h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -188,7 +188,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>

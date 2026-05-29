@@ -1007,7 +1007,7 @@ export default function SalesPage() {
       </div>
 
       {/* ── Page Header ── */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Sales</h1>
           <p className="text-sm text-slate-500 mt-0.5">Invoices and POS transactions</p>
@@ -1019,7 +1019,7 @@ export default function SalesPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total Sales',  value: String(stats.count),             sub: 'transactions',      iconBg: 'bg-blue-50',    icon: <Package    size={22} className="text-blue-600" /> },
           { label: 'Revenue',      value: formatCents(stats.totalRevenue),  sub: 'this view',         iconBg: 'bg-violet-50',  icon: <TrendingUp size={22} className="text-violet-600" /> },
