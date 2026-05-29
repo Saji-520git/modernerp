@@ -209,8 +209,8 @@ export const dashboardService = {
     const result: { date: string; revenue: number; orders: number; expensesCents: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
-      d.setDate(d.getDate() - i);
-      d.setHours(0, 0, 0, 0);
+      d.setUTCHours(0, 0, 0, 0);
+      d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
       result.push({
         date:          key,
