@@ -1277,7 +1277,12 @@ export default function POSPage() {
   });
   useEffect(() => {
     if (warehouses.length > 0 && !warehouseId) {
-      const defaultWh = (warehouses as { id: string; isDefault?: boolean }[]).find(w => w.isDefault) ?? warehouses[0];
+      const whList = warehouses as { id: string; isDefault?: boolean }[];
+      // Priority 1: last-used warehouse from localStorage (if still in active list)
+      const saved   = localStorage.getItem('pos_warehouse_id');
+      const savedWh = saved ? whList.find(w => w.id === saved) : undefined;
+      // Priority 2: warehouse marked isDefault
+      const defaultWh = savedWh ?? whList.find(w => w.isDefault) ?? whList[0];
       setWarehouseId(defaultWh.id);
     }
   }, [warehouses, warehouseId]);
@@ -1977,7 +1982,7 @@ export default function POSPage() {
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {(warehouses as any[]).map(w => (
                 <button key={w.id} type="button"
-                  onClick={() => { setWarehouseId(w.id); setShowWhDropdown(false); }}
+                  onClick={() => { setWarehouseId(w.id); setShowWhDropdown(false); try { localStorage.setItem('pos_warehouse_id', w.id); } catch { /* ignore */ } }}
                   style={{
                     display: 'block', width: '100%', textAlign: 'left',
                     padding: '7px 10px', fontSize: 12, cursor: 'pointer', borderRadius: 5,
