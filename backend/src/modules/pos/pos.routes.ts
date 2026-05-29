@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as ctrl from './pos.controller.js';
 import { requireAuth, requirePermission, requireRole } from '../../middleware/auth.js';
+import { asyncHandler as h } from '../../middleware/async-handler.js';
 
 export const router: Router = Router();
 
@@ -11,7 +12,7 @@ router.get('/products', requirePermission('view_products'), ctrl.searchProducts)
 router.get('/sales', requirePermission('view_sales'), ctrl.listSales);
 router.get('/receipt/:id', requirePermission('view_sales'), ctrl.getReceipt);
 
-router.post('/checkout', requirePermission('pos_checkout'), ctrl.checkout);
+router.post('/checkout', requirePermission('pos_checkout'), h(ctrl.checkout));
 
 // ── Drafts ────────────────────────────────────────────────────────────────────
 router.get('/drafts',        requirePermission('pos_checkout'), ctrl.listDrafts);
