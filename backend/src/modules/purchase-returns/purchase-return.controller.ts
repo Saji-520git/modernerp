@@ -6,7 +6,8 @@ import { HttpError } from '../../middleware/error-handler.js';
 
 export const listReturns: RequestHandler = async (req, res) => {
   const purchaseId = req.query.purchaseId as string | undefined;
-  const items = await purchaseReturnService.listReturns(purchaseId);
+  const supplierId = req.query.supplierId as string | undefined;
+  const items = await purchaseReturnService.listReturns(purchaseId, supplierId);
   res.json(items);
 };
 

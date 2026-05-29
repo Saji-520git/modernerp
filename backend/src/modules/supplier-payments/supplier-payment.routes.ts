@@ -22,6 +22,13 @@ router.get(
   asyncHandler(ctrl.listByPurchase),
 );
 
+// GET  /api/v1/supplier-payments/supplier/:supplierId  — list for a supplier
+router.get(
+  '/supplier/:supplierId',
+  requirePermission('view_purchases'),
+  asyncHandler(ctrl.listBySupplier),
+);
+
 // GET  /api/v1/supplier-payments/:id/voucher-data
 router.get(
   '/:id/voucher-data',

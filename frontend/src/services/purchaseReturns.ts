@@ -49,8 +49,8 @@ export interface CreateReturnInput {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const purchaseReturnsApi = {
-  list: (purchaseId?: string): Promise<PurchaseReturn[]> =>
-    api.get('/purchase-returns', { params: purchaseId ? { purchaseId } : {} }).then((r) => r.data),
+  list: (purchaseId?: string, supplierId?: string): Promise<PurchaseReturn[]> =>
+    api.get('/purchase-returns', { params: { ...(purchaseId ? { purchaseId } : {}), ...(supplierId ? { supplierId } : {}) } }).then((r) => r.data),
 
   get: (id: string): Promise<PurchaseReturn> =>
     api.get(`/purchase-returns/${id}`).then((r) => r.data),
