@@ -146,10 +146,10 @@ export const posService = {
         const alertThreshold = Math.round(customer.creditLimitCents * (customer.creditAlertPct / 100));
         const newBalance = existing + roughTotal;
 
-        if (newBalance > customer.creditLimitCents && !canManageCredit) {
+        if (newBalance > customer.creditLimitCents) {
           throw new HttpError(
             400,
-            `Credit limit exceeded. Available: Rs. ${((customer.creditLimitCents - existing) / 100).toFixed(2)}`,
+            `Credit limit exceeded. Limit: Rs. ${(customer.creditLimitCents / 100).toFixed(2)}. Used: Rs. ${(existing / 100).toFixed(2)}. This sale would exceed by Rs. ${((newBalance - customer.creditLimitCents) / 100).toFixed(2)}.`,
           );
         }
         if (newBalance > alertThreshold && newBalance <= customer.creditLimitCents) {
