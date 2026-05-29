@@ -30,31 +30,7 @@ import axios from 'axios';
 import { generateReceiptHtml } from '../../utils/generateReceiptHtml';
 
 // ─── Audio engine ─────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-let _audioCtx: AudioContext | null = null;
-function getAudioCtx(): AudioContext | null {
-  if (_audioCtx) return _audioCtx;
-  try { _audioCtx = new AudioCtxClass(); return _audioCtx; } catch { return null; }
-}
-function beep(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.13) {
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-  try {
-    const osc = ctx.createOscillator(); const g = ctx.createGain();
-    osc.connect(g); g.connect(ctx.destination);
-    osc.frequency.value = freq; osc.type = type;
-    g.gain.setValueAtTime(vol, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
-  } catch { /* ignore */ }
-}
-const sfx = {
-  add:      () => beep(880, 0.07),
-  remove:   () => beep(300, 0.09, 'triangle', 0.1),
-  checkout: () => { beep(523, 0.09); setTimeout(() => beep(659, 0.09), 100); setTimeout(() => beep(784, 0.18), 200); },
-  error:    () => beep(180, 0.14, 'sawtooth', 0.1),
-};
+import { sound } from '../../lib/sound';
 
 // ─── Shortcut map ─────────────────────────────────────────────────────────────
 
@@ -188,7 +164,7 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
       setShowConfirm(true);
       return;
     }
-    sfx.add();
+    sound.beep();
     onAdd();
   }
 
@@ -288,7 +264,7 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
               </button>
               <button
                 className="flex-1 px-3 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600"
-                onClick={() => { setShowConfirm(false); sfx.add(); onAdd(); }}
+                onClick={() => { setShowConfirm(false); sound.beep(); onAdd(); }}
               >
                 Sell Anyway
               </button>
@@ -459,7 +435,7 @@ const CartLine = forwardRef<CartLineHandle, {
 
         {/* Trash — hidden for auto service-charge lines (removed when parent is removed) */}
         {!item.isServiceCharge && (
-          <button type="button" onClick={() => { sfx.remove(); onRemove(); }}
+          <button type="button" onClick={() => { sound.beep(); onRemove(); }}
             className="text-slate-300 hover:text-red-600 transition shrink-0">
             <Trash2 size={14} />
           </button>
@@ -1240,6 +1216,13 @@ export default function POSPage() {
   const clock   = useLiveClock();
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
+  // ── Resume AudioContext on first user interaction (browser gesture requirement) ─
+  useEffect(() => {
+    const resume = () => sound.resume();
+    document.addEventListener('click', resume, { once: true });
+    return () => document.removeEventListener('click', resume);
+  }, []);
+
   // ── Cart persistence ──────────────────────────────────────────────────────────
   useEffect(() => {
     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore */ }
@@ -1481,6 +1464,7 @@ export default function POSPage() {
 
   const clearCart = useCallback(() => {
     try { localStorage.removeItem(CART_KEY); } catch { /* ignore */ }
+    sound.clear();
     setCart([]);
     setCartDiscountType('percent');
     setCartDiscountValue(0);
@@ -1517,7 +1501,7 @@ export default function POSPage() {
     // 1. Fast: search locally in the already-loaded products grid
     const localMatch = products.find(p => p.barcode === code || p.sku === code);
     if (localMatch) {
-      sfx.add();
+      sound.beep();
       addToCart(localMatch);
       focusNewItemQty(localMatch.id);
       return;
@@ -1532,13 +1516,13 @@ export default function POSPage() {
       const policy = (appSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
       const totalQty = found.stock.reduce((sum, s) => sum + Number(s.qty), 0);
       if (policy === 'BLOCK' && totalQty <= 0) {
-        sfx.error();
+        sound.error();
         setQuickAddToast('This product is out of stock and cannot be sold');
         setTimeout(() => setQuickAddToast(null), 3000);
         return;
       }
 
-      sfx.add();
+      sound.beep();
       const posProduct = productToPosProduct(found);
       addToCart(posProduct);
       focusNewItemQty(posProduct.id);
@@ -1548,7 +1532,7 @@ export default function POSPage() {
         setQuickAddBarcode(code);
       } else {
         // 4. Network / server error
-        sfx.error();
+        sound.error();
         setQuickAddToast('Network error — could not look up barcode');
         setTimeout(() => setQuickAddToast(null), 3000);
       }
@@ -1601,7 +1585,7 @@ export default function POSPage() {
   const checkoutMutation = useMutation({
     mutationFn: (payload: Parameters<typeof posApi.checkout>[0]) => posApi.checkout(payload),
     onSuccess: (data) => {
-      sfx.checkout();
+      sound.success();
       // Augment receipt: split service-charge amounts back out as separate lines for display
       const svcItems = cart.filter(i => i.isServiceCharge);
       if (svcItems.length > 0) {
@@ -1639,7 +1623,7 @@ export default function POSPage() {
       qc.invalidateQueries({ queryKey: ['pos-products'] });
     },
     onError: (err: unknown) => {
-      sfx.error();
+      sound.error();
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
         ?? 'Checkout failed — please try again';
@@ -2605,7 +2589,7 @@ export default function POSPage() {
           barcode={quickAddBarcode}
           onSuccess={(product) => {
             setQuickAddBarcode(null);
-            sfx.add();
+            sound.beep();
             addToCart(productToPosProduct(product));
             setQuickAddToast(`"${product.name}" added. Complete details in Products page later.`);
             setTimeout(() => setQuickAddToast(null), 4000);

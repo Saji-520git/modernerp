@@ -422,6 +422,9 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
     expiredStockPolicy:  (settings.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW',
     staffSalesEnabled:   settings.staffSalesEnabled ?? false,
   });
+  const [soundOn, setSoundOn] = useState<boolean>(() => {
+    try { return localStorage.getItem('erp_sound') !== 'off'; } catch { return true; }
+  });
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
@@ -470,6 +473,23 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
           onChange={v => setF(p => ({ ...p, staffSalesEnabled: v }))}
           disabled={readOnly}
         />
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <span className="text-sm text-slate-600">Sound Effects</span>
+            <p className="text-xs text-slate-400">Beeps and chimes for POS actions (stored per device)</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              try { localStorage.setItem('erp_sound', next ? 'on' : 'off'); } catch { /* ignore */ }
+            }}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${soundOn ? 'bg-indigo-600' : 'bg-slate-200'}`}
+          >
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${soundOn ? 'translate-x-4' : 'translate-x-1'}`} />
+          </button>
+        </div>
       </div>
 
       {/* Expired Stock Policy — 3-option radio */}
