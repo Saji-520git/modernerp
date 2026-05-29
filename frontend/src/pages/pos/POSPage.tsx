@@ -1172,6 +1172,14 @@ export default function POSPage() {
   const canSellOnCredit = user?.permissions?.includes('sell_on_credit') ?? isAdmin;
 
   async function handleLogout() {
+    if (isAdmin) {
+      // ADMIN/MANAGER: sign out immediately — no shift check
+      exitPOS();
+      logout();
+      navigate('/login');
+      return;
+    }
+    // CASHIER: close shift first if one is open
     if (currentShift) {
       setSignOutCash('');
       setSignOutNote('');
@@ -1252,6 +1260,7 @@ export default function POSPage() {
   const [showWhDropdown,      setShowWhDropdown]      = useState(false);
   const [showQuickAddCustomer,setShowQuickAddCustomer]= useState(false);
   const [showCloseShift,      setShowCloseShift]      = useState(false);
+  const [exitAfterShiftClose, setExitAfterShiftClose] = useState(false);
   const [showSignOutShift,    setShowSignOutShift]    = useState(false);
   const [signOutCash,         setSignOutCash]         = useState('');
   const [signOutNote,         setSignOutNote]         = useState('');
@@ -1798,10 +1807,14 @@ export default function POSPage() {
         return;
       }
 
-      // Ctrl+Shift+X — close shift (any user who has an open shift)
+      // Ctrl+Shift+X — ADMIN/MANAGER: exit POS immediately; CASHIER: close shift → sign out
       if (e.ctrlKey && e.shiftKey && e.key === 'X') {
         e.preventDefault();
-        if (currentShift) {
+        if (isAdmin) {
+          exitPOS();
+          navigate('/');
+        } else if (currentShift) {
+          setExitAfterShiftClose(true);
           setShowCloseShift(true);
         }
         return;
@@ -2069,13 +2082,23 @@ export default function POSPage() {
         {/* Cashier name */}
         <span className="text-xs text-slate-400 hidden sm:block shrink-0">{user?.fullName}</span>
 
-        {/* Exit POS — ADMIN/MANAGER only */}
-        {isAdmin && (
-          <button type="button" onClick={() => { exitPOS(); navigate('/'); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition shrink-0">
-            <LogOut size={13} /> Exit POS
-          </button>
-        )}
+        {/* Exit POS — all roles */}
+        <button type="button" onClick={() => {
+          if (isAdmin) {
+            exitPOS();
+            navigate('/');
+          } else if (currentShift) {
+            setExitAfterShiftClose(true);
+            setShowCloseShift(true);
+          } else {
+            exitPOS();
+            logout();
+            navigate('/login');
+          }
+        }}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition shrink-0">
+          <LogOut size={13} /> Exit POS
+        </button>
 
         {/* Sign out — visible to ALL roles */}
         <button type="button" onClick={handleLogout}
@@ -2686,13 +2709,20 @@ export default function POSPage() {
       {showCloseShift && liveShift && (
         <CloseShiftModal
           shift={liveShift}
-          onClose={() => setShowCloseShift(false)}
+          onClose={() => { setShowCloseShift(false); setExitAfterShiftClose(false); }}
           onShiftClosed={() => {
             storeCloseShift();
             qc.setQueryData(['current-shift', warehouseId], null);
             setShowCloseShift(false);
-            setQuickAddToast('✓ Shift closed');
-            setTimeout(() => setQuickAddToast(null), 3000);
+            if (exitAfterShiftClose) {
+              setExitAfterShiftClose(false);
+              exitPOS();
+              logout();
+              navigate('/login');
+            } else {
+              setQuickAddToast('✓ Shift closed');
+              setTimeout(() => setQuickAddToast(null), 3000);
+            }
           }}
         />
       )}
