@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight,
@@ -10,7 +11,7 @@ import {
 import { PortalDropdown } from '../../components/ui/PortalDropdown';
 import {
   salesApi, formatCents, STATUS_LABELS, STATUS_COLORS, PAYMENT_LABELS,
-  type SaleStatus, type PaymentMethod, type SaleProduct, type SaleLine, type SaleForReturn,
+  type SaleStatus, type PaymentMethod, type SaleProduct, type SaleLine, type SaleForReturn, type SaleReturn,
 } from '../../services/sales';
 import { customerPaymentsApi, type CustomerPayment, type CreateCustomerPaymentInput } from '../../services/customerPayments';
 import { inventoryApi } from '../../services/inventory';
@@ -328,10 +329,17 @@ function CustomerPaymentSection({ saleId, totalCents, paidCents }: {
 // ─── Sale Detail Modal ─────────────────────────────────────────────────────────
 
 function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose: () => void; onEdit?: (sale: any) => void }) {
+  const navigate = useNavigate();
   const { data: sale, isLoading } = useQuery({
     queryKey: ['sale', saleId],
     queryFn: () => salesApi.getSale(saleId),
   });
+  const { data: returnsData } = useQuery({
+    queryKey: ['sale-returns-linked', saleId],
+    queryFn: () => salesApi.listReturns({ saleId }),
+    enabled: !!saleId,
+  });
+  const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
   const [showPayment, setShowPayment] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
 
@@ -457,6 +465,34 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
               totalCents={sale.totalCents}
               paidCents={sale.paidCents}
             />
+          )}
+
+          {/* Linked returns */}
+          {linkedReturns.length > 0 && (
+            <div className="border-l-[3px] border-red-400 pl-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Returns</p>
+              <div className="space-y-1.5">
+                {linkedReturns.map(ret => (
+                  <div key={ret.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-mono font-bold text-red-600">{ret.number}</span>
+                      <span className="text-xs text-slate-400 ml-2">
+                        {new Date(ret.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-red-600">−{formatCents(ret.totalCents)}</span>
+                      <button
+                        onClick={() => { onClose(); navigate('/returns'); }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
