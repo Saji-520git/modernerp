@@ -11,6 +11,7 @@ import PurchasesPage from './pages/purchases/PurchasesPage';
 import SuppliersPage from './pages/contacts/SuppliersPage';
 import CustomersPage from './pages/contacts/CustomersPage';
 import CustomerDetailPage from './pages/contacts/CustomerDetailPage';
+import SupplierDetailPage from './pages/contacts/SupplierDetailPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
 import ReportsPage from './pages/reports/ReportsPage';
@@ -167,6 +168,11 @@ export default function App() {
         <Route path="suppliers" element={
           <ErrorBoundary fallbackTitle="Suppliers page failed to load">
             <SuppliersPage />
+          </ErrorBoundary>
+        } />
+        <Route path="suppliers/:id" element={
+          <ErrorBoundary fallbackTitle="Supplier detail failed to load">
+            <SupplierDetailPage />
           </ErrorBoundary>
         } />
         <Route path="contacts" element={<Navigate to="/suppliers" replace />} />
