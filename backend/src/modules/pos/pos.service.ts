@@ -19,7 +19,7 @@ async function generateSaleNumber(): Promise<string> {
 
 async function getCustomerCreditBalance(customerId: string): Promise<number> {
   const result = await prisma.sale.aggregate({
-    where: { customerId, status: 'CONFIRMED' },
+    where: { customerId, status: 'CONFIRMED', paymentStatus: { in: ['UNPAID', 'PARTIAL'] } },
     _sum: { totalCents: true, paidCents: true },
   });
   return Math.max(0, (result._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0));
@@ -149,7 +149,7 @@ export const posService = {
         if (newBalance > customer.creditLimitCents && !canManageCredit) {
           throw new HttpError(
             400,
-            `Credit limit exceeded. Available: $${((customer.creditLimitCents - existing) / 100).toFixed(2)}`,
+            `Credit limit exceeded. Available: Rs. ${((customer.creditLimitCents - existing) / 100).toFixed(2)}`,
           );
         }
         if (newBalance > alertThreshold && newBalance <= customer.creditLimitCents) {
