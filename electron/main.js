@@ -1,6 +1,7 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron');
+const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -43,9 +44,10 @@ const PRISMA_CMD = path.join(BACKEND_DIR, 'node_modules', '.bin', 'prisma.cmd');
 const store = new Store();
 log.transports.file.resolvePathFn = () => path.join(LOGS, 'main.log');
 
-let mainWindow  = null;
+let mainWindow   = null;
 let splashWindow = null;
 let backendProcess = null;
+let tray = null;
 
 // ── Ensure required directories exist ─────────────────────────────────────────
 function ensureDirs() {
@@ -59,16 +61,16 @@ function ensureEnv() {
   if (fs.existsSync(ENV_FILE)) return;
   const content = [
     `DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@localhost:${PG_PORT}/${PG_DB}`,
-    // IMPORTANT: Replace these placeholders with real 64-char random secrets
-    // before distributing. Generate with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-    `JWT_SECRET=REPLACE_WITH_64_CHAR_SECRET_1`,
-    `JWT_REFRESH_SECRET=REPLACE_WITH_64_CHAR_SECRET_2`,
+    `JWT_SECRET=70373b00cf9400941374d2166aa7905c0719948035e25ccdd15e6fb520bfeb24ade9c909e97293e6136ce1402925b2298742c4a4d28bcaf166f112b9ebb04834`,
+    `JWT_REFRESH_SECRET=60e6f5977516bec5669fd735f778e0ae4397c8138f3b97bbb62bb346571a4a2416722afe85e9c719316d616ea72fd3daf40c833594b53c277d5cc24f4b1de8db`,
     `NODE_ENV=production`,
     `PORT=4000`,
     `UPLOAD_PATH=${UPLOADS}`,
     `LOG_PATH=${LOGS}`,
     `CORS_ORIGIN=http://localhost:4000`,
     `LOG_LEVEL=info`,
+    `BCRYPT_ROUNDS=12`,
+    `SESSION_TIMEOUT=60`,
   ].join('\n');
   fs.writeFileSync(ENV_FILE, content, 'utf8');
   log.info('Created production .env at', ENV_FILE);
@@ -275,10 +277,28 @@ function runSeedIfFirstTime() {
   });
 }
 
+// ── Port availability check ────────────────────────────────────────────────────
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false)); // port already in use
+    server.once('listening', () => server.close(() => resolve(true)));
+    server.listen(port, '127.0.0.1');
+  });
+}
+
 // ── Start Express backend ──────────────────────────────────────────────────────
 function startBackend() {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     updateSplash('Starting application server...');
+
+    // If port 4000 is already occupied, assume backend is running — skip spawn
+    const portFree = await isPortFree(4000);
+    if (!portFree) {
+      log.warn('Port 4000 already in use — skipping backend spawn');
+      return resolve();
+    }
+
     log.info('Starting Express backend...');
     const env = {
       ...process.env,
@@ -293,8 +313,7 @@ function startBackend() {
     // Merge .env file values (don't overwrite already-set vars)
     loadEnv();
 
-    const args = IS_DEV ? [BACKEND_SCRIPT] : [BACKEND_SCRIPT];
-    backendProcess = spawn(BACKEND_RUNNER, args, { env, cwd: BACKEND_DIR });
+    backendProcess = spawn(BACKEND_RUNNER, [BACKEND_SCRIPT], { env, cwd: BACKEND_DIR });
 
     backendProcess.stdout.on('data', d => {
       const msg = d.toString().trim();
@@ -304,8 +323,17 @@ function startBackend() {
       }
     });
     backendProcess.stderr.on('data', d => log.warn('backend err:', d.toString().trim()));
-    backendProcess.on('close', code => {
-      log.warn('Backend process exited with code:', code);
+
+    // Crash recovery — attempt one automatic restart after 3 seconds
+    backendProcess.on('exit', (code) => {
+      if (code !== 0 && code !== null && !isShuttingDown) {
+        log.error('Backend crashed with code:', code, '— restarting in 3s');
+        setTimeout(() => {
+          startBackend().catch(e => log.error('Backend restart failed:', e));
+        }, 3000);
+      } else {
+        log.warn('Backend process exited with code:', code);
+      }
     });
 
     // Safety timeout — resolve after 10 seconds even without "listening" message
@@ -425,8 +453,49 @@ function createMainWindow() {
     mainWindow.maximize();
   });
 
+  // Minimize to tray instead of taskbar
+  mainWindow.on('minimize', () => {
+    mainWindow.hide();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+}
+
+// ── System tray ────────────────────────────────────────────────────────────────
+function createTray() {
+  const iconPath = path.join(__dirname, '..', 'build-resources', 'icon.ico');
+  tray = new Tray(iconPath);
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'BROcode ERP', enabled: false },
+    { type: 'separator' },
+    {
+      label: 'Open', click: () => {
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+      },
+    },
+    {
+      label: 'Backup Now', click: () => {
+        runBackup()
+          .then(() => {
+            tray.displayBalloon({
+              title: 'BROcode ERP',
+              content: 'Backup completed successfully',
+            });
+          })
+          .catch(e => log.warn('Tray backup failed:', e.message));
+      },
+    },
+    { type: 'separator' },
+    { label: 'Exit', click: () => app.quit() },
+  ]);
+
+  tray.setToolTip('BROcode ERP — Running');
+  tray.setContextMenu(menu);
+  tray.on('double-click', () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
   });
 }
 
@@ -462,6 +531,21 @@ async function shutdown() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  // Fix 5: Prepend PostgreSQL bin to PATH so Windows finds bundled DLLs first
+  process.env.PATH = PGSQL_BIN + ';' + (process.env.PATH || '');
+
+  // Fix 2: 60-second master startup timeout — quit gracefully if startup hangs
+  const startupTimeout = setTimeout(() => {
+    log.error('Startup timed out after 60 seconds');
+    dialog.showErrorBox(
+      'ModernERP Startup Timeout',
+      `ModernERP took too long to start (>60 seconds).\n\n` +
+      `Log file: ${path.join(LOGS, 'main.log')}\n\n` +
+      `Please contact support: 0757187506`
+    );
+    app.quit();
+  }, 60000);
+
   try {
     ensureDirs();
     ensureEnv();
@@ -484,8 +568,11 @@ app.whenReady().then(async () => {
 
     await runAutoBackupIfDue();
 
+    clearTimeout(startupTimeout);
     createMainWindow();
+    createTray();
   } catch (err) {
+    clearTimeout(startupTimeout);
     log.error('Startup failed:', err);
     dialog.showErrorBox(
       'ModernERP Startup Error',
