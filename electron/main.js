@@ -23,7 +23,7 @@ const INITDB    = path.join(PGSQL_BIN, 'initdb.exe');
 const PSQL      = path.join(PGSQL_BIN, 'psql.exe');
 const PG_DUMP   = path.join(PGSQL_BIN, 'pg_dump.exe');
 
-const PG_PORT = '5432';
+const PG_PORT = '5433';
 const PG_USER = 'postgres';
 const PG_PASS = 'ModernERP2024!';
 const PG_DB   = 'modernerp';
