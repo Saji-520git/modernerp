@@ -127,10 +127,22 @@ function initDbIfNeeded() {
       '-U', PG_USER,
       '--encoding=UTF8',
       '--auth=md5',
+      '--lc-messages=C',
+      '--lc-monetary=C',
+      '--lc-numeric=C',
+      '--lc-time=C',
+      '--lc-collate=C',
+      '--lc-ctype=C',
       `--pwfile=${passFile}`,
     ]);
-    proc.stdout.on('data', d => log.info('initdb:', d.toString().trim()));
-    proc.stderr.on('data', d => log.warn('initdb:', d.toString().trim()));
+    // Fix 4: Capture full stderr before rejecting so errors are instantly readable in logs
+    let initdbError = '';
+    proc.stdout.on('data', d => log.info('initdb stdout:', d.toString().trim()));
+    proc.stderr.on('data', d => {
+      const msg = d.toString();
+      initdbError += msg;
+      log.warn('initdb stderr:', msg.trim());
+    });
     proc.on('close', code => {
       try { fs.unlinkSync(passFile); } catch (_) {}
       if (code === 0) {
@@ -138,7 +150,9 @@ function initDbIfNeeded() {
         log.info('initdb complete');
         resolve();
       } else {
-        reject(new Error(`initdb failed with exit code ${code}. Check logs at ${LOGS}`));
+        const errMsg = `initdb failed (code ${code}).\n${initdbError}`;
+        log.error('initdb failed:', errMsg);
+        reject(new Error(errMsg));
       }
     });
   });
@@ -531,8 +545,12 @@ async function shutdown() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // Fix 5: Prepend PostgreSQL bin to PATH so Windows finds bundled DLLs first
-  process.env.PATH = PGSQL_BIN + ';' + (process.env.PATH || '');
+  // Fix 3: Prepend PostgreSQL bin + lib to PATH so Windows finds all bundled DLLs
+  process.env.PATH = [
+    PGSQL_BIN,
+    path.join(process.resourcesPath, 'pgsql', 'lib'),
+    process.env.PATH || '',
+  ].join(';');
 
   // Fix 2: 60-second master startup timeout — quit gracefully if startup hangs
   const startupTimeout = setTimeout(() => {
