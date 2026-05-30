@@ -196,6 +196,46 @@ function stopPostgres() {
   });
 }
 
+// ── Wait for PostgreSQL to accept connections (retry loop) ────────────────────
+function waitForPostgres() {
+  return new Promise((resolve, reject) => {
+    const MAX_RETRIES = 10;
+    const RETRY_MS    = 2000;
+    let attempts = 0;
+
+    function attempt() {
+      attempts++;
+      updateSplash(`Waiting for database to be ready... (${attempts}/${MAX_RETRIES})`);
+      log.info(`PostgreSQL connection check (attempt ${attempts}/${MAX_RETRIES})...`);
+      const env   = { ...process.env, PGPASSWORD: PG_PASS };
+      const check = spawn(PSQL, [
+        '-U', PG_USER,
+        '-h', '127.0.0.1',
+        '-p', PG_PORT,
+        '-d', 'postgres',
+        '-c', 'SELECT 1',
+      ], { env });
+      check.stderr.on('data', d => log.warn('pg-ready-check:', d.toString().trim()));
+      check.on('close', code => {
+        if (code === 0) {
+          log.info('PostgreSQL is accepting connections ✓');
+          resolve();
+        } else if (attempts < MAX_RETRIES) {
+          log.warn(`PostgreSQL not ready (attempt ${attempts}) — retry in ${RETRY_MS / 1000}s`);
+          setTimeout(attempt, RETRY_MS);
+        } else {
+          reject(new Error(
+            `PostgreSQL did not become ready after ${MAX_RETRIES} attempts (${MAX_RETRIES * RETRY_MS / 1000}s). ` +
+            `Check logs at ${LOGS}`
+          ));
+        }
+      });
+    }
+
+    attempt();
+  });
+}
+
 // ── Create DB if it doesn't exist ─────────────────────────────────────────────
 function ensureDatabase() {
   return new Promise((resolve, reject) => {
@@ -249,7 +289,16 @@ function runMigrations() {
     ], { env, cwd: BACKEND_DIR });
     proc.stdout.on('data', d => log.info('prisma:', d.toString().trim()));
     proc.stderr.on('data', d => log.warn('prisma:', d.toString().trim()));
+
+    // 90-second hard timeout — if Prisma hangs on DB connection, kill it and continue
+    const migrationTimeout = setTimeout(() => {
+      log.error('prisma migrate timed out after 90s — killing and continuing');
+      try { proc.kill(); } catch (_) {}
+      resolve(); // non-fatal: either already applied or DB issue will surface at runtime
+    }, 90000);
+
     proc.on('close', code => {
+      clearTimeout(migrationTimeout);
       if (code === 0) {
         log.info('Prisma migrations complete');
         resolve();
@@ -596,8 +645,8 @@ app.whenReady().then(async () => {
     await initDbIfNeeded();
     await startPostgres();
 
-    // Give PostgreSQL 3 seconds to fully accept connections
-    await new Promise(r => setTimeout(r, 3000));
+    // Wait until PostgreSQL is actually accepting connections (up to 20s, 10 × 2s retries)
+    await waitForPostgres();
 
     await ensureDatabase();
     await runMigrations();
