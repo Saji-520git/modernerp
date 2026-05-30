@@ -53,6 +53,7 @@ let mainWindow   = null;
 let splashWindow = null;
 let backendProcess = null;
 let tray = null;
+let dbReady = false;   // true once the modernerp database exists (gates shutdown backup)
 
 // ── Ensure required directories exist ─────────────────────────────────────────
 function ensureDirs() {
@@ -164,29 +165,52 @@ function initDbIfNeeded() {
 }
 
 // ── Start PostgreSQL ───────────────────────────────────────────────────────────
+// CRITICAL (Windows): pg_ctl launches postgres.exe as a child which INHERITS our
+// stdout/stderr pipes. Node's 'close' event waits for stdio EOF — which never comes
+// while postgres holds the pipe open — so we must (a) redirect the server's output
+// to a logfile via -l so postgres stops writing to / holding our pipe, (b) use
+// stdio:'ignore' so there are no inheritable pipe handles, and (c) resolve on the
+// process 'exit' event (fires on pg_ctl termination) rather than 'close'.
+// waitForPostgres() is the real readiness gate after this.
 function startPostgres() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     updateSplash('Starting database...');
     log.info('Starting PostgreSQL...');
+    const pgLog = path.join(LOGS, 'postgres.log');
+
+    let settled = false;
+    const settle = (label) => {
+      if (settled) return;
+      settled = true;
+      log.info(`pg_ctl start: ${label}`);
+      resolve();
+    };
+
     const proc = spawn(PG_CTL, [
       'start',
       '-D', PGDATA,
       '-o', `-p ${PG_PORT}`,
-      '-w',        // wait until server accepts connections
-      '-t', '30',  // 30 second timeout
-    ]);
-    proc.stdout.on('data', d => log.info('pg_ctl:', d.toString().trim()));
-    proc.stderr.on('data', d => log.warn('pg_ctl:', d.toString().trim()));
-    proc.on('close', code => {
+      '-w',                 // wait until server accepts connections
+      '-t', '30',           // 30 second timeout
+      '-l', pgLog,          // redirect server output to file (frees our stdio pipes)
+    ], { stdio: 'ignore' }); // no inheritable pipes → postgres can't hold them open
+
+    proc.on('exit', code => {
       if (code === 0) {
         log.info('PostgreSQL started successfully');
-        resolve();
       } else {
-        // code 1 may just mean "already running" — resolve and let ensureDatabase detect
+        // code 1 may just mean "already running" — let ensureDatabase/waitForPostgres detect
         log.warn(`pg_ctl start exited ${code} — may already be running, continuing`);
-        resolve();
       }
+      settle('process exited');
     });
+    proc.on('error', err => {
+      log.error('pg_ctl spawn error:', err.message);
+      settle('spawn error');
+    });
+
+    // Safety net — never let startup hang here again (pg_ctl -t is 30s)
+    setTimeout(() => settle('safety timeout (35s)'), 35000);
   });
 }
 
@@ -587,10 +611,16 @@ async function shutdown() {
   app.isQuiting = true;
   log.info('Shutting down ModernERP...');
 
-  try {
-    await runBackup();
-  } catch (e) {
-    log.warn('Shutdown backup failed:', e.message);
+  // Only back up if the database was actually created — avoids spurious
+  // "database modernerp does not exist" pg_dump errors on a failed startup
+  if (dbReady) {
+    try {
+      await runBackup();
+    } catch (e) {
+      log.warn('Shutdown backup failed:', e.message);
+    }
+  } else {
+    log.info('Skipping shutdown backup — database not yet initialized');
   }
 
   if (backendProcess) {
@@ -685,6 +715,7 @@ app.whenReady().then(async () => {
     await waitForPostgres();
 
     await ensureDatabase();
+    dbReady = true;   // DB confirmed to exist — shutdown backup is now safe
     await runMigrations();
     await runSeedIfFirstTime();
     await startBackend();
