@@ -14,6 +14,8 @@
     "appId": "com.brocode.modernerp",
     "productName": "ModernERP",
     "copyright": "Copyright 2026 BROcode Solutions",
+    "asar": false,
+    "npmRebuild": false,
     "directories": {
       "output": "C:\\ModernERP-Build",
       "buildResources": "build-resources"

@@ -273,9 +273,8 @@ function runSeedIfFirstTime() {
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
     };
-    const tsxBin = path.join(BACKEND_DIR, 'node_modules', '.bin', 'tsx');
-    const seedScript = path.join(BACKEND_DIR, 'src', 'prisma', 'seed.ts');
-    const proc = spawn(tsxBin, [seedScript], { env, cwd: BACKEND_DIR });
+    const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
+    const proc = spawn('node', [seedScript], { env, cwd: BACKEND_DIR });
     proc.stdout.on('data', d => log.info('seed:', d.toString().trim()));
     proc.stderr.on('data', d => log.warn('seed:', d.toString().trim()));
     proc.on('close', code => {
@@ -350,8 +349,8 @@ function startBackend() {
       }
     });
 
-    // Safety timeout — resolve after 10 seconds even without "listening" message
-    setTimeout(resolve, 10000);
+    // Safety timeout — resolve after 15 seconds even without "listening" message
+    setTimeout(resolve, 15000);
   });
 }
 
@@ -552,17 +551,41 @@ app.whenReady().then(async () => {
     process.env.PATH || '',
   ].join(';');
 
-  // Fix 2: 60-second master startup timeout — quit gracefully if startup hangs
+  // Master startup timeout — quit gracefully if startup hangs (180 s for slow first-launch)
   const startupTimeout = setTimeout(() => {
-    log.error('Startup timed out after 60 seconds');
+    log.error('Startup timed out after 180 seconds');
     dialog.showErrorBox(
       'ModernERP Startup Timeout',
-      `ModernERP took too long to start (>60 seconds).\n\n` +
+      `ModernERP took too long to start (>180 seconds).\n\n` +
       `Log file: ${path.join(LOGS, 'main.log')}\n\n` +
       `Please contact support: 0757187506`
     );
     app.quit();
-  }, 60000);
+  }, 180000);
+
+  // Fix 3: Critical path existence checks — fail fast with clear error
+  const criticalPaths = [
+    { label: 'pg_ctl.exe',           path: PG_CTL },
+    { label: 'Backend dist/server.js', path: path.join(BACKEND_DIR, 'dist', 'server.js') },
+    { label: 'Frontend dist/index.html', path: path.join(__dirname, '..', 'frontend', 'dist', 'index.html') },
+    { label: 'Prisma CMD',           path: PRISMA_CMD },
+  ];
+  const missing = [];
+  for (const item of criticalPaths) {
+    const exists = fs.existsSync(item.path);
+    log.info(`[path-check] ${exists ? 'OK' : 'MISSING'} — ${item.label}: ${item.path}`);
+    if (!exists) missing.push(item.label);
+  }
+  if (missing.length > 0) {
+    clearTimeout(startupTimeout);
+    dialog.showErrorBox(
+      'ModernERP — Missing Files',
+      `Cannot start: the following required files are missing:\n\n` +
+      missing.map(m => `  • ${m}`).join('\n') +
+      `\n\nLog file: ${path.join(LOGS, 'main.log')}\n\nPlease reinstall or contact support: 0757187506`
+    );
+    return app.quit();
+  }
 
   try {
     ensureDirs();
@@ -573,16 +596,16 @@ app.whenReady().then(async () => {
     await initDbIfNeeded();
     await startPostgres();
 
-    // Give PostgreSQL 2 seconds to fully accept connections
-    await new Promise(r => setTimeout(r, 2000));
+    // Give PostgreSQL 3 seconds to fully accept connections
+    await new Promise(r => setTimeout(r, 3000));
 
     await ensureDatabase();
     await runMigrations();
     await runSeedIfFirstTime();
     await startBackend();
 
-    // Give backend 2 seconds to be ready for requests
-    await new Promise(r => setTimeout(r, 2000));
+    // Give backend 3 seconds to be ready for requests
+    await new Promise(r => setTimeout(r, 3000));
 
     await runAutoBackupIfDue();
 
