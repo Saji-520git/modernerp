@@ -600,17 +600,17 @@ app.whenReady().then(async () => {
     process.env.PATH || '',
   ].join(';');
 
-  // Master startup timeout — quit gracefully if startup hangs (180 s for slow first-launch)
+  // Master startup timeout — quit gracefully if startup hangs (300 s for slow first-launch)
   const startupTimeout = setTimeout(() => {
-    log.error('Startup timed out after 180 seconds');
+    log.error('Startup timed out after 300 seconds');
     dialog.showErrorBox(
       'ModernERP Startup Timeout',
-      `ModernERP took too long to start (>180 seconds).\n\n` +
+      `ModernERP took too long to start (>300 seconds).\n\n` +
       `Log file: ${path.join(LOGS, 'main.log')}\n\n` +
       `Please contact support: 0757187506`
     );
     app.quit();
-  }, 180000);
+  }, 300000);
 
   // Fix 3: Critical path existence checks — fail fast with clear error
   const criticalPaths = [
