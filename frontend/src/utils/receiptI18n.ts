@@ -42,7 +42,7 @@ export const receiptLabels: Record<ReceiptLang, {
     creditSale: 'CREDIT SALE',
     walkIn:     'Walk-in',
     thankYou:   'Thank You! Come Again',
-    poweredBy:  'Powered by Brocode ERP',
+    poweredBy:  'Powered by BROcode ERP',
   },
   si: {
     invoiceNo:  'ඉන්වොයිස් අංකය',
@@ -64,6 +64,6 @@ export const receiptLabels: Record<ReceiptLang, {
     creditSale: 'ණය විකිණීම',
     walkIn:     'සාමාන්‍ය ගනුදෙනු',
     thankYou:   'ස්තූතියි! නැවත වඩිනු ලැබේවා',
-    poweredBy:  'Brocode ERP මගින් බල ගැන්වේ',
+    poweredBy:  'BROcode ERP මගින් බල ගැන්වේ',
   },
 };

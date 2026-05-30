@@ -84,7 +84,7 @@ export default function LoginPage() {
             <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-3">
               <span className="text-2xl font-black text-white">B</span>
             </div>
-            <h1 className="text-2xl font-black text-slate-800">Brocode ERP</h1>
+            <h1 className="text-2xl font-black text-slate-800">BROcode ERP</h1>
           </div>
 
           {/* Form card */}
@@ -168,7 +168,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-slate-400 mt-6">
-            Brocode ERP v1.0.0 · Retail Management System
+            BROcode ERP v1.0.0 · Retail Management System
           </p>
         </div>
       </div>

@@ -2010,7 +2010,7 @@ export default function POSPage() {
         {/* Logo */}
         <div className="flex items-center gap-2 shrink-0">
           <ShoppingCart size={17} className="text-indigo-600" />
-          <span className="font-bold text-slate-800 text-sm tracking-tight">Brocode ERP POS</span>
+          <span className="font-bold text-slate-800 text-sm tracking-tight">BROcode ERP POS</span>
           {shiftTime && (
             <span className="flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
               <Clock size={9} /> Shift since {shiftTime}{shiftSalesStr}
