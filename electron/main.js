@@ -310,6 +310,8 @@ function runMigrations() {
     log.info('Running prisma migrate deploy...');
     const env = {
       ...process.env,
+      // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
+      ELECTRON_RUN_AS_NODE: '1',
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
@@ -355,6 +357,8 @@ function runSeedIfFirstTime() {
     log.info('Running seed for first time...');
     const env = {
       ...process.env,
+      // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
+      ELECTRON_RUN_AS_NODE: '1',
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
@@ -401,6 +405,8 @@ function startBackend() {
     log.info('Starting Express backend...');
     const env = {
       ...process.env,
+      // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
+      ELECTRON_RUN_AS_NODE: '1',
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
       PORT: '4000',
