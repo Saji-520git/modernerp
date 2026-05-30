@@ -38,8 +38,6 @@ const BACKEND_RUNNER = IS_DEV
   ? path.join(BACKEND_DIR, 'node_modules', '.bin', 'tsx')
   : process.execPath;
 
-// Prisma CLI
-const PRISMA_CMD = path.join(BACKEND_DIR, 'node_modules', '.bin', 'prisma.cmd');
 
 const store = new Store();
 log.transports.file.resolvePathFn = () => path.join(LOGS, 'main.log');
@@ -281,6 +279,7 @@ function runMigrations() {
       ...process.env,
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
+      NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
     };
     const schemaPath = path.join(BACKEND_DIR, 'src', 'prisma', 'schema.prisma');
     // Use process.execPath (Electron = Node.js runtime) to run prisma CLI JS directly
@@ -325,6 +324,7 @@ function runSeedIfFirstTime() {
       ...process.env,
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
+      NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
     };
     const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
     const proc = spawn(process.execPath, [seedScript], { env, cwd: BACKEND_DIR });
@@ -374,6 +374,7 @@ function startBackend() {
       UPLOAD_PATH: UPLOADS,
       LOG_PATH: LOGS,
       CORS_ORIGIN: 'http://localhost:4000',
+      NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
     };
 
     // Merge .env file values (don't overwrite already-set vars)
@@ -626,7 +627,7 @@ app.whenReady().then(async () => {
     { label: 'pg_ctl.exe',           path: PG_CTL },
     { label: 'Backend dist/server.js', path: path.join(BACKEND_DIR, 'dist', 'server.js') },
     { label: 'Frontend dist/index.html', path: path.join(__dirname, '..', 'frontend', 'dist', 'index.html') },
-    { label: 'Prisma CMD',           path: PRISMA_CMD },
+    { label: 'Prisma build/index.js', path: path.join(BACKEND_DIR, 'node_modules', 'prisma', 'build', 'index.js') },
   ];
   const missing = [];
   for (const item of criticalPaths) {
