@@ -65,7 +65,7 @@ function ensureDirs() {
 function ensureEnv() {
   if (fs.existsSync(ENV_FILE)) return;
   const content = [
-    `DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@localhost:${PG_PORT}/${PG_DB}`,
+    `DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
     `JWT_SECRET=70373b00cf9400941374d2166aa7905c0719948035e25ccdd15e6fb520bfeb24ade9c909e97293e6136ce1402925b2298742c4a4d28bcaf166f112b9ebb04834`,
     `JWT_REFRESH_SECRET=60e6f5977516bec5669fd735f778e0ae4397c8138f3b97bbb62bb346571a4a2416722afe85e9c719316d616ea72fd3daf40c833594b53c277d5cc24f4b1de8db`,
     `NODE_ENV=production`,
@@ -194,10 +194,12 @@ function startPostgres() {
 function stopPostgres() {
   return new Promise((resolve) => {
     log.info('Stopping PostgreSQL...');
+    let resolved = false;
+    const done = () => { if (!resolved) { resolved = true; resolve(); } };
     const proc = spawn(PG_CTL, ['stop', '-D', PGDATA, '-m', 'fast']);
-    proc.on('close', () => resolve());
+    proc.on('close', () => done());
     // Force resolve after 5s regardless
-    setTimeout(resolve, 5000);
+    setTimeout(done, 5000);
   });
 }
 
@@ -384,9 +386,6 @@ function startBackend() {
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
     };
 
-    // Merge .env file values (don't overwrite already-set vars)
-    loadEnv();
-
     backendProcess = spawn(BACKEND_RUNNER, [BACKEND_SCRIPT], { env, cwd: BACKEND_DIR });
 
     backendProcess.stdout.on('data', d => {
@@ -540,38 +539,43 @@ function createMainWindow() {
 
 // ── System tray ────────────────────────────────────────────────────────────────
 function createTray() {
-  const iconPath = path.join(__dirname, '..', 'build-resources', 'icon.ico');
-  tray = new Tray(iconPath);
+  try {
+    // icon.ico is copied to resources/ via extraResources in package.json
+    const iconPath = path.join(process.resourcesPath, 'icon.ico');
+    tray = new Tray(iconPath);
 
-  const menu = Menu.buildFromTemplate([
-    { label: 'BROcode ERP', enabled: false },
-    { type: 'separator' },
-    {
-      label: 'Open', click: () => {
-        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    const menu = Menu.buildFromTemplate([
+      { label: 'BROcode ERP', enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Open', click: () => {
+          if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+        },
       },
-    },
-    {
-      label: 'Backup Now', click: () => {
-        runBackup()
-          .then(() => {
-            tray.displayBalloon({
-              title: 'BROcode ERP',
-              content: 'Backup completed successfully',
-            });
-          })
-          .catch(e => log.warn('Tray backup failed:', e.message));
+      {
+        label: 'Backup Now', click: () => {
+          runBackup()
+            .then(() => {
+              tray.displayBalloon({
+                title: 'BROcode ERP',
+                content: 'Backup completed successfully',
+              });
+            })
+            .catch(e => log.warn('Tray backup failed:', e.message));
+        },
       },
-    },
-    { type: 'separator' },
-    { label: 'Exit', click: () => app.quit() },
-  ]);
+      { type: 'separator' },
+      { label: 'Exit', click: () => app.quit() },
+    ]);
 
-  tray.setToolTip('BROcode ERP — Running');
-  tray.setContextMenu(menu);
-  tray.on('double-click', () => {
-    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-  });
+    tray.setToolTip('BROcode ERP — Running');
+    tray.setContextMenu(menu);
+    tray.on('double-click', () => {
+      if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    });
+  } catch (e) {
+    log.warn('createTray failed (non-fatal):', e.message);
+  }
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────────────────
@@ -677,7 +681,7 @@ app.whenReady().then(async () => {
     await initDbIfNeeded();
     await startPostgres();
 
-    // Wait until PostgreSQL is actually accepting connections (up to 20s, 10 × 2s retries)
+    // Wait until PostgreSQL is actually accepting connections (15 × 3s = 45s max wait)
     await waitForPostgres();
 
     await ensureDatabase();
@@ -692,7 +696,7 @@ app.whenReady().then(async () => {
 
     clearTimeout(startupTimeout);
     createMainWindow();
-    createTray();
+    try { createTray(); } catch (e) { log.warn('Tray init failed (non-fatal):', e.message); }
   } catch (err) {
     clearTimeout(startupTimeout);
     log.error('Startup failed:', err);
@@ -708,7 +712,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', async (e) => {
-  if (!isShuttingDown && (backendProcess || mainWindow)) {
+  if (!isShuttingDown) {
     e.preventDefault();
     await shutdown();
     app.exit(0);

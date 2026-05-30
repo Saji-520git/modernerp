@@ -26,6 +26,10 @@
     ],
     "extraResources": [
       {
+        "from": "build-resources/icon.ico",
+        "to": "icon.ico"
+      },
+      {
         "from": "resources/pgsql",
         "to": "pgsql",
         "filter": ["**/*"]
