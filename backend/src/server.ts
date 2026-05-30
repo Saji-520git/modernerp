@@ -92,7 +92,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 app.listen(env.PORT, async () => {
-  logger.info(`Brocode ERP API listening on http://localhost:${env.PORT}`);
+  logger.info(`BROcode ERP API listening on http://localhost:${env.PORT}`);
 
   if (process.env.NODE_ENV !== 'test') {
     // Remove phantom zero-qty stock records left by ensureStockRecords.

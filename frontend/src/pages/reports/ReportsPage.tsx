@@ -254,7 +254,7 @@ function pdfHeader(doc: jsPDF, title: string, subtitle: string) {
   const w = doc.internal.pageSize.getWidth();
   doc.setFillColor(...BRAND); doc.rect(0, 0, w, 16, 'F');
   doc.setTextColor(255, 255, 255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('Brocode ERP', 12, 11);
+  doc.text('BROcode ERP', 12, 11);
   doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text(title, w - 12, 11, { align: 'right' });
   doc.setTextColor(...SLATE); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
