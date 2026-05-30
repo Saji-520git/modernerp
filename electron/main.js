@@ -199,8 +199,8 @@ function stopPostgres() {
 // ── Wait for PostgreSQL to accept connections (retry loop) ────────────────────
 function waitForPostgres() {
   return new Promise((resolve, reject) => {
-    const MAX_RETRIES = 10;
-    const RETRY_MS    = 2000;
+    const MAX_RETRIES = 15;
+    const RETRY_MS    = 3000;
     let attempts = 0;
 
     function attempt() {
