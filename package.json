@@ -22,20 +22,33 @@
     },
     "files": [
       "electron/**/*",
-      "frontend/dist/**/*",
-      "backend/dist/**/*",
-      "backend/src/prisma/schema.prisma",
-      "backend/src/prisma/migrations/**/*",
-      "backend/node_modules/**/*",
       "node_modules/**/*"
     ],
     "extraResources": [
       {
         "from": "resources/pgsql",
         "to": "pgsql",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "app/backend/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "backend/dist",
+        "to": "app/backend/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "backend/src/prisma",
+        "to": "app/backend/src/prisma",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "frontend/dist",
+        "to": "app/frontend/dist",
+        "filter": ["**/*"]
       }
     ],
     "win": {
