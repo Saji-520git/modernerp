@@ -36,7 +36,7 @@ const BACKEND_SCRIPT = IS_DEV
   : path.join(BACKEND_DIR, 'dist', 'server.js');
 const BACKEND_RUNNER = IS_DEV
   ? path.join(BACKEND_DIR, 'node_modules', '.bin', 'tsx')
-  : 'node';
+  : process.execPath;
 
 // Prisma CLI
 const PRISMA_CMD = path.join(BACKEND_DIR, 'node_modules', '.bin', 'prisma.cmd');
@@ -283,7 +283,11 @@ function runMigrations() {
       NODE_ENV: 'production',
     };
     const schemaPath = path.join(BACKEND_DIR, 'src', 'prisma', 'schema.prisma');
-    const proc = spawn(PRISMA_CMD, [
+    // Use process.execPath (Electron = Node.js runtime) to run prisma CLI JS directly
+    // Avoids prisma.cmd which calls external 'node' — not available on clean PC
+    const prismaCli = path.join(BACKEND_DIR, 'node_modules', 'prisma', 'build', 'index.js');
+    const proc = spawn(process.execPath, [
+      prismaCli,
       'migrate', 'deploy',
       '--schema', schemaPath,
     ], { env, cwd: BACKEND_DIR });
@@ -323,7 +327,7 @@ function runSeedIfFirstTime() {
       NODE_ENV: 'production',
     };
     const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
-    const proc = spawn('node', [seedScript], { env, cwd: BACKEND_DIR });
+    const proc = spawn(process.execPath, [seedScript], { env, cwd: BACKEND_DIR });
     proc.stdout.on('data', d => log.info('seed:', d.toString().trim()));
     proc.stderr.on('data', d => log.warn('seed:', d.toString().trim()));
     proc.on('close', code => {
@@ -593,12 +597,17 @@ async function shutdown() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // Fix 3: Prepend PostgreSQL bin + lib to PATH so Windows finds all bundled DLLs
+  // Prepend Electron binary dir + PG bin + PG lib to PATH
+  // electronDir makes process.execPath available as 'node' to child .cmd scripts
+  const electronDir = path.dirname(process.execPath);
   process.env.PATH = [
+    electronDir,
     PGSQL_BIN,
     path.join(process.resourcesPath, 'pgsql', 'lib'),
     process.env.PATH || '',
   ].join(';');
+  // NODE_PATH so backend scripts resolve modules from their own node_modules
+  process.env.NODE_PATH = path.join(BACKEND_DIR, 'node_modules');
 
   // Master startup timeout — quit gracefully if startup hangs (300 s for slow first-launch)
   const startupTimeout = setTimeout(() => {
