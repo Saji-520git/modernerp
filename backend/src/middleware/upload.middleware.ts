@@ -15,7 +15,7 @@ const ALLOWED_MIME = new Set([
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, path.resolve('uploads'));
+    cb(null, process.env.UPLOAD_PATH ?? path.resolve('uploads'));
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();

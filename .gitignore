@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+# Electron build output — large, generated files
+dist-electron/
+release/
 .env
 .env.local
 .env.*.local

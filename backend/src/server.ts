@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 // Ensure uploads directory exists before any request is served
-const uploadsDir = path.resolve('uploads');
+const uploadsDir = process.env.UPLOAD_PATH ?? path.resolve('uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ── Prevent unhandled promise rejections from crashing the server ──────────────
@@ -62,7 +62,7 @@ app.get('/uploads/:filename', (req, res) => {
     return res.status(401).json({ error: 'Unauthorised' });
   }
   const filename = path.basename(req.params.filename);
-  const filePath = path.resolve('uploads', filename);
+  const filePath = path.join(uploadsDir, filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }

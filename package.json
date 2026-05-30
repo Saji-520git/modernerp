@@ -1,0 +1,68 @@
+{
+  "name": "modernerp",
+  "version": "1.0.0",
+  "description": "ModernERP - Retail Management System",
+  "author": "BROcode Solutions",
+  "main": "electron/main.js",
+  "scripts": {
+    "electron": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win --x64",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.brocode.modernerp",
+    "productName": "ModernERP",
+    "copyright": "Copyright 2026 BROcode Solutions",
+    "directories": {
+      "output": "C:\\ModernERP-Build",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/dist/**/*",
+      "backend/src/prisma/schema.prisma",
+      "backend/src/prisma/migrations/**/*",
+      "backend/node_modules/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/pgsql",
+        "to": "pgsql",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build-resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ModernERP",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-log": "^5.0.0",
+    "electron-store": "^8.1.0"
+  }
+}
