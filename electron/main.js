@@ -18,6 +18,7 @@ const PGDATA   = path.join(APP_DATA, 'pgdata');
 const UPLOADS  = path.join(APP_DATA, 'uploads');
 const LOGS     = path.join(APP_DATA, 'logs');
 const BACKUPS  = path.join(APP_DATA, 'backups');
+const CACHE    = path.join(APP_DATA, 'cache');
 const ENV_FILE = path.join(APP_DATA, '.env');
 
 // PostgreSQL binaries — inside app resources
@@ -57,7 +58,7 @@ let dbReady = false;   // true once the modernerp database exists (gates shutdow
 
 // ── Ensure required directories exist ─────────────────────────────────────────
 function ensureDirs() {
-  [APP_DATA, PGDATA, UPLOADS, LOGS, BACKUPS].forEach(d => {
+  [APP_DATA, PGDATA, UPLOADS, LOGS, BACKUPS, CACHE].forEach(d => {
     if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
   });
 }
@@ -315,6 +316,15 @@ function runMigrations() {
       DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
       NODE_ENV: 'production',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
+      // Prisma writes a telemetry/checksum cache to node_modules/.cache/prisma.
+      // In production node_modules lives under read-only Program Files → EPERM.
+      // CHECKPOINT_DISABLE stops the write entirely; the rest redirect any cache
+      // lookups to our writable ProgramData\ModernERP\cache directory.
+      CHECKPOINT_DISABLE: '1',
+      PRISMA_ENGINES_MIRROR: '',
+      PRISMA_CLI_BINARY_TARGETS: 'windows',
+      XDG_CACHE_HOME: CACHE,
+      LOCALAPPDATA: CACHE,
     };
     const schemaPath = path.join(BACKEND_DIR, 'src', 'prisma', 'schema.prisma');
     // Use process.execPath (Electron = Node.js runtime) to run prisma CLI JS directly
@@ -414,6 +424,9 @@ function startBackend() {
       LOG_PATH: LOGS,
       CORS_ORIGIN: 'http://localhost:4000',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
+      CHECKPOINT_DISABLE: '1',
+      XDG_CACHE_HOME: CACHE,
+      LOCALAPPDATA: CACHE,
     };
 
     backendProcess = spawn(BACKEND_RUNNER, [BACKEND_SCRIPT], { env, cwd: BACKEND_DIR });

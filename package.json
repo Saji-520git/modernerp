@@ -45,6 +45,10 @@
         "filter": ["**/*"]
       },
       {
+        "from": "backend/package.json",
+        "to": "app/backend/package.json"
+      },
+      {
         "from": "backend/src/prisma",
         "to": "app/backend/src/prisma",
         "filter": ["**/*"]
