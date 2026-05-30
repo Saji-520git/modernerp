@@ -69,7 +69,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "ModernERP",
       "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "include": "build-resources/installer.nsh"
     }
   },
   "devDependencies": {
