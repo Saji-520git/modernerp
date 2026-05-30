@@ -1,5 +1,9 @@
 'use strict';
 
+// Suppress EPIPE errors — broken pipe kills the process during PG/prisma output
+process.stdout.on('error', () => {});
+process.stderr.on('error', () => {});
+
 const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron');
 const net = require('net');
 const path = require('path');
@@ -41,6 +45,9 @@ const BACKEND_RUNNER = IS_DEV
 
 const store = new Store();
 log.transports.file.resolvePathFn = () => path.join(LOGS, 'main.log');
+if (app.isPackaged) {
+  log.transports.console.level = false; // silence console in production; file log still active
+}
 
 let mainWindow   = null;
 let splashWindow = null;
@@ -391,10 +398,11 @@ function startBackend() {
     });
     backendProcess.stderr.on('data', d => log.warn('backend err:', d.toString().trim()));
 
-    // Crash recovery — attempt one automatic restart after 3 seconds
+    // Crash recovery — restart only on unexpected non-zero exit codes
+    // Exclude code 1 (EPIPE / normal signal) and skip if app is closing
     backendProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null && !isShuttingDown) {
-        log.error('Backend crashed with code:', code, '— restarting in 3s');
+      if (code !== 0 && code !== null && code !== 1 && !app.isQuiting) {
+        log.warn('Backend crashed with code:', code, '— restarting in 3s');
         setTimeout(() => {
           startBackend().catch(e => log.error('Backend restart failed:', e));
         }, 3000);
@@ -572,6 +580,7 @@ let isShuttingDown = false;
 async function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  app.isQuiting = true;
   log.info('Shutting down ModernERP...');
 
   try {
@@ -597,6 +606,19 @@ async function shutdown() {
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────────
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  log.info('Another instance running — quitting');
+  app.quit();
+  process.exit(0);
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   // Prepend Electron binary dir + PG bin + PG lib to PATH
   // electronDir makes process.execPath available as 'node' to child .cmd scripts
