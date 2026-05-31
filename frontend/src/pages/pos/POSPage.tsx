@@ -1239,7 +1239,7 @@ export default function POSPage() {
       return [];
     }
   });
-  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('amount');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
   const [customer, setCustomer]                 = useState<CustomerOption | null>(null);
@@ -1528,7 +1528,7 @@ export default function POSPage() {
     try { localStorage.removeItem(CART_KEY); } catch { /* ignore */ }
     sound.clear();
     setCart([]);
-    setCartDiscountType('percent');
+    setCartDiscountType('amount');
     setCartDiscountValue(0);
     setCustomer(null);
     refocusBarcode();
@@ -1625,7 +1625,7 @@ export default function POSPage() {
 
   const resumeHold = useCallback((h: HoldBill) => {
     setCart(h.cart);
-    setCartDiscountType(h.cartDiscountType ?? 'percent');
+    setCartDiscountType(h.cartDiscountType ?? 'amount');
     setCartDiscountValue(h.cartDiscountValue ?? 0);
     setCustomer(h.customer);
     const remaining = holds.filter(x => x.id !== h.id);
