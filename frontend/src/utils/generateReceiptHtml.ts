@@ -130,7 +130,7 @@ export function generateReceiptHtml(
     }
     if (line.discountCents > 0) {
       rows += `<tr>
-      <td colspan="3" style="font-size:14px;color:#16a34a;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
+      <td colspan="3" style="font-size:14px;color:#000000;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
     </tr>`;
     }
     return rows;
