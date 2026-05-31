@@ -49,7 +49,7 @@ export const customerPaymentService = {
     const sale = await (prisma as any).sale.findUnique({
       where:  { id: saleId },
       select: { id: true, customerId: true, totalCents: true, paidCents: true,
-                status: true, isActive: true },
+                status: true },
     });
     if (!sale)           throw new HttpError(404, 'Sale not found');
     if (sale.status !== 'CONFIRMED') throw new HttpError(400, 'Sale must be CONFIRMED to record payment');
