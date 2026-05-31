@@ -138,9 +138,9 @@ export function generateReceiptHtml(
 
   const itemsTable = `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
   <tr>
-    <td style="width:58%;font-size:14px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
+    <td style="width:50%;font-size:14px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
     <td style="width:14%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
-    <td style="width:28%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
+    <td style="width:36%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
   </tr>
   ${itemRowsHtml}
   <tr>
@@ -186,8 +186,8 @@ export function generateReceiptHtml(
   // Thick separator + TOTAL row
   totalsRows += `<tr><td colspan="2" style="border-top:2px solid #000;padding:2px 0;"></td></tr>
   <tr>
-    <td style="font-size:18px;font-weight:bold;padding:2px 0;letter-spacing:0.5px;">${esc(L.total)}</td>
-    <td style="font-size:18px;font-weight:bold;text-align:right;padding:2px 0;">${fmt(receipt.totalCents)}</td>
+    <td style="font-size:18px;font-weight:900;padding:2px 0;letter-spacing:0.5px;">${esc(L.total)}</td>
+    <td style="font-size:18px;font-weight:900;text-align:right;padding:2px 0;">${fmt(receipt.totalCents)}</td>
   </tr>
   <tr><td colspan="2" style="border-top:1px dashed #999;padding:1px 0;"></td></tr>`;
 
@@ -276,6 +276,7 @@ export function generateReceiptHtml(
       padding: 2mm 3mm;
       font-family: ${fontFam};
       font-size: 15px;
+      font-weight: bold;
       color: #000;
       background: #fff;
       line-height: 1.5;
