@@ -634,11 +634,6 @@ function createMainWindow() {
     mainWindow.maximize();
   });
 
-  // Minimize to tray instead of taskbar
-  mainWindow.on('minimize', () => {
-    mainWindow.hide();
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
