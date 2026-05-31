@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Clock } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
+import { api } from './services/api';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/auth/LoginPage';
@@ -63,6 +65,32 @@ function CashierGuard({ children }: { children: JSX.Element }) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Validate any persisted session on startup. If the stored token is
+  // expired/invalid the /auth/me call returns 401, the axios interceptor
+  // clears the auth store, and the Protected guard redirects to /login.
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = useAuthStore.getState().accessToken;
+    if (!token) { setChecking(false); return; }
+    api.get('/auth/me')
+      .catch(() => { /* interceptor handles 401 logout */ })
+      .finally(() => { if (!cancelled) setChecking(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-300">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+          <p className="text-sm">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
