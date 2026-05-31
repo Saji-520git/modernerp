@@ -33,7 +33,7 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
   const PAD = { t: 16, r: 12, b: 28, l: 52 };
   const iW = W - PAD.l - PAD.r;
   const iH = H - PAD.t - PAD.b;
-  const maxR = Math.max(...data.map(d => d.revenue), 1);
+  const maxR = Math.max(...data.map(d => Math.max(d.revenue, d.expensesCents ?? 0)), 1);
   const pts = data.map((d, i) => ({
     x: PAD.l + (data.length === 1 ? iW / 2 : (i / (data.length - 1)) * iW),
     y: PAD.t + (1 - d.revenue / maxR) * iH,
@@ -552,7 +552,7 @@ export default function DashboardPage() {
         <div className="col-span-2 flex flex-col gap-4">
 
           {/* Revenue Chart */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex-shrink-0">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex-shrink-0 overflow-hidden">
             <div className="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-2">
               <div>
                 <h2 className="text-base font-bold text-slate-800">Revenue Overview</h2>
