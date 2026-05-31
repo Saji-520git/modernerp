@@ -23,6 +23,7 @@ import { logger } from './config/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFound } from './middleware/not-found.js';
 import { router as apiRouter } from './modules/index.js';
+import { prisma } from './config/prisma.js';
 import { inventoryService } from './modules/inventory/inventory.service.js';
 import { productsService } from './modules/products/products.service.js';
 
@@ -93,6 +94,17 @@ app.use(errorHandler);
 
 app.listen(env.PORT, async () => {
   logger.info(`BROcode ERP API listening on http://localhost:${env.PORT}`);
+
+  // Warm up the Prisma query engine NOW (during the splash screen) instead of
+  // lazily on the first request. Prisma loads its ~15 MB native engine binary
+  // and opens the DB connection on first query — on a clean PC with on-access
+  // antivirus (e.g. McAfee) scanning that binary, the cold start can stall for
+  // minutes. Doing it here means login's first query is already warm and instant.
+  if (process.env.NODE_ENV !== 'test') {
+    prisma.$connect()
+      .then(() => logger.info('Prisma connected to database (engine warm)'))
+      .catch((e: unknown) => logger.error(e, 'Prisma initial $connect failed'));
+  }
 
   if (process.env.NODE_ENV !== 'test') {
     // Remove phantom zero-qty stock records left by ensureStockRecords.

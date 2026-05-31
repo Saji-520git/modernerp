@@ -68,7 +68,7 @@ function ensureEnv() {
   // Required key/value pairs. Names MUST match backend/src/config/env.ts zod schema:
   //   DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET (others have defaults)
   const pairs = {
-    DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
+    DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
     JWT_SECRET: '70373b00cf9400941374d2166aa7905c0719948035e25ccdd15e6fb520bfeb24ade9c909e97293e6136ce1402925b2298742c4a4d28bcaf166f112b9ebb04834',
     JWT_ACCESS_SECRET: '70373b00cf9400941374d2166aa7905c0719948035e25ccdd15e6fb520bfeb24ade9c909e97293e6136ce1402925b2298742c4a4d28bcaf166f112b9ebb04834',
     JWT_REFRESH_SECRET: '60e6f5977516bec5669fd735f778e0ae4397c8138f3b97bbb62bb346571a4a2416722afe85e9c719316d616ea72fd3daf40c833594b53c277d5cc24f4b1de8db',
@@ -337,7 +337,7 @@ function runMigrations() {
       ...process.env,
       // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
       ELECTRON_RUN_AS_NODE: '1',
-      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
+      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
       NODE_ENV: 'production',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
       // Prisma writes a telemetry/checksum cache to node_modules/.cache/prisma.
@@ -393,7 +393,7 @@ function runSeedIfFirstTime() {
       ...process.env,
       // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
       ELECTRON_RUN_AS_NODE: '1',
-      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
+      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
       NODE_ENV: 'production',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
     };
@@ -441,7 +441,7 @@ function startBackend() {
       ...process.env,
       // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
       ELECTRON_RUN_AS_NODE: '1',
-      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}`,
+      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
       NODE_ENV: 'production',
       PORT: '4000',
       UPLOAD_PATH: UPLOADS,

@@ -4,7 +4,8 @@
 // Money is stored as integer cents (e.g., price_cents). Quantities support fractions where needed.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {
