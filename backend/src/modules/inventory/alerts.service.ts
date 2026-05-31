@@ -110,6 +110,12 @@ export async function generateAlerts(): Promise<void> {
         },
       );
     }
+
+    // Clear OUT-OF-STOCK alerts for products that have since been replenished
+    const activeOosIds = outOfStock.map((p) => `oos_${p.id}`);
+    await prisma.stockAlert.deleteMany({
+      where: { id: { startsWith: 'oos_', notIn: activeOosIds } },
+    });
   }
 
   // ── EXPIRY ─────────────────────────────────────────────────────────────────
