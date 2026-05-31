@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShoppingCart, Package, BarChart3, Truck } from 'lucide-react';
 import { api } from '../../services/api';
@@ -13,12 +13,19 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const setAuth  = useAuthStore((s) => s.setAuth);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('last_login_email');
+    if (saved) setEmail(saved);
+    setPassword('');
+  }, []);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { email, password });
+      localStorage.setItem('last_login_email', email);
       setAuth(data.user, data.access, data.refresh);
       navigate('/');
     } catch (err: any) {
@@ -136,7 +143,7 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   className="w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 />
                 <button
