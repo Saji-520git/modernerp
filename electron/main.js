@@ -383,32 +383,72 @@ function runMigrations() {
   });
 }
 
-// ── Run seed (first time only) ─────────────────────────────────────────────────
+// ── Run seed (based on actual DB user count, NOT the electron-store flag) ──────
+// electron-store persists in AppData\Roaming across uninstall/reinstall, but the
+// pgdata dir is deleted on uninstall. Relying on store.get('seeded') meant a
+// fresh DB after reinstall was never seeded → no admin user → "Invalid
+// credentials". We now ask the database directly: 0 users → seed; >0 → skip.
 function runSeedIfFirstTime() {
   return new Promise((resolve) => {
-    if (store.get('seeded')) return resolve();
-    updateSplash('Setting up initial data...');
-    log.info('Running seed for first time...');
-    const env = {
-      ...process.env,
-      // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
-      ELECTRON_RUN_AS_NODE: '1',
-      DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
-      NODE_ENV: 'production',
-      NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
-    };
-    const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
-    const proc = spawn(process.execPath, [seedScript], { env, cwd: BACKEND_DIR });
-    proc.stdout.on('data', d => log.info('seed:', d.toString().trim()));
-    proc.stderr.on('data', d => log.warn('seed:', d.toString().trim()));
-    proc.on('close', code => {
-      if (code === 0) {
+    updateSplash('Checking initial data...');
+
+    // Check if users exist in DB
+    const env = { ...process.env, PGPASSWORD: PG_PASS };
+    const check = spawn(PSQL, [
+      '-U', PG_USER,
+      '-h', '127.0.0.1',
+      '-p', PG_PORT,
+      '-d', PG_DB,
+      '-t', '-c', 'SELECT COUNT(*) FROM "User";',
+    ], { env });
+
+    let output = '';
+    check.stdout.on('data', d => output += d.toString());
+    check.stderr.on('data', d => log.warn('user-count check:', d.toString().trim()));
+    check.on('close', (code) => {
+      const count = parseInt(output.trim(), 10) || 0;
+
+      if (code === 0 && count > 0) {
+        log.info(`Database has ${count} users — skipping seed`);
         store.set('seeded', true);
-        log.info('Seed complete');
-      } else {
-        // Seed failure is not fatal — user can continue with empty data
-        log.warn(`Seed exited with code ${code} — continuing without seed data`);
+        return resolve();
       }
+
+      // No users found (fresh DB, e.g. after reinstall) — must seed
+      log.info('No users in database — running seed...');
+      updateSplash('Setting up initial data...');
+
+      const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
+      const seedEnv = {
+        ...process.env,
+        // CRITICAL: make the Electron binary run as plain Node.js, not a 2nd Electron app
+        ELECTRON_RUN_AS_NODE: '1',
+        DATABASE_URL: `postgresql://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_DB}?connect_timeout=15&pool_timeout=15`,
+        NODE_ENV: 'production',
+        NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
+        CHECKPOINT_DISABLE: '1',
+        XDG_CACHE_HOME: CACHE,
+        LOCALAPPDATA: CACHE,
+      };
+
+      const proc = spawn(process.execPath, [seedScript], { env: seedEnv, cwd: BACKEND_DIR });
+      proc.stdout.on('data', d => log.info('seed:', d.toString().trim()));
+      proc.stderr.on('data', d => log.warn('seed err:', d.toString().trim()));
+      proc.on('close', code => {
+        if (code === 0) {
+          store.set('seeded', true);
+          log.info('Seed complete');
+        } else {
+          // Seed failure is not fatal — user can continue with empty data
+          log.warn(`Seed exited with code ${code} — continuing without seed data`);
+        }
+        resolve();
+      });
+    });
+
+    check.on('error', (err) => {
+      log.warn('User count check failed:', err.message);
+      // If the check itself fails, don't block startup
       resolve();
     });
   });
