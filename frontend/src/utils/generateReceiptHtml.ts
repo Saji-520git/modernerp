@@ -94,7 +94,7 @@ export function generateReceiptHtml(
 
   // 5. Tagline — after phone
   if (settings.receiptTagline) {
-    header += `<p style="font-size:14px;text-align:center;margin:1px 0;color:#444;">${esc(settings.receiptTagline)}</p>`;
+    header += `<p style="font-size:14px;text-align:center;margin:1px 0;color:#000000;">${esc(settings.receiptTagline)}</p>`;
   }
 
   // 6. Extra header lines
@@ -110,22 +110,22 @@ export function generateReceiptHtml(
   if (settings.receiptShowCashier) meta += row(L.cashier, receipt.cashier);
   meta += row(L.customer, receipt.customer?.name ?? L.walkIn);
   meta += row(L.date, dateStr);
-  if (receipt.warehouseName) meta += `<p style="font-size:14px;color:#555;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
+  if (receipt.warehouseName) meta += `<p style="font-size:14px;color:#000000;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
 
   // ── Items table (fixed layout, 58 / 14 / 28 %) ───────────────────────────
   const itemRowsHtml = receipt.lines.map(line => {
     const displayName = line.product.receiptName || line.product.name;
     const skuLine = settings.receiptShowSku
-      ? `<br><span style="font-size:14px;color:#666;">${esc(line.product.sku)}</span>`
+      ? `<br><span style="font-size:14px;color:#000000;">${esc(line.product.sku)}</span>`
       : '';
     let rows = `<tr>
-      <td style="font-size:14px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
+      <td style="font-size:16px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
       <td style="font-size:14px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
       <td style="font-size:14px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
     </tr>`;
     if (Number(line.qty) > 1) {
       rows += `<tr>
-      <td colspan="3" style="font-size:14px;color:#555;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
+      <td colspan="3" style="font-size:14px;color:#000000;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
     </tr>`;
     }
     if (line.discountCents > 0) {
@@ -167,7 +167,7 @@ export function generateReceiptHtml(
       <div style="border:1.5px solid #000000;border-radius:3px;box-shadow:none;padding:4px 8px;margin:4px 0;background:#ffffff;">
         <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:14px;color:#000000;font-weight:700">🎉 You Saved</span>
-          <span style="font-size:15px;color:#000000;font-weight:700">${fmt(totalSavingsCents)}</span>
+          <span style="font-size:17px;color:#000000;font-weight:700">${fmt(totalSavingsCents)}</span>
         </div>
       </div>
     </td>
@@ -178,8 +178,8 @@ export function generateReceiptHtml(
   // Tax
   if (settings.receiptShowTax && receipt.taxCents > 0) {
     totalsRows += `<tr>
-    <td style="font-size:14px;padding:1px 0;color:#555;">${esc(settings.taxLabel || L.tax)}</td>
-    <td style="font-size:14px;text-align:right;padding:1px 0;color:#555;">${fmt(receipt.taxCents)}</td>
+    <td style="font-size:14px;padding:1px 0;color:#000000;">${esc(settings.taxLabel || L.tax)}</td>
+    <td style="font-size:14px;text-align:right;padding:1px 0;color:#000000;">${fmt(receipt.taxCents)}</td>
   </tr>`;
   }
 
@@ -229,7 +229,7 @@ export function generateReceiptHtml(
   // Items count — sum qty across all lines
   const totalItemsQty = receipt.lines.reduce((s, l) => s + Number(l.qty), 0);
   totalsRows += `<tr>
-    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:14px;color:#444;font-weight:600;">
+    <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:14px;color:#000000;font-weight:600;">
       ${esc(L.itemCount)}: ${totalItemsQty}
     </td>
   </tr>
@@ -253,7 +253,7 @@ export function generateReceiptHtml(
   }
   if (settings.returnPolicy) {
     footer += divider();
-    footer += `<p style="text-align:center;font-size:14px;color:#555;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
+    footer += `<p style="text-align:center;font-size:14px;color:#000000;margin:2px 0;">${esc(settings.returnPolicy)}</p>`;
   }
 
   footer += divider();
