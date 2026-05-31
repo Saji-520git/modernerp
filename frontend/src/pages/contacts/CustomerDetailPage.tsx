@@ -383,9 +383,13 @@ function RecordPaymentModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!saleId) { setError('Select a sale'); return; }
+    if (!saleId) { setError('Select an invoice'); return; }
     const amountCents = Math.round(parseFloat(amount) * 100);
     if (!amountCents || amountCents <= 0) { setError('Enter a valid amount'); return; }
+    if (outstanding > 0 && amountCents > outstanding) {
+      setError(`Amount exceeds outstanding balance of ${fmtCents(outstanding)}`);
+      return;
+    }
     mutation.mutate({
       saleId, amountCents, paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
