@@ -19,6 +19,7 @@ import {
 } from '../../services/purchases';
 import {
   supplierPaymentsApi,
+  type SupplierPaymentMethod,
 } from '../../services/supplierPayments';
 import type { SupplierPayment } from '../../services/purchases';
 import {
@@ -569,6 +570,172 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'account',   label: 'Account Info',      icon: <Truck      size={14} /> },
 ];
 
+// ─── Record Supplier Payment Modal ─────────────────────────────────────────────
+
+function RecordSupplierPaymentModal({
+  supplierId, onClose,
+}: {
+  supplierId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data: purchasesData, isLoading: purchasesLoading } = useQuery({
+    queryKey: ['supplier-outstanding-purchases', supplierId],
+    queryFn: () => purchasesApi.listPurchases({ supplierId, pageSize: 100 }),
+  });
+
+  const outstandingPurchases = (purchasesData?.data ?? []).filter(
+    (p) => p.status === 'CONFIRMED' &&
+      (p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL'),
+  );
+
+  const [purchaseId, setPurchaseId] = useState('');
+  const [amount, setAmount]         = useState('');
+  const [method, setMethod]         = useState<SupplierPaymentMethod>('CASH');
+  const [refNo, setRefNo]           = useState('');
+  const [bank, setBank]             = useState('');
+  const [date, setDate]             = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes]           = useState('');
+  const [error, setError]           = useState('');
+
+  const selectedPurchase = outstandingPurchases.find((p) => p.id === purchaseId);
+  const outstanding = selectedPurchase ? selectedPurchase.totalCents - selectedPurchase.paidCents : 0;
+
+  const mutation = useMutation({
+    mutationFn: () => supplierPaymentsApi.create({
+      purchaseId, amountCents: Math.round(parseFloat(amount) * 100), paymentMethod: method,
+      referenceNo: refNo || undefined, bankName: bank || undefined,
+      paymentDate: date, notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments-by', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-purchases', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-detail', supplierId] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? 'Failed to record payment');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!purchaseId) { setError('Select a purchase order'); return; }
+    const amountCents = Math.round(parseFloat(amount) * 100);
+    if (!amountCents || amountCents <= 0) { setError('Enter a valid amount'); return; }
+    if (outstanding > 0 && amountCents > outstanding) {
+      setError(`Amount exceeds outstanding balance of ${fmtCents(outstanding)}`);
+      return;
+    }
+    mutation.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="text-base font-semibold text-slate-800">Record Payment</h2>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Purchase Order *</label>
+            {purchasesLoading ? (
+              <p className="text-sm text-slate-400">Loading outstanding orders…</p>
+            ) : outstandingPurchases.length === 0 ? (
+              <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                No outstanding purchase orders for this supplier.
+              </p>
+            ) : (
+              <select value={purchaseId}
+                onChange={(e) => { setPurchaseId(e.target.value); const p = outstandingPurchases.find(x => x.id === e.target.value); if (p) setAmount(((p.totalCents - p.paidCents) / 100).toFixed(2)); }}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">— Select order —</option>
+                {outstandingPurchases.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.number} · Outstanding: {fmtCents(p.totalCents - p.paidCents)}
+                  </option>
+                ))}
+              </select>
+            )}
+            {outstanding > 0 && (
+              <p className="text-xs text-amber-600 mt-0.5">Outstanding: {fmtCents(outstanding)}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Amount (Rs.) *</label>
+              <input type="number" min="0.01" step="0.01" value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Method *</label>
+              <select value={method} onChange={(e) => setMethod(e.target.value as SupplierPaymentMethod)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="CASH">Cash</option>
+                <option value="CHEQUE">Cheque</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Reference No</label>
+              <input value={refNo} onChange={(e) => setRefNo(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Cheque / bank ref" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+
+          {(method === 'CHEQUE' || method === 'BANK_TRANSFER') && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Bank</label>
+              <input value={bank} onChange={(e) => setBank(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Bank name" />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="Optional note" />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={mutation.isPending || outstandingPurchases.length === 0}
+              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60">
+              {mutation.isPending ? 'Saving…' : 'Record Payment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -578,6 +745,7 @@ export default function SupplierDetailPage() {
   const [editOpen, setEditOpen]   = useState(false);
   const [editError, setEditError] = useState('');
   const [viewPoId, setViewPoId]   = useState<string | null>(null);
+  const [payOpen, setPayOpen]     = useState(false);
 
   const { data: supplier, isLoading } = useQuery({
     queryKey: ['supplier-detail', id],
@@ -671,6 +839,10 @@ export default function SupplierDetailPage() {
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
               <Plus size={14} /> New PO
             </button>
+            <button onClick={() => setPayOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-50 transition-colors">
+              <Wallet size={14} /> Record Payment
+            </button>
             <button onClick={() => { setEditError(''); setEditOpen(true); }}
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
               <Pencil size={14} /> Edit
@@ -752,6 +924,13 @@ export default function SupplierDetailPage() {
         <PurchaseViewModal
           poId={viewPoId}
           onClose={() => setViewPoId(null)}
+        />
+      )}
+
+      {payOpen && (
+        <RecordSupplierPaymentModal
+          supplierId={id!}
+          onClose={() => setPayOpen(false)}
         />
       )}
     </div>
