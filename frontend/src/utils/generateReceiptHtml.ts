@@ -5,7 +5,7 @@ import type { AppSettings } from '../services/settings';
 
 function money(cents: number, sym: string, pos: string): string {
   const n = (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return pos === 'before' ? `${sym} ${n}` : `${n} ${sym}`;
+  return pos === 'before' ? `${sym}${n}` : `${n} ${sym}`;
 }
 
 function generateBarcodeHtml(text: string): string {
@@ -120,7 +120,7 @@ export function generateReceiptHtml(
       : '';
     let rows = `<tr>
       <td style="font-size:16px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
-      <td style="font-size:14px;text-align:right;padding:2px 0;white-space:nowrap;">${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
+      <td style="font-size:14px;text-align:center;padding:2px 0;white-space:nowrap;">${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
       <td style="font-size:14px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
     </tr>`;
     if (Number(line.qty) > 1) {
@@ -139,8 +139,8 @@ export function generateReceiptHtml(
   const itemsTable = `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
   <tr>
     <td style="width:50%;font-size:14px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
-    <td style="width:14%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
-    <td style="width:36%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
+    <td style="width:20%;font-size:14px;font-weight:bold;text-align:center;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
+    <td style="width:30%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
   </tr>
   ${itemRowsHtml}
   <tr>
