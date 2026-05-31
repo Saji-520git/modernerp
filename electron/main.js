@@ -634,6 +634,19 @@ function createMainWindow() {
     mainWindow.maximize();
   });
 
+  // Clear the persisted auth session when the window is closed so that
+  // re-opening the app always requires a fresh login. The JWT is stored by
+  // the Zustand persist middleware under the 'modernerp-auth' localStorage
+  // key (NOT 'token'/'accessToken'). 'last_login_email' is left intact so the
+  // login screen can still pre-fill the email.
+  mainWindow.on('close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents
+        .executeJavaScript(`localStorage.removeItem('modernerp-auth');`)
+        .catch(() => {});
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
