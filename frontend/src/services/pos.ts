@@ -75,6 +75,7 @@ export interface CheckoutPayload {
   paymentMethod: AllPaymentMethods;
   cartDiscountCents?: number;    // cart-level discount amount in cents
   cartDiscountPercent?: number;  // cart-level discount percent (0–100)
+  cashAmountCents?: number;      // split payment: cash portion paid now (remainder = credit/outstanding)
   note?: string;
   items: CheckoutLine[];
   draftId?: string; // delete this draft after checkout

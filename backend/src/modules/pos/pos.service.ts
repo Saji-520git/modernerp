@@ -128,7 +128,11 @@ export const posService = {
     canSellOnCredit: boolean,
     canManageCredit: boolean,
   ) {
-    const { warehouseId, customerId, paymentMethod, cartDiscountCents = 0, cartDiscountPercent = 0, note, items, draftId, isStaffSale = false } = input;
+    const { warehouseId, customerId, paymentMethod, cartDiscountCents = 0, cartDiscountPercent = 0, cashAmountCents, note, items, draftId, isStaffSale = false } = input;
+
+    // Split payment (cash + credit): recorded as CREDIT with the cash portion paid up-front.
+    // The remainder becomes the customer's outstanding balance.
+    const splitCashCents = paymentMethod === 'CREDIT' && (cashAmountCents ?? 0) > 0 ? (cashAmountCents as number) : 0;
 
     // Credit sale validation
     if (paymentMethod === 'CREDIT') {
@@ -140,8 +144,9 @@ export const posService = {
 
       if (customer.creditLimitCents > 0) {
         const existing = await getCustomerCreditBalance(customerId);
-        // We'll compute the new sale total after product lookup — do a pre-check with a rough estimate
-        const roughTotal = items.reduce((s, i) => s + i.qty * (i.unitPriceCents ?? 0), 0);
+        // We'll compute the new sale total after product lookup — do a pre-check with a rough estimate.
+        // For split payments only the credit portion (total − cash paid now) counts against the limit.
+        const roughTotal = items.reduce((s, i) => s + i.qty * (i.unitPriceCents ?? 0), 0) - splitCashCents;
 
         const alertThreshold = Math.round(customer.creditLimitCents * (customer.creditAlertPct / 100));
         const newBalance = existing + roughTotal;
@@ -316,7 +321,15 @@ export const posService = {
     const discountCents = computedCartDiscount;
     const taxCents      = effectiveTaxCents;
     const totalCents    = taxableAmount + effectiveTaxCents;
-    const paidCents     = paymentMethod === 'CREDIT' ? 0 : totalCents;
+    // Split (cash + credit): cash portion paid now; otherwise full credit = 0 paid, all else = paid in full.
+    const isSplitCredit = splitCashCents > 0;
+    const paidCents     = isSplitCredit
+      ? Math.min(splitCashCents, totalCents)
+      : (paymentMethod === 'CREDIT' ? 0 : totalCents);
+    // Only set paymentStatus on the split path — leave CASH / full-CREDIT flows untouched (DB default UNPAID).
+    const splitPaymentStatus: 'PARTIAL' | 'PAID' | null = isSplitCredit
+      ? (paidCents >= totalCents ? 'PAID' : 'PARTIAL')
+      : null;
     const number     = await generateSaleNumber();
 
     // Verify an open shift exists for this user+warehouse before entering the transaction
@@ -350,6 +363,7 @@ export const posService = {
           discountCents,
           totalCents,
           paidCents,
+          ...(splitPaymentStatus ? { paymentStatus: splitPaymentStatus } : {}),
           note: isStaffSale ? `[Staff Sale]${note ? ` ${note}` : ''}` : (note ?? null),
           createdById: userId,
           shiftId: shift.id,

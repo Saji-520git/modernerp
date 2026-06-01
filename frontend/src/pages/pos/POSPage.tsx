@@ -684,7 +684,7 @@ function PaymentDialog({
   totalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
 }: {
   totalCents: number;
-  onConfirm: (method: AllPaymentMethods, receivedCents?: number) => void;
+  onConfirm: (method: AllPaymentMethods, receivedCents?: number, cashAmountCents?: number) => void;
   onClose: () => void;
   isPending: boolean;
   customer: CustomerOption | null;
@@ -741,7 +741,16 @@ function PaymentDialog({
     if (activeTab === 'CARD')   { onConfirm('CARD'); return; }
     if (activeTab === 'BANK')   { onConfirm('BANK_TRANSFER'); return; }
     if (activeTab === 'QR_PAY') { onConfirm('QR_PAY'); return; }
-    if (activeTab === 'SPLIT')  { onConfirm('CASH', splitCashC); return; }
+    if (activeTab === 'SPLIT')  {
+      if (splitSecondary === 'CREDIT') {
+        // Cash + Credit split: cash portion paid now; remainder recorded as credit/outstanding.
+        onConfirm('CREDIT', splitCashC, splitCashC);
+      } else {
+        // Cash + Card/Bank/QR split: fully paid, no outstanding (unchanged behaviour).
+        onConfirm('CASH', splitCashC);
+      }
+      return;
+    }
     if (activeTab === 'CREDIT') { onConfirm('CREDIT'); return; }
   };
 
@@ -1029,6 +1038,11 @@ function ReceiptModal({
     QR_PAY: 'QR Pay', CREDIT: 'Credit',
   };
 
+  // Split (cash + credit): recorded as CREDIT with a partial cash payment
+  const isSplit = receipt.paymentMethod === 'CREDIT'
+    && receipt.paidCents > 0
+    && receipt.paidCents < receipt.totalCents;
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full flex overflow-hidden" style={{ maxWidth: 740, maxHeight: '90vh' }}>
@@ -1058,9 +1072,10 @@ function ReceiptModal({
             {[
               { label: 'Invoice', value: receipt.number },
               { label: 'Total', value: formatCents(receipt.totalCents) },
-              { label: 'Payment', value: pmLabel[receipt.paymentMethod] ?? receipt.paymentMethod },
+              { label: 'Payment', value: isSplit ? 'Cash + Credit' : (pmLabel[receipt.paymentMethod] ?? receipt.paymentMethod) },
               ...(receipt.paymentMethod === 'CASH' && changeCents > 0 ? [{ label: 'Change', value: formatCents(changeCents) }] : []),
-              ...(receipt.isCreditSale ? [{ label: 'Balance Due', value: formatCents(receipt.totalCents) }] : []),
+              ...(isSplit ? [{ label: 'Cash Paid', value: formatCents(receipt.paidCents) }] : []),
+              ...(receipt.isCreditSale ? [{ label: 'Balance Due', value: formatCents(receipt.totalCents - receipt.paidCents) }] : []),
               ...(receipt.isStaffSale  ? [{ label: 'Type', value: 'Staff Sale' }] : []),
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between text-sm">
@@ -1709,7 +1724,7 @@ export default function POSPage() {
     }));
   }, []);
 
-  const handleCheckout = useCallback((method: AllPaymentMethods, receivedCents = 0) => {
+  const handleCheckout = useCallback((method: AllPaymentMethods, receivedCents = 0, cashAmountCents?: number) => {
     if (!warehouseId || cart.length === 0) return;
     setPendingReceivedCents(receivedCents);
     const payload = {
@@ -1719,6 +1734,8 @@ export default function POSPage() {
       cartDiscountCents,
       cartDiscountPercent: cartDiscountType === 'percent' ? cartDiscountValue : 0,
       isStaffSale:         isStaffSale && isAdmin,
+      // Split payment: cash portion paid now, remainder is credit/outstanding
+      ...(cashAmountCents && cashAmountCents > 0 ? { cashAmountCents } : {}),
       items: cart
         .filter(i => !i.isServiceCharge)
         .map(i => {
@@ -2439,7 +2456,7 @@ export default function POSPage() {
       {showPayment && (
         <PaymentDialog
           totalCents={grandTotal}
-          onConfirm={(method, receivedCents = 0) => handleCheckout(method, receivedCents)}
+          onConfirm={(method, receivedCents = 0, cashAmountCents) => handleCheckout(method, receivedCents, cashAmountCents)}
           onClose={() => setShowPayment(false)}
           isPending={checkoutMutation.isPending}
           customer={customer}

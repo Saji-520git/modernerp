@@ -16,6 +16,7 @@ export const checkoutSchema = z.object({
   paymentMethod:       z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'QR_PAY', 'CREDIT']).default('CASH'),
   cartDiscountCents:   z.number().int().min(0).default(0),    // cart-level discount in cents
   cartDiscountPercent: z.number().min(0).max(100).default(0), // cart-level discount percent
+  cashAmountCents:     z.number().int().min(0).optional(),    // split payment: cash paid now (remainder = credit/outstanding)
   note:                z.string().max(500).optional(),
   items:               z.array(checkoutLineSchema).min(1, 'Cart must have at least one item'),
   draftId:             z.string().cuid().optional(), // delete this draft after successful checkout

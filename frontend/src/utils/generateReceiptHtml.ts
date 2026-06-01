@@ -210,15 +210,22 @@ export function generateReceiptHtml(
   <tr><td colspan="2" style="border-top:1px dashed #999;padding:2px 0"></td></tr>`;
   }
 
-  // Credit sale badge
+  // Credit sale badge — split (cash + credit) shows cash paid + remaining balance
   if (receipt.isCreditSale) {
+    const isSplit = receipt.paidCents > 0 && receipt.paidCents < receipt.totalCents;
+    if (isSplit) {
+      totalsRows += `<tr>
+    <td style="font-size:14px;padding:1px 0;">${esc(L.tendered)}</td>
+    <td style="font-size:14px;text-align:right;padding:1px 0;">${fmt(receipt.paidCents)}</td>
+  </tr>`;
+    }
     totalsRows += `<tr>
     <td style="font-size:14px;padding:1px 0;">${esc(L.balance)}</td>
-    <td style="font-size:14px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(receipt.totalCents)}</td>
+    <td style="font-size:14px;font-weight:bold;text-align:right;padding:1px 0;">${fmt(receipt.totalCents - receipt.paidCents)}</td>
   </tr>
   <tr>
     <td colspan="2" style="text-align:center;padding:4px 0;">
-      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:14px;font-weight:700;letter-spacing:1px;">${esc(L.creditSale)}</span>
+      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:14px;font-weight:700;letter-spacing:1px;">${isSplit ? 'CASH + CREDIT' : esc(L.creditSale)}</span>
     </td>
   </tr>`;
   }
