@@ -1475,7 +1475,7 @@ export default function POSPage() {
         product, qty: 1, unitPriceCents: priceToUse,
         originalPriceCents: product.priceCents,
         costCents: product.costCents ?? 0,
-        itemDiscountType:  (defDiscCents > 0 ? 'amount' : 'percent') as 'amount' | 'percent',
+        itemDiscountType:  'amount' as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
       }];
