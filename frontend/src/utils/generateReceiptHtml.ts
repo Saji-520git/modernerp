@@ -112,40 +112,46 @@ export function generateReceiptHtml(
   meta += row(L.date, dateStr);
   if (receipt.warehouseName) meta += `<p style="font-size:14px;color:#000000;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
 
-  // ── Items table (fixed layout, 58 / 14 / 28 %) ───────────────────────────
+  // ── Items table — 2-line layout: PRODUCT / PRICE / DISC / AMOUNT ───────────
+  // Bare-number formatter (no currency symbol) for the price/disc/amount columns.
+  const num = (c: number) =>
+    esc((c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
   const itemRowsHtml = receipt.lines.map(line => {
     const displayName = line.product.receiptName || line.product.name;
+    const qtyNum      = Number(line.qty);
+    const unitLabel   = line.unitShortCode ? ` ${esc(line.unitShortCode)}` : '';
+    // discountCents is the TOTAL line discount → per-unit = total / qty
+    const perUnitDiscCents = qtyNum > 0 ? line.discountCents / qtyNum : 0;
+    // AMOUNT = net line total (gross lineTotalCents minus the line discount)
+    const netLineCents     = line.lineTotalCents - line.discountCents;
     const skuLine = settings.receiptShowSku
       ? `<br><span style="font-size:14px;color:#000000;">${esc(line.product.sku)}</span>`
       : '';
-    let rows = `<tr>
-      <td style="font-size:16px;padding:2px 0;word-break:break-word;overflow-wrap:break-word;">${esc(displayName)}${skuLine}</td>
-      <td style="font-size:14px;text-align:center;padding:2px 0;white-space:nowrap;">${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
-      <td style="font-size:14px;text-align:right;padding:2px 0;white-space:nowrap;">${fmt(line.lineTotalCents)}</td>
+    // ROW 1 — product name (full width). ROW 2 — qty | price | disc | amount.
+    // ROW 3 — dashed separator after each item.
+    return `<tr>
+      <td colspan="4" style="text-align:left;font-weight:bold;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;font-size:16px;padding:4px 0 0;">${esc(displayName)}${skuLine}</td>
+    </tr>
+    <tr>
+      <td style="width:40%;text-align:left;font-size:14px;padding:0 0 2px;">${qtyNum}${unitLabel}</td>
+      <td style="width:20%;text-align:right;font-size:14px;padding:0 0 2px;">${num(line.unitPriceCents)}</td>
+      <td style="width:15%;text-align:right;font-size:14px;padding:0 0 2px;">${num(perUnitDiscCents)}</td>
+      <td style="width:25%;text-align:right;font-size:14px;padding:0 0 2px;">${num(netLineCents)}</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="border-top:1px dashed #000000;padding:2px 0;"></td>
     </tr>`;
-    if (Number(line.qty) > 1) {
-      rows += `<tr>
-      <td colspan="3" style="font-size:14px;color:#000000;font-weight:500;padding:0 0 2px 4px;">${fmt(line.unitPriceCents)} × ${Number(line.qty)}${line.unitShortCode ? ' ' + esc(line.unitShortCode) : ''}</td>
-    </tr>`;
-    }
-    if (line.discountCents > 0) {
-      rows += `<tr>
-      <td colspan="3" style="font-size:14px;color:#000000;font-weight:bold;padding:0 0 3px 4px;">✓ You save: ${esc(money(line.discountCents, sym, symPos))}</td>
-    </tr>`;
-    }
-    return rows;
   }).join('');
 
   const itemsTable = `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
   <tr>
-    <td style="width:50%;font-size:14px;font-weight:bold;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
-    <td style="width:20%;font-size:14px;font-weight:bold;text-align:center;padding:2px 0;border-bottom:1px solid #000;">${esc(L.qty)}</td>
-    <td style="width:30%;font-size:14px;font-weight:bold;text-align:right;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
+    <td style="width:40%;font-size:14px;font-weight:bold;text-align:left;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
+    <td style="width:20%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.price)}</td>
+    <td style="width:15%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.discount)}</td>
+    <td style="width:25%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
   </tr>
   ${itemRowsHtml}
-  <tr>
-    <td colspan="3" style="border-top:1px solid #000;padding:3px 0 0;"></td>
-  </tr>
 </table>`;
 
   // ── Totals table ──────────────────────────────────────────────────────────
