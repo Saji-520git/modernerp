@@ -232,8 +232,18 @@ export function generateReceiptHtml(
   </tr>`;
   }
 
-  // Items count — sum qty across all lines
-  const totalItemsQty = receipt.lines.reduce((s, l) => s + Number(l.qty), 0);
+  // Items count — weight/volume units count as 1 per line; countable units
+  // count their quantity; unknown units default to 1.
+  const weightVolumeUnits = [
+    'kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms',
+    'l', 'ml', 'liter', 'litre', 'liters', 'litres',
+    'milliliter', 'millilitre',
+  ];
+  const totalItemsQty = receipt.lines.reduce((total, l) => {
+    const unit = (l.unitShortCode ?? '').toLowerCase().trim();
+    if (weightVolumeUnits.includes(unit)) return total + 1;
+    return total + Math.round(Number(l.qty) || 1);
+  }, 0);
   totalsRows += `<tr>
     <td colspan="2" style="border-top:1px dashed #999;padding:3px 0 0;font-size:14px;color:#000000;font-weight:600;">
       ${esc(L.itemCount)}: ${totalItemsQty}
