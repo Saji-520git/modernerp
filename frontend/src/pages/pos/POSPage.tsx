@@ -69,6 +69,7 @@ interface CustomerOption {
   name: string;
   phone: string | null;
   creditEnabled?: boolean;
+  priceTier?: { id: string; name: string } | null;
 }
 
 interface HoldBill {
@@ -2226,6 +2227,11 @@ export default function POSPage() {
             {customer && (
               <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-full">
                 <User size={11} /> {customer.name}
+                {customer.priceTier && (
+                  <span className="bg-emerald-100 text-emerald-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" title="Price tier">
+                    {customer.priceTier.name}
+                  </span>
+                )}
                 <button type="button" onClick={() => setCustomer(null)} className="text-indigo-400 hover:text-indigo-600 ml-0.5">
                   <X size={10} />
                 </button>

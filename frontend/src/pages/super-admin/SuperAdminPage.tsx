@@ -22,6 +22,7 @@ const MODULE_META: { key: string; label: string; description: string }[] = [
   { key: 'ecommerce',     label: 'E-commerce',     description: 'Online store integration' },
   { key: 'repairs',       label: 'Repairs',        description: 'Repair job management' },
   { key: 'bakery',        label: 'Bakery',         description: 'Bakery production tools' },
+  { key: 'crm',           label: 'CRM & Loyalty',  description: 'Loyalty points, price tiers, customer intelligence' },
 ];
 
 const TEMPLATES: { key: BusinessType; label: string }[] = [

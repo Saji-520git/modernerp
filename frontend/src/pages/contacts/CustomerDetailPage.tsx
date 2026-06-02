@@ -5,6 +5,7 @@ import {
   ArrowLeft, Pencil, Plus, CreditCard, X, Check,
   ShieldCheck, AlertTriangle, Users, Receipt, RotateCcw,
   DollarSign, TrendingDown, Wallet, ChevronRight,
+  Star, MessageSquare,
 } from 'lucide-react';
 import {
   customersApi,
@@ -22,6 +23,13 @@ import {
   type CustomerPayment,
   type CreateCustomerPaymentInput,
 } from '../../services/customerPayments';
+import { crmService } from '../../services/crmService';
+import type {
+  LoyaltyTransaction,
+  CustomerInteraction,
+  InteractionType,
+} from '../../types/crm';
+import { useModules } from '../../hooks/useModules';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -816,9 +824,292 @@ function AccountInfoTab({
   );
 }
 
+// ─── Loyalty Tab (crm) ──────────────────────────────────────────────────────
+
+const LOYALTY_TXN_CLS: Record<string, string> = {
+  EARN:   'bg-emerald-50 text-emerald-700',
+  REDEEM: 'bg-rose-50 text-rose-600',
+  ADJUST: 'bg-indigo-50 text-indigo-700',
+};
+
+function LoyaltyTab({ customerId }: { customerId: string }) {
+  const queryClient = useQueryClient();
+  const [adjustPoints, setAdjustPoints] = useState('');
+  const [adjustNote, setAdjustNote]     = useState('');
+  const [adjustError, setAdjustError]   = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['customer-loyalty', customerId],
+    queryFn:  () => crmService.getCustomerLoyalty(customerId),
+  });
+
+  const adjustMutation = useMutation({
+    mutationFn: () => crmService.adjustPoints(customerId, parseInt(adjustPoints, 10), adjustNote.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-loyalty', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-detail', customerId] });
+      setAdjustPoints('');
+      setAdjustNote('');
+      setAdjustError('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setAdjustError(msg ?? 'Failed to adjust points');
+    },
+  });
+
+  const submitAdjust = () => {
+    const n = parseInt(adjustPoints, 10);
+    if (!Number.isInteger(n) || n === 0) { setAdjustError('Enter a non-zero whole number'); return; }
+    if (!adjustNote.trim()) { setAdjustError('A note is required'); return; }
+    adjustMutation.mutate();
+  };
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400">Loading…</div>;
+  if (!data) return <div className="text-center py-12 text-slate-400">No loyalty data</div>;
+
+  const txns: LoyaltyTransaction[] = data.transactions ?? [];
+
+  return (
+    <div className="p-5 space-y-5">
+      {!data.isEnabled && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-2.5">
+          The loyalty program is currently disabled. Existing balances are preserved but no new points are earned.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-emerald-700 font-medium">Points Balance</p>
+          <p className="text-2xl font-bold text-emerald-800">{data.loyaltyPoints.toLocaleString()}</p>
+        </div>
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-indigo-700 font-medium">Cash Value</p>
+          <p className="text-2xl font-bold text-indigo-800">{fmtCents(data.valueCents)}</p>
+        </div>
+        <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-slate-500 font-medium">Min. to Redeem</p>
+          <p className="text-2xl font-bold text-slate-700">{data.minRedeemPoints.toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Manual adjustment */}
+      <div className="border border-slate-200 rounded-xl p-4">
+        <p className="text-sm font-semibold text-slate-700 mb-3">Adjust Points</p>
+        <div className="flex flex-wrap items-start gap-2">
+          <input
+            type="number"
+            value={adjustPoints}
+            onChange={(e) => setAdjustPoints(e.target.value)}
+            placeholder="± points"
+            className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+          <input
+            type="text"
+            value={adjustNote}
+            onChange={(e) => setAdjustNote(e.target.value)}
+            placeholder="Reason (required)"
+            className="flex-1 min-w-[180px] border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+          <button
+            onClick={submitAdjust}
+            disabled={adjustMutation.isPending}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            Apply
+          </button>
+        </div>
+        {adjustError && <p className="text-xs text-red-600 mt-2">{adjustError}</p>}
+        <p className="text-xs text-slate-400 mt-2">Use a positive number to grant points, negative to deduct. The balance cannot go below zero.</p>
+      </div>
+
+      {/* Transactions */}
+      {txns.length === 0 ? (
+        <div className="text-center py-10 text-slate-400">
+          <Star size={32} className="mx-auto mb-2 text-slate-300" />
+          <p className="text-sm">No loyalty transactions yet</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Points</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Balance</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Note</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {txns.map((t) => (
+                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDateTime(t.createdAt)}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${LOYALTY_TXN_CLS[t.type] ?? 'bg-slate-100 text-slate-600'}`}>
+                      {t.type}
+                    </span>
+                  </td>
+                  <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${t.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {t.points >= 0 ? '+' : ''}{t.points.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-600 whitespace-nowrap">{t.balanceAfter.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">{t.note ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Interactions Tab (crm) ─────────────────────────────────────────────────
+
+const INTERACTION_TYPES: { value: InteractionType; label: string }[] = [
+  { value: 'NOTE',             label: 'Note' },
+  { value: 'CALL',             label: 'Call' },
+  { value: 'VISIT',            label: 'Visit' },
+  { value: 'PAYMENT_REMINDER', label: 'Payment Reminder' },
+  { value: 'OTHER',            label: 'Other' },
+];
+
+function InteractionsTab({ customerId }: { customerId: string }) {
+  const queryClient = useQueryClient();
+  const [type, setType]           = useState<InteractionType>('NOTE');
+  const [note, setNote]           = useState('');
+  const [followUpAt, setFollowUp] = useState('');
+  const [formError, setFormError] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['customer-interactions', customerId],
+    queryFn:  () => crmService.getInteractions(customerId),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: () => crmService.addInteraction({
+      customerId,
+      type,
+      note: note.trim(),
+      followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-interactions', customerId] });
+      setNote('');
+      setFollowUp('');
+      setType('NOTE');
+      setFormError('');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setFormError(msg ?? 'Failed to save interaction');
+    },
+  });
+
+  const doneMutation = useMutation({
+    mutationFn: (interactionId: string) => crmService.markInteractionDone(interactionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-interactions', customerId] }),
+  });
+
+  const submit = () => {
+    if (!note.trim()) { setFormError('A note is required'); return; }
+    addMutation.mutate();
+  };
+
+  const interactions: CustomerInteraction[] = data ?? [];
+
+  return (
+    <div className="p-5 space-y-5">
+      {/* Add interaction */}
+      <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-700">Log Interaction</p>
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as InteractionType)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          >
+            {INTERACTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-slate-500">Follow-up</label>
+            <input
+              type="datetime-local"
+              value={followUpAt}
+              onChange={(e) => setFollowUp(e.target.value)}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+          </div>
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="What happened? (required)"
+          rows={2}
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        />
+        {formError && <p className="text-xs text-red-600">{formError}</p>}
+        <div className="flex justify-end">
+          <button
+            onClick={submit}
+            disabled={addMutation.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            <Plus size={14} /> Add
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <div className="text-center py-12 text-slate-400">Loading…</div>
+      ) : interactions.length === 0 ? (
+        <div className="text-center py-10 text-slate-400">
+          <MessageSquare size={32} className="mx-auto mb-2 text-slate-300" />
+          <p className="text-sm">No interactions logged yet</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {interactions.map((it) => {
+            const overdue = it.followUpAt && !it.isDone && new Date(it.followUpAt) <= new Date();
+            return (
+              <div key={it.id} className="border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
+                      {INTERACTION_TYPES.find((t) => t.value === it.type)?.label ?? it.type}
+                    </span>
+                    <span className="text-xs text-slate-400">{fmtDateTime(it.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{it.note}</p>
+                  {it.followUpAt && (
+                    <p className={`text-xs mt-1.5 font-medium ${it.isDone ? 'text-slate-400' : overdue ? 'text-rose-600' : 'text-amber-600'}`}>
+                      Follow-up: {fmtDateTime(it.followUpAt)}{it.isDone ? ' · done' : overdue ? ' · overdue' : ''}
+                    </p>
+                  )}
+                </div>
+                {it.followUpAt && !it.isDone && (
+                  <button
+                    onClick={() => doneMutation.mutate(it.id)}
+                    disabled={doneMutation.isPending}
+                    className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs hover:bg-slate-50 disabled:opacity-50 transition-colors shrink-0"
+                  >
+                    <Check size={12} /> Mark done
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type TabKey = 'sales' | 'payments' | 'returns' | 'account';
+type TabKey = 'sales' | 'payments' | 'returns' | 'account' | 'loyalty' | 'interactions';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'sales',    label: 'Sales History', icon: <Receipt   size={14} /> },
@@ -827,10 +1118,20 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'account',  label: 'Account Info',  icon: <Users     size={14} /> },
 ];
 
+// CRM tabs — appended only when the 'crm' module is enabled.
+const CRM_TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'loyalty',      label: 'Loyalty',      icon: <Star          size={14} /> },
+  { key: 'interactions', label: 'Interactions', icon: <MessageSquare size={14} /> },
+];
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { isModuleEnabled } = useModules();
+  const crmEnabled = isModuleEnabled('crm');
+  const visibleTabs = crmEnabled ? [...TABS, ...CRM_TABS] : TABS;
 
   const [tab, setTab]             = useState<TabKey>('sales');
   const [editOpen, setEditOpen]   = useState(false);
@@ -917,6 +1218,16 @@ export default function CustomerDetailPage() {
                     <ShieldCheck size={10} /> Credit
                   </span>
                 )}
+                {crmEnabled && customer.priceTier && (
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                    {customer.priceTier.name}
+                  </span>
+                )}
+                {crmEnabled && (customer.loyaltyPoints ?? 0) > 0 && (
+                  <span className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+                    <Star size={10} /> {(customer.loyaltyPoints ?? 0).toLocaleString()} pts
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
                 {customer.phone && <span>{customer.phone}</span>}
@@ -998,7 +1309,7 @@ export default function CustomerDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Tab bar */}
         <div className="flex border-b border-slate-200">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
@@ -1019,6 +1330,8 @@ export default function CustomerDetailPage() {
           {tab === 'payments' && <PaymentsTab customerId={id!} />}
           {tab === 'returns'  && <ReturnsTab  customerId={id!} />}
           {tab === 'account'  && <AccountInfoTab customer={customer} onEdit={() => { setEditError(''); setEditOpen(true); }} />}
+          {crmEnabled && tab === 'loyalty'      && <LoyaltyTab      customerId={id!} />}
+          {crmEnabled && tab === 'interactions' && <InteractionsTab customerId={id!} />}
         </div>
       </div>
 

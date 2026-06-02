@@ -246,6 +246,9 @@ model Product {
   receiptLines       PurchaseReceiptLine[]
   purchaseReturnLines PurchaseReturnLine[]
 
+  // CRM — per-tier pricing (Sprint 4)
+  productPrices      ProductPrice[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -294,6 +297,13 @@ model Customer {
   creditLimitCents Int     @default(0)      // 0 = unlimited when creditEnabled
   creditAlertPct   Int     @default(80)     // warn at this % of limit (0-100)
   creditSettleDays Int?                     // expected settlement period in days
+
+  // CRM — loyalty + price tiers (Sprint 4, gated by 'crm' module flag)
+  loyaltyPoints    Int       @default(0)
+  priceTierId      String?
+  priceTier        PriceTier? @relation(fields: [priceTierId], references: [id])
+  loyaltyTxns      LoyaltyTransaction[]
+  interactions     CustomerInteraction[]
 
   sales            Sale[]
   posDrafts        PosDraft[]
@@ -408,6 +418,11 @@ model Sale {
   deletedAt     DateTime?
   deletedById   String?
   deletedBy     User?      @relation("SaleDeletedBy", fields: [deletedById], references: [id])
+  // CRM — loyalty points captured per sale (Sprint 4)
+  loyaltyTxns      LoyaltyTransaction[]
+  pointsEarned     Int       @default(0)
+  pointsRedeemed   Int       @default(0)
+
   lines            SaleLine[]
   returns          SaleReturn[]
   payments         Payment[]
@@ -1009,4 +1024,78 @@ model Tenant {
   users       User[]
 
   @@map("tenants")
+}
+
+// ─── CRM — Loyalty, Price Tiers, Interactions (Sprint 4) ──────────────────────
+// All gated behind the 'crm' module flag. Additive: existing flows unaffected.
+
+model LoyaltyConfig {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(true)
+  pointsPerAmount Int      @default(100)
+  amountPerPoint  Int      @default(100)
+  minRedeemPoints Int      @default(100)
+  pointValueCents Int      @default(100)
+  expiryDays      Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LoyaltyTransaction {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  saleId        String?
+  sale          Sale?    @relation(fields: [saleId], references: [id])
+  type          String
+  points        Int
+  balanceBefore Int
+  balanceAfter  Int
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([customerId])
+  @@index([saleId])
+}
+
+model PriceTier {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean        @default(false)
+  isActive    Boolean        @default(true)
+  sortOrder   Int            @default(0)
+  customers   Customer[]
+  prices      ProductPrice[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ProductPrice {
+  id          String    @id @default(cuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  tierId      String
+  tier        PriceTier @relation(fields: [tierId], references: [id])
+  priceCents  Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, tierId])
+}
+
+model CustomerInteraction {
+  id          String    @id @default(cuid())
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  type        String
+  note        String
+  followUpAt  DateTime?
+  isDone      Boolean   @default(false)
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([customerId])
+  @@index([followUpAt])
 }
