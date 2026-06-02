@@ -27,6 +27,10 @@ export interface Customer {
   creditAlertPct: number;
   creditSettleDays: number | null;
   _count?: { sales: number };
+  // CRM (optional — present only when the crm module is in use)
+  loyaltyPoints?: number;
+  priceTierId?: string | null;
+  priceTier?: { id: string; name: string } | null;
 }
 
 /** Extended customer returned by GET /customers/:id — includes aggregates */

@@ -37,7 +37,10 @@ export const customersService = {
   getOne: async (id: string) => {
     const customer = await prisma.customer.findUnique({
       where: { id },
-      include: { _count: { select: { sales: true, customerPayments: true } } },
+      include: {
+        _count:    { select: { sales: true, customerPayments: true } },
+        priceTier: { select: { id: true, name: true } },
+      },
     });
     if (!customer) throw new HttpError(404, 'Customer not found');
 
