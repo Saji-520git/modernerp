@@ -24,6 +24,7 @@ export const DEFAULT_MODULES = {
   repairs:       false,
   bakery:        false,
   crm:           false,
+  whatsapp:      false,
 };
 
 export type ModuleFlags = typeof DEFAULT_MODULES;

@@ -3,6 +3,7 @@ import { router as configRouter } from './config/config.routes.js';
 import { router as crmRouter } from './crm/crm.routes.js';
 import { router as hrRouter } from './hr/hr.routes.js';
 import { router as tenantRouter } from './tenants/tenant.routes.js';
+import { router as whatsappRouter } from './whatsapp/whatsapp.routes.js';
 
 // v2 API aggregator — mounted at /api/v2. New v2 modules register here.
 export const router: Router = Router();
@@ -13,3 +14,4 @@ router.use('/config', configRouter);
 router.use('/crm', crmRouter);
 router.use('/hr', hrRouter);
 router.use('/tenants', tenantRouter);
+router.use('/whatsapp', whatsappRouter);

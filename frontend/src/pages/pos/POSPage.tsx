@@ -28,6 +28,9 @@ import QuickAddModal from '../../components/pos/QuickAddModal';
 import { productsApi, type Product } from '../../services/products';
 import axios from 'axios';
 import { generateReceiptHtml } from '../../utils/generateReceiptHtml';
+import WhatsAppButton from '../../components/WhatsAppButton';
+import { whatsappService } from '../../services/whatsappService';
+import { openWhatsApp } from '../../utils/whatsappHelper';
 
 // ─── Audio engine ─────────────────────────────────────────────────────────────
 import { sound } from '../../lib/sound';
@@ -1031,12 +1034,37 @@ function ReceiptModal({
   onPrint: () => void;
 }) {
   const { settings } = useAppSettings();
+  const [waLoading, setWaLoading] = useState(false);
+  const [waMsg, setWaMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   if (!settings) return null;
 
   const pmLabel: Record<string, string> = {
     CASH: 'Cash', CARD: 'Card', BANK_TRANSFER: 'Bank Transfer',
     QR_PAY: 'QR Pay', CREDIT: 'Credit',
+  };
+
+  // Send the receipt to the customer's WhatsApp. WEB mode opens wa.me; API mode
+  // dispatches automatically and reports the result inline. Never throws.
+  const handleSendWhatsApp = async () => {
+    setWaLoading(true);
+    setWaMsg(null);
+    try {
+      const result = await whatsappService.sendReceipt(receipt.id, settings.receiptLanguage === 'si' ? 'si' : 'en');
+      if (result.mode === 'WEB' && result.waLink) {
+        openWhatsApp(result.waLink);
+        setWaMsg({ ok: true, text: 'WhatsApp opened with the receipt.' });
+      } else if (result.success) {
+        setWaMsg({ ok: true, text: 'Receipt sent via WhatsApp.' });
+      } else {
+        setWaMsg({ ok: false, text: result.error ?? 'Failed to send.' });
+      }
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.message : null;
+      setWaMsg({ ok: false, text: msg ?? 'Could not send WhatsApp message.' });
+    } finally {
+      setWaLoading(false);
+    }
   };
 
   // Split (cash + credit): recorded as CREDIT with a partial cash payment
@@ -1096,6 +1124,20 @@ function ReceiptModal({
               <Printer size={15} /> Print Receipt
               <span className="ml-1 text-indigo-300 text-xs font-normal">F8</span>
             </button>
+
+            {receipt.customer && (
+              <div className="space-y-1">
+                <WhatsAppButton
+                  label="Send via WhatsApp"
+                  onClick={handleSendWhatsApp}
+                  isLoading={waLoading}
+                  block
+                />
+                {waMsg && (
+                  <p className={`text-xs ${waMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{waMsg.text}</p>
+                )}
+              </div>
+            )}
 
             <button
               type="button"

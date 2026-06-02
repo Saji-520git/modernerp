@@ -18,6 +18,10 @@ import { inventoryApi } from '../../services/inventory';
 import { exportSaleInvoice, exportSaleReturn } from '../../services/pdfExport';
 import { useAuthStore } from '../../store/authStore';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
+import WhatsAppButton from '../../components/WhatsAppButton';
+import { whatsappService } from '../../services/whatsappService';
+import { openWhatsApp } from '../../utils/whatsappHelper';
+import axios from 'axios';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -342,6 +346,31 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
   const [showPayment, setShowPayment] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
+  const [waLoading, setWaLoading]     = useState(false);
+  const [waMsg, setWaMsg]             = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Send this invoice's receipt to the customer's WhatsApp. WEB mode opens
+  // wa.me; API mode dispatches automatically. Errors surface inline.
+  const handleSendReceipt = async () => {
+    setWaLoading(true);
+    setWaMsg(null);
+    try {
+      const result = await whatsappService.sendReceipt(saleId);
+      if (result.mode === 'WEB' && result.waLink) {
+        openWhatsApp(result.waLink);
+        setWaMsg({ ok: true, text: 'WhatsApp opened with the receipt.' });
+      } else if (result.success) {
+        setWaMsg({ ok: true, text: 'Receipt sent via WhatsApp.' });
+      } else {
+        setWaMsg({ ok: false, text: result.error ?? 'Failed to send.' });
+      }
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.message : null;
+      setWaMsg({ ok: false, text: msg ?? 'Could not send receipt.' });
+    } finally {
+      setWaLoading(false);
+    }
+  };
 
   const queryClient = useQueryClient();
   const confirmMutation = useMutation({
@@ -532,6 +561,20 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
               className="ml-auto flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">
               <Download className="w-4 h-4" /> PDF
             </button>
+          </div>
+        )}
+
+        {/* Send receipt via WhatsApp — shown when the customer has a phone */}
+        {sale.customer?.phone && (
+          <div className="px-6 py-3 border-t border-slate-200 flex items-center gap-3">
+            <WhatsAppButton
+              label="Send Receipt via WhatsApp"
+              onClick={handleSendReceipt}
+              isLoading={waLoading}
+            />
+            {waMsg && (
+              <span className={`text-xs ${waMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{waMsg.text}</span>
+            )}
           </div>
         )}
 

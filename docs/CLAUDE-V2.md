@@ -31,6 +31,8 @@ Every module has a flag in the client config:
   ecommerce      : true/false
   bakery         : true/false
   repairs        : true/false
+  crm            : true/false
+  whatsapp       : true/false
 }
 
 Super-admin controls all flags.

@@ -30,6 +30,10 @@ import type {
   InteractionType,
 } from '../../types/crm';
 import { useModules } from '../../hooks/useModules';
+import WhatsAppButton from '../../components/WhatsAppButton';
+import { whatsappService } from '../../services/whatsappService';
+import { openWhatsApp } from '../../utils/whatsappHelper';
+import axios from 'axios';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1138,6 +1142,32 @@ export default function CustomerDetailPage() {
   const [editError, setEditError] = useState('');
   const [paymentOpen, setPaymentOpen]   = useState(false);
   const [viewSaleId, setViewSaleId]     = useState<string | null>(null);
+  const [waLoading, setWaLoading]       = useState(false);
+  const [waMsg, setWaMsg]               = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Send a payment reminder to the customer's WhatsApp. WEB mode opens wa.me;
+  // API mode dispatches automatically. Errors are surfaced inline.
+  const handleSendReminder = async () => {
+    if (!id) return;
+    setWaLoading(true);
+    setWaMsg(null);
+    try {
+      const result = await whatsappService.sendReminder(id);
+      if (result.mode === 'WEB' && result.waLink) {
+        openWhatsApp(result.waLink);
+        setWaMsg({ ok: true, text: 'WhatsApp opened with the reminder.' });
+      } else if (result.success) {
+        setWaMsg({ ok: true, text: 'Reminder sent via WhatsApp.' });
+      } else {
+        setWaMsg({ ok: false, text: result.error ?? 'Failed to send.' });
+      }
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.message : null;
+      setWaMsg({ ok: false, text: msg ?? 'Could not send reminder.' });
+    } finally {
+      setWaLoading(false);
+    }
+  };
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer-detail', id],
@@ -1253,6 +1283,18 @@ export default function CustomerDetailPage() {
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
               <CreditCard size={14} /> Record Payment
             </button>
+            {outstanding > 0 && customer.phone && (
+              <div className="flex flex-col items-end gap-0.5">
+                <WhatsAppButton
+                  label="Send Reminder"
+                  onClick={handleSendReminder}
+                  isLoading={waLoading}
+                />
+                {waMsg && (
+                  <span className={`text-[10px] ${waMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{waMsg.text}</span>
+                )}
+              </div>
+            )}
             <button onClick={() => { setEditError(''); setEditOpen(true); }}
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
               <Pencil size={14} /> Edit

@@ -20,6 +20,7 @@ export const DEFAULT_MODULES: ModuleFlags = {
   repairs:       false,
   bakery:        false,
   crm:           false,
+  whatsapp:      false,
 };
 
 interface AppState {

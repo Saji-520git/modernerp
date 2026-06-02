@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { whatsappService } from '../modules/whatsapp/whatsapp.service.js';
 
 const prisma = new PrismaClient();
 
@@ -87,6 +88,10 @@ async function main() {
       },
     });
   }
+
+  // ── WhatsApp default templates ───────────────────────────────────────────
+  const tplCreated = await whatsappService.seedDefaultTemplates();
+  process.stdout.write(`   📱 WhatsApp templates seeded (${tplCreated} new)\n`);
 
   process.stdout.write('✅ Seed complete — system ready for deployment\n');
   process.stdout.write('   ⚠️  Login: admin@modernerp.local / admin123\n');

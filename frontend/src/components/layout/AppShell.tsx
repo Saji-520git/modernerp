@@ -12,7 +12,7 @@ import {
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
   Bell, CornerUpLeft, Tag, Layers,
   IdCard, CalendarCheck, Wallet, CalendarOff, ClipboardList,
-  Heart, Star,
+  Heart, Star, MessageCircle, Megaphone,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -93,6 +93,13 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/crm', label: 'Customer Intelligence', icon: Heart, end: true, module: 'crm' },
       { to: '/crm/loyalty', label: 'Loyalty Settings', icon: Star, module: 'crm' },
       { to: '/crm/tiers', label: 'Price Tiers', icon: Layers, module: 'crm' },
+    ],
+  },
+  {
+    label: 'MESSAGING',
+    items: [
+      { to: '/whatsapp/settings', label: 'WhatsApp', icon: MessageCircle, module: 'whatsapp' },
+      { to: '/whatsapp/broadcast', label: 'Broadcast', icon: Megaphone, module: 'whatsapp' },
     ],
   },
   {

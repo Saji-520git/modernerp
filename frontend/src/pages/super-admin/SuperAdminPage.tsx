@@ -23,6 +23,7 @@ const MODULE_META: { key: string; label: string; description: string }[] = [
   { key: 'repairs',       label: 'Repairs',        description: 'Repair job management' },
   { key: 'bakery',        label: 'Bakery',         description: 'Bakery production tools' },
   { key: 'crm',           label: 'CRM & Loyalty',  description: 'Loyalty points, price tiers, customer intelligence' },
+  { key: 'whatsapp',      label: 'WhatsApp Messaging', description: 'Send receipts, reminders, broadcasts via WhatsApp' },
 ];
 
 const TEMPLATES: { key: BusinessType; label: string }[] = [

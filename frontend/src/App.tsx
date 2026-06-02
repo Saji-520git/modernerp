@@ -39,6 +39,8 @@ import HRReportsPage from './pages/hr/HRReportsPage';
 import CRMDashboardPage from './pages/crm/CRMDashboardPage';
 import LoyaltySettingsPage from './pages/crm/LoyaltySettingsPage';
 import PriceTiersPage from './pages/crm/PriceTiersPage';
+import WhatsAppSettingsPage from './pages/whatsapp/WhatsAppSettingsPage';
+import WhatsAppBroadcastPage from './pages/whatsapp/WhatsAppBroadcastPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -296,6 +298,22 @@ export default function App() {
           <ModuleRoute module="crm">
             <ErrorBoundary fallbackTitle="Price Tiers failed to load">
               <PriceTiersPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+
+        {/* WHATSAPP */}
+        <Route path="whatsapp/settings" element={
+          <ModuleRoute module="whatsapp">
+            <ErrorBoundary fallbackTitle="WhatsApp Settings failed to load">
+              <WhatsAppSettingsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="whatsapp/broadcast" element={
+          <ModuleRoute module="whatsapp">
+            <ErrorBoundary fallbackTitle="Broadcast failed to load">
+              <WhatsAppBroadcastPage />
             </ErrorBoundary>
           </ModuleRoute>
         } />
