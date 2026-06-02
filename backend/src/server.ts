@@ -22,8 +22,10 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFound } from './middleware/not-found.js';
+import { tenantMiddleware } from './middleware/tenantMiddleware.js';
 import { router as apiRouter } from './modules/index.js';
 import { router as apiV2Router } from './modules/index-v2.js';
+import { router as healthRouter } from './modules/health/health.routes.js';
 import { prisma } from './config/prisma.js';
 import { inventoryService } from './modules/inventory/inventory.service.js';
 import { productsService } from './modules/products/products.service.js';
@@ -71,7 +73,14 @@ app.get('/uploads/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+// Health probes — liveness (/health) and readiness (/health/ready, checks DB).
+app.use('/', healthRouter);
+
+// Tenant resolution — runs after auth context is available and before route
+// handlers. Single-client mode (no tenantId in token) sets req.tenant = null and
+// behaves exactly as before; cloud mode attaches the active tenant.
+app.use(tenantMiddleware);
+
 app.use('/api/v1', apiRouter);
 app.use('/api/v2', apiV2Router);
 

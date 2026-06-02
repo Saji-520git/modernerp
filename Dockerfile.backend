@@ -1,0 +1,41 @@
+# ── BROcode ERP — backend image ───────────────────────────────────────────────
+# Multi-stage: build (install all deps, generate Prisma client, compile TS) then
+# a slim runtime that carries only what `node dist/server.js` needs.
+
+# ---- Stage 1: build ----------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Install dependencies first (better layer caching).
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+
+# Copy source and build.
+COPY backend/ ./
+# Generate the Prisma client against the schema, then compile TypeScript.
+RUN npx prisma generate --schema src/prisma/schema.prisma \
+ && npm run build
+
+# ---- Stage 2: runtime --------------------------------------------------------
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Production dependencies only.
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev
+
+# Bring over the generated Prisma client and the compiled app.
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/src/prisma ./src/prisma
+
+# Uploads are persisted via a mounted volume in compose.
+RUN mkdir -p uploads
+
+EXPOSE 4000
+
+# Apply pending migrations, then start. `migrate deploy` is safe & idempotent —
+# it never generates new migrations or prompts.
+CMD ["sh", "-c", "npx prisma migrate deploy --schema src/prisma/schema.prisma && node dist/server.js"]

@@ -78,9 +78,20 @@ export const configService = {
     }
   },
 
-  /** Returns the effective module flags (stored values merged over defaults). */
-  getModules: async (): Promise<ModuleFlags> => {
+  /**
+   * Returns the effective module flags (stored values merged over defaults).
+   *
+   * Dual-mode: when a `tenant` is supplied (cloud/SaaS request) its module JSON
+   * is used; otherwise it falls back to the singleton ClientConfig (single-client
+   * / Electron behaviour — unchanged). Passing nothing preserves the original
+   * signature for all existing callers.
+   */
+  getModules: async (tenant?: { modules: unknown } | null): Promise<ModuleFlags> => {
     try {
+      if (tenant) {
+        const stored = (tenant.modules ?? {}) as Partial<ModuleFlags>;
+        return { ...DEFAULT_MODULES, ...stored };
+      }
       const cfg = await configService.getConfig();
       const stored = (cfg.modules ?? {}) as Partial<ModuleFlags>;
       return { ...DEFAULT_MODULES, ...stored };

@@ -1,0 +1,27 @@
+# ── BROcode ERP — frontend image ──────────────────────────────────────────────
+# Build the Vite/React bundle, then serve the static files with nginx (which
+# also reverse-proxies /api to the backend — see nginx/nginx.conf).
+
+# ---- Stage 1: build ----------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+# VITE_* build args are baked into the bundle at build time.
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=${VITE_API_URL}
+RUN npm run build
+
+# ---- Stage 2: serve ----------------------------------------------------------
+FROM nginx:1.27-alpine AS runtime
+
+# Static assets and the SPA + reverse-proxy config.
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
