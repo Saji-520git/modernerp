@@ -23,6 +23,7 @@ import { logger } from './config/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFound } from './middleware/not-found.js';
 import { router as apiRouter } from './modules/index.js';
+import { router as apiV2Router } from './modules/index-v2.js';
 import { prisma } from './config/prisma.js';
 import { inventoryService } from './modules/inventory/inventory.service.js';
 import { productsService } from './modules/products/products.service.js';
@@ -72,6 +73,7 @@ app.get('/uploads/:filename', (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 app.use('/api/v1', apiRouter);
+app.use('/api/v2', apiV2Router);
 
 // Serve React frontend
 app.use(express.static(

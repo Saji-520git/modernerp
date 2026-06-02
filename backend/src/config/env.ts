@@ -10,6 +10,8 @@ const schema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  // BROcode Solutions staff email — grants access to the super-admin panel
+  SUPER_ADMIN_EMAIL: z.string().email().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
