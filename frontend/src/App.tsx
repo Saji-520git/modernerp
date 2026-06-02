@@ -36,6 +36,9 @@ import AttendancePage from './pages/hr/AttendancePage';
 import SalaryPage from './pages/hr/SalaryPage';
 import LeavePage from './pages/hr/LeavePage';
 import HRReportsPage from './pages/hr/HRReportsPage';
+import CRMDashboardPage from './pages/crm/CRMDashboardPage';
+import LoyaltySettingsPage from './pages/crm/LoyaltySettingsPage';
+import PriceTiersPage from './pages/crm/PriceTiersPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -270,6 +273,29 @@ export default function App() {
           <ModuleRoute module="hr">
             <ErrorBoundary fallbackTitle="HR Reports failed to load">
               <HRReportsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+
+        {/* CRM */}
+        <Route path="crm" element={
+          <ModuleRoute module="crm">
+            <ErrorBoundary fallbackTitle="Customer Intelligence failed to load">
+              <CRMDashboardPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="crm/loyalty" element={
+          <ModuleRoute module="crm">
+            <ErrorBoundary fallbackTitle="Loyalty Settings failed to load">
+              <LoyaltySettingsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="crm/tiers" element={
+          <ModuleRoute module="crm">
+            <ErrorBoundary fallbackTitle="Price Tiers failed to load">
+              <PriceTiersPage />
             </ErrorBoundary>
           </ModuleRoute>
         } />

@@ -12,6 +12,7 @@ import {
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
   Bell, CornerUpLeft, Tag, Layers,
   IdCard, CalendarCheck, Wallet, CalendarOff, ClipboardList,
+  Heart, Star,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -84,6 +85,14 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/hr/salary', label: 'Payroll', icon: Wallet, module: 'hr' },
       { to: '/hr/leave', label: 'Leave', icon: CalendarOff, module: 'hr' },
       { to: '/hr/reports', label: 'HR Reports', icon: ClipboardList, module: 'hr' },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { to: '/crm', label: 'Customer Intelligence', icon: Heart, end: true, module: 'crm' },
+      { to: '/crm/loyalty', label: 'Loyalty Settings', icon: Star, module: 'crm' },
+      { to: '/crm/tiers', label: 'Price Tiers', icon: Layers, module: 'crm' },
     ],
   },
   {

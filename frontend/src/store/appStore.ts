@@ -19,6 +19,7 @@ export const DEFAULT_MODULES: ModuleFlags = {
   ecommerce:     false,
   repairs:       false,
   bakery:        false,
+  crm:           false,
 };
 
 interface AppState {
