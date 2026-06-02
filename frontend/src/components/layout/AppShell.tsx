@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
+import { useModules } from '../../hooks/useModules';
 import { alertsApi } from '../../services/alerts';
 import { shiftsApi } from '../../services/shifts';
 
@@ -25,6 +26,7 @@ interface NavItem {
   icon: LucideIcon;
   end?: boolean;
   roles?: Role[];
+  module?: string;
 }
 
 interface NavGroup {
@@ -37,48 +39,48 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'MAIN',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-      { to: '/pos', label: 'POS', icon: ShoppingCart },
+      { to: '/pos', label: 'POS', icon: ShoppingCart, module: 'pos' },
     ],
   },
   {
     label: 'CATALOG',
     items: [
       { to: '/products', label: 'Products', icon: Package },
-      { to: '/barcodes', label: 'Barcode Labels', icon: Barcode },
+      { to: '/barcodes', label: 'Barcode Labels', icon: Barcode, module: 'inventory' },
     ],
   },
   {
     label: 'INVENTORY',
     items: [
-      { to: '/inventory', label: 'Stock Overview', icon: Warehouse, end: true },
-      { to: '/warehouses', label: 'Warehouses', icon: Building2 },
-      { to: '/alerts', label: 'Stock Alerts', icon: Bell },
+      { to: '/inventory', label: 'Stock Overview', icon: Warehouse, end: true, module: 'inventory' },
+      { to: '/warehouses', label: 'Warehouses', icon: Building2, module: 'warehouses' },
+      { to: '/alerts', label: 'Stock Alerts', icon: Bell, module: 'inventory' },
     ],
   },
   {
     label: 'OPERATIONS',
     items: [
       { to: '/sales', label: 'Sales', icon: FileText },
-      { to: '/purchases', label: 'Purchases', icon: Truck },
+      { to: '/purchases', label: 'Purchases', icon: Truck, module: 'purchasing' },
       { to: '/returns', label: 'Sale Returns', icon: RotateCcw },
-      { to: '/purchase-returns', label: 'Purch. Returns', icon: CornerUpLeft },
-      { to: '/expenses', label: 'Expenses', icon: Receipt },
+      { to: '/purchase-returns', label: 'Purch. Returns', icon: CornerUpLeft, module: 'purchasing' },
+      { to: '/expenses', label: 'Expenses', icon: Receipt, module: 'expenses' },
       { to: '/shifts', label: 'POS Shifts', icon: Clock, roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {
     label: 'PEOPLE',
     items: [
-      { to: '/customers', label: 'Customers', icon: Users },
-      { to: '/suppliers', label: 'Suppliers', icon: Building },
+      { to: '/customers', label: 'Customers', icon: Users, module: 'customers' },
+      { to: '/suppliers', label: 'Suppliers', icon: Building, module: 'suppliers' },
     ],
   },
   {
     label: 'REPORTS',
     items: [
-      { to: '/reports/sales', label: 'Sales Reports', icon: BarChart3 },
-      { to: '/reports/inventory', label: 'Inventory Reports', icon: Archive },
-      { to: '/reports/profit-loss', label: 'Profit & Loss', icon: TrendingUp },
+      { to: '/reports/sales', label: 'Sales Reports', icon: BarChart3, module: 'reports' },
+      { to: '/reports/inventory', label: 'Inventory Reports', icon: Archive, module: 'reports' },
+      { to: '/reports/profit-loss', label: 'Profit & Loss', icon: TrendingUp, module: 'reports' },
     ],
   },
   {
@@ -100,6 +102,7 @@ export default function AppShell() {
   const isFullscreen = usePosStore((s) => s.isFullscreen);
   const { user, logout } = useAuthStore();
   const { businessName, settings } = useAppSettings();
+  const { isModuleEnabled } = useModules();
   const navigate = useNavigate();
 
   const { data: alertCount } = useQuery({
@@ -130,6 +133,7 @@ export default function AppShell() {
   const userRole = user?.role as Role | undefined;
 
   function isVisible(item: NavItem): boolean {
+    if (item.module && !isModuleEnabled(item.module)) return false;
     if (!item.roles) return true;
     return !!userRole && item.roles.includes(userRole);
   }
