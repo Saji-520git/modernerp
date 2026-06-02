@@ -1099,3 +1099,59 @@ model CustomerInteraction {
   @@index([customerId])
   @@index([followUpAt])
 }
+
+// ─── WhatsApp Module (messaging — web links + Business API) ───────────────────
+
+model WhatsAppConfig {
+  id            String   @id @default(cuid())
+  isEnabled     Boolean  @default(false)
+  mode          String   @default("WEB")    // "WEB" | "API"
+  provider      String   @default("NONE")   // "NONE" | "META" | "TWILIO"
+  apiKey        String?
+  apiSecret     String?
+  phoneNumberId String?
+  businessId    String?
+  twilioSid     String?
+  twilioToken   String?
+  twilioFrom    String?
+  ownerPhone    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("whatsapp_config")
+}
+
+model WhatsAppTemplate {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  type       String   // RECEIPT | PAYMENT_REMINDER | DAILY_SUMMARY | LOW_STOCK | OFFER | CUSTOM
+  language   String   @default("en")
+  subject    String?
+  bodyEn     String
+  bodySi     String?
+  isActive   Boolean  @default(true)
+  isEditable Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("whatsapp_template")
+}
+
+model WhatsAppLog {
+  id         String    @id @default(cuid())
+  to         String
+  customerId String?
+  templateId String?
+  message    String
+  mode       String     // "WEB" | "API"
+  status     String     @default("PENDING") // PENDING | SENT | FAILED
+  provider   String?
+  error      String?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("whatsapp_log")
+}
