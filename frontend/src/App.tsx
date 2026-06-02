@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Clock, Loader2 } from 'lucide-react';
 import { api } from './services/api';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { ModuleRoute } from './components/ModuleRoute';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -113,9 +114,11 @@ export default function App() {
         } />
 
         <Route path="pos" element={
-          <ErrorBoundary fallbackTitle="POS failed to load">
-            <POSPage />
-          </ErrorBoundary>
+          <ModuleRoute module="pos">
+            <ErrorBoundary fallbackTitle="POS failed to load">
+              <POSPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
 
         {/* CATALOG */}
@@ -125,24 +128,30 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="barcodes" element={
-          <ErrorBoundary fallbackTitle="Barcode Labels failed to load">
-            <BarcodeLabelsPage />
-          </ErrorBoundary>
+          <ModuleRoute module="inventory">
+            <ErrorBoundary fallbackTitle="Barcode Labels failed to load">
+              <BarcodeLabelsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
 
         {/* INVENTORY */}
         <Route path="inventory" element={
-          <ErrorBoundary fallbackTitle="Inventory page failed to load">
-            <InventoryPage />
-          </ErrorBoundary>
+          <ModuleRoute module="inventory">
+            <ErrorBoundary fallbackTitle="Inventory page failed to load">
+              <InventoryPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
-        <Route path="inventory/transfers"   element={<InventoryPage />} />
-        <Route path="inventory/adjustments" element={<InventoryPage />} />
-        <Route path="inventory/movements"   element={<InventoryPage />} />
+        <Route path="inventory/transfers"   element={<ModuleRoute module="inventory"><InventoryPage /></ModuleRoute>} />
+        <Route path="inventory/adjustments" element={<ModuleRoute module="inventory"><InventoryPage /></ModuleRoute>} />
+        <Route path="inventory/movements"   element={<ModuleRoute module="inventory"><InventoryPage /></ModuleRoute>} />
         <Route path="warehouses" element={
-          <ErrorBoundary fallbackTitle="Warehouses page failed to load">
-            <WarehousesPage />
-          </ErrorBoundary>
+          <ModuleRoute module="warehouses">
+            <ErrorBoundary fallbackTitle="Warehouses page failed to load">
+              <WarehousesPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
 
         {/* OPERATIONS */}
@@ -152,9 +161,11 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="purchases" element={
-          <ErrorBoundary fallbackTitle="Purchases page failed to load">
-            <PurchasesPage />
-          </ErrorBoundary>
+          <ModuleRoute module="purchasing">
+            <ErrorBoundary fallbackTitle="Purchases page failed to load">
+              <PurchasesPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="returns"  element={
           <ErrorBoundary fallbackTitle="Returns page failed to load">
@@ -162,14 +173,18 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="purchase-returns" element={
-          <ErrorBoundary fallbackTitle="Purchase Returns page failed to load">
-            <PurchaseReturnsPage />
-          </ErrorBoundary>
+          <ModuleRoute module="purchasing">
+            <ErrorBoundary fallbackTitle="Purchase Returns page failed to load">
+              <PurchaseReturnsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="expenses" element={
-          <ErrorBoundary fallbackTitle="Expenses page failed to load">
-            <ExpensesPage />
-          </ErrorBoundary>
+          <ModuleRoute module="expenses">
+            <ErrorBoundary fallbackTitle="Expenses page failed to load">
+              <ExpensesPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="shifts" element={
           <ErrorBoundary fallbackTitle="POS Shifts failed to load">
@@ -177,36 +192,46 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="alerts" element={
-          <ErrorBoundary fallbackTitle="Stock Alerts failed to load">
-            <AlertsPage />
-          </ErrorBoundary>
+          <ModuleRoute module="inventory">
+            <ErrorBoundary fallbackTitle="Stock Alerts failed to load">
+              <AlertsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
 
         {/* PEOPLE */}
         <Route path="customers" element={
-          <ErrorBoundary fallbackTitle="Customers page failed to load">
-            <CustomersPage />
-          </ErrorBoundary>
+          <ModuleRoute module="customers">
+            <ErrorBoundary fallbackTitle="Customers page failed to load">
+              <CustomersPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="customers/:id" element={
-          <ErrorBoundary fallbackTitle="Customer detail failed to load">
-            <CustomerDetailPage />
-          </ErrorBoundary>
+          <ModuleRoute module="customers">
+            <ErrorBoundary fallbackTitle="Customer detail failed to load">
+              <CustomerDetailPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="suppliers" element={
-          <ErrorBoundary fallbackTitle="Suppliers page failed to load">
-            <SuppliersPage />
-          </ErrorBoundary>
+          <ModuleRoute module="suppliers">
+            <ErrorBoundary fallbackTitle="Suppliers page failed to load">
+              <SuppliersPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="suppliers/:id" element={
-          <ErrorBoundary fallbackTitle="Supplier detail failed to load">
-            <SupplierDetailPage />
-          </ErrorBoundary>
+          <ModuleRoute module="suppliers">
+            <ErrorBoundary fallbackTitle="Supplier detail failed to load">
+              <SupplierDetailPage />
+            </ErrorBoundary>
+          </ModuleRoute>
         } />
         <Route path="contacts" element={<Navigate to="/suppliers" replace />} />
 
         {/* REPORTS */}
-        <Route path="reports">
+        <Route path="reports" element={<ModuleRoute module="reports"><Outlet /></ModuleRoute>}>
           <Route index element={
             <ErrorBoundary fallbackTitle="Reports failed to load">
               <ReportsPage />
