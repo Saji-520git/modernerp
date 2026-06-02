@@ -8,6 +8,9 @@ export interface AuthPayload {
   userId: string;
   role: 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
   permissions: Permission[];
+  // Cloud multi-tenant — present only for tenant-scoped (SaaS) logins.
+  // Absent/undefined for single-client (Electron) tokens.
+  tenantId?: string | null;
 }
 
 declare global {
