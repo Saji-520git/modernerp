@@ -18,6 +18,10 @@ import { useAppSettings } from '../../context/SettingsContext';
 import { inventoryApi } from '../../services/inventory';
 import { expensesApi } from '../../services/expenses';
 import { alertsApi } from '../../services/alerts';
+import WhatsAppButton from '../../components/WhatsAppButton';
+import { whatsappService } from '../../services/whatsappService';
+import { openWhatsApp } from '../../utils/whatsappHelper';
+import axios from 'axios';
 
 function cls(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(' ');
@@ -470,6 +474,32 @@ export default function DashboardPage() {
     refetchInterval: 60_000,
   });
 
+  const [waLoading, setWaLoading] = useState(false);
+  const [waMsg, setWaMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Send today's summary to the owner's WhatsApp. WEB mode opens wa.me; API mode
+  // dispatches automatically. Errors are surfaced inline, never thrown.
+  const handleSendReport = async () => {
+    setWaLoading(true);
+    setWaMsg(null);
+    try {
+      const result = await whatsappService.sendDailySummary();
+      if (result.mode === 'WEB' && result.waLink) {
+        openWhatsApp(result.waLink);
+        setWaMsg({ ok: true, text: 'WhatsApp opened with the report.' });
+      } else if (result.success) {
+        setWaMsg({ ok: true, text: 'Report sent via WhatsApp.' });
+      } else {
+        setWaMsg({ ok: false, text: result.error ?? 'Failed to send.' });
+      }
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.message : null;
+      setWaMsg({ ok: false, text: msg ?? 'Could not send report.' });
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
   const kpis = data?.kpis;
   const now   = new Date();
   const hour  = now.getHours();
@@ -514,6 +544,17 @@ export default function DashboardPage() {
           <span className="text-xs text-slate-400">
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <WhatsAppButton
+              label="Send Report"
+              size="sm"
+              onClick={handleSendReport}
+              isLoading={waLoading}
+            />
+            {waMsg && (
+              <span className={`text-[10px] ${waMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{waMsg.text}</span>
+            )}
+          </div>
           <button onClick={() => refetch()}
             className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm">
             <RefreshCw size={13} /> Refresh
