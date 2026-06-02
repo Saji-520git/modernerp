@@ -24,6 +24,8 @@ import { purchasesApi } from '../../services/purchases';
 import { daysUntilExpiry } from '../../services/pos';
 import { categoriesApi, brandsApi } from '../../services/masterData';
 import QuickAddModal from '../../components/common/QuickAddModal';
+import ProductTierPrices from './ProductTierPrices';
+import { useModules } from '../../hooks/useModules';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,6 +160,8 @@ const PAGE_SIZE = 20;
 export default function ProductsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { isModuleEnabled } = useModules();
+  const crmEnabled = isModuleEnabled('crm');
 
   // ── List filters ──
   const [search, setSearch] = useState('');
@@ -1575,6 +1579,11 @@ export default function ProductsPage() {
                 </button>
                 <span className="text-sm text-slate-600">{form.isActive ? 'Active' : 'Inactive'}</span>
               </div>
+
+              {/* ── Tier Pricing (crm, existing products only) ──────────── */}
+              {crmEnabled && editingProduct && (
+                <ProductTierPrices productId={editingProduct.id} defaultPriceCents={editingProduct.priceCents} />
+              )}
 
               {/* ── Error & Submit ──────────────────────────────────────── */}
               {formErr && (
