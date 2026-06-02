@@ -4,6 +4,8 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, getUnitPrice } from '../../utils/unit-converter.js';
 import { getBatchSummary, deductBatchesFEFO } from '../../utils/batch-expiry.js';
+import { configService } from '../config/config.service.js';
+import { loyaltyService } from '../crm/loyalty.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
@@ -255,6 +257,28 @@ export const posService = {
       }
     }
 
+    // 3b. CRM price tiers — resolve the customer's tier prices once. These override
+    //     the product default price only (manual price overrides and unit-conversion
+    //     pricing take precedence and are left untouched). Self-gating: when no tier
+    //     is assigned or no tier price exists, this map stays empty and the default
+    //     product price is used exactly as before.
+    let tierPriceByProduct: Map<string, number> | null = null;
+    if (customerId) {
+      const tierCustomer = await prisma.customer.findUnique({
+        where:  { id: customerId },
+        select: { priceTierId: true },
+      });
+      if (tierCustomer?.priceTierId) {
+        const tierPrices = await prisma.productPrice.findMany({
+          where:  { tierId: tierCustomer.priceTierId, productId: { in: productIds } },
+          select: { productId: true, priceCents: true },
+        });
+        if (tierPrices.length > 0) {
+          tierPriceByProduct = new Map(tierPrices.map((tp) => [tp.productId, tp.priceCents]));
+        }
+      }
+    }
+
     // 4. Compute line totals
     // Calculation order (per spec):
     //   lineSubtotal = unitPrice × qty
@@ -278,6 +302,8 @@ export const posService = {
           unitPrice = item.unitPriceCents;
         } else if (item.unitId && item.unitId !== item.baseUnitId) {
           unitPrice = await getUnitPrice(item.productId, item.unitId, product.priceCents, prisma);
+        } else if (tierPriceByProduct?.has(item.productId)) {
+          unitPrice = tierPriceByProduct.get(item.productId)!;
         } else {
           unitPrice = product.priceCents;
         }
@@ -435,6 +461,21 @@ export const posService = {
     });
 
     logger.info({ saleId: sale.id, number: sale.number }, 'POS checkout completed');
+
+    // CRM loyalty — award points for this sale. Runs after the checkout transaction
+    // so a loyalty failure can never roll back or block a completed sale. Gated by
+    // the 'crm' module flag; earnPoints itself no-ops when loyalty is disabled or
+    // the spend earns zero points.
+    if (customerId) {
+      try {
+        const modules = await configService.getModules();
+        if (modules.crm) {
+          await loyaltyService.earnPoints(customerId, sale.id, totalCents);
+        }
+      } catch (err) {
+        logger.error(err, 'POS loyalty earn failed (non-fatal)');
+      }
+    }
 
     return {
       warnings: checkoutWarnings.length > 0 ? checkoutWarnings : undefined,

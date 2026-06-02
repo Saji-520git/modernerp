@@ -23,6 +23,7 @@ export const DEFAULT_MODULES = {
   ecommerce:     false,
   repairs:       false,
   bakery:        false,
+  crm:           false,
 };
 
 export type ModuleFlags = typeof DEFAULT_MODULES;

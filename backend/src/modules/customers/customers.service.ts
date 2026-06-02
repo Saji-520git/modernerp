@@ -24,7 +24,10 @@ export const customersService = {
         orderBy: { name: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { _count: { select: { sales: true } } },
+        include: {
+          _count:    { select: { sales: true } },
+          priceTier: { select: { id: true, name: true } },
+        },
       }),
     ]);
 
