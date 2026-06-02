@@ -105,6 +105,9 @@ model User {
   attachments       Attachment[]
   customerPayments  CustomerPayment[]   @relation("CPAYCreatedByUser")
   purchaseReturns   PurchaseReturn[]    @relation("PRETCreatedBy")
+
+  // HR — optional link to a staff record (system access)
+  staff             Staff?
 }
 
 model Category {
@@ -896,4 +899,88 @@ model AppSettings {
   updatedAt             DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ─── HR Module (Staff / Attendance / Salary / Leave) ─────────────────────────
+
+model Staff {
+  id               String       @id @default(cuid())
+  employeeId       String       @unique
+  firstName        String
+  lastName         String
+  fullName         String
+  email            String?      @unique
+  phone            String?
+  address          String?
+  designation      String?
+  department       String?
+  employmentType   String       @default("FULL_TIME")
+  joinDate         DateTime
+  salaryType       String       @default("MONTHLY")
+  basicSalaryCents Int          @default(0)
+  isActive         Boolean      @default(true)
+  deletedAt        DateTime?
+  userId           String?      @unique
+  user             User?        @relation(fields: [userId], references: [id])
+  attendances      Attendance[]
+  salaries         Salary[]
+  leaves           Leave[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@map("staff")
+}
+
+model Attendance {
+  id        String    @id @default(cuid())
+  staffId   String
+  staff     Staff     @relation(fields: [staffId], references: [id])
+  date      DateTime  @db.Date
+  clockIn   DateTime?
+  clockOut  DateTime?
+  status    String    @default("PRESENT")
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([staffId, date])
+  @@map("attendance")
+}
+
+model Salary {
+  id              String    @id @default(cuid())
+  staffId         String
+  staff           Staff     @relation(fields: [staffId], references: [id])
+  month           Int
+  year            Int
+  basicCents      Int       @default(0)
+  allowancesCents Int       @default(0)
+  deductionsCents Int       @default(0)
+  netCents        Int       @default(0)
+  status          String    @default("PENDING")
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([staffId, month, year])
+  @@map("salary")
+}
+
+model Leave {
+  id         String    @id @default(cuid())
+  staffId    String
+  staff      Staff     @relation(fields: [staffId], references: [id])
+  leaveType  String    @default("ANNUAL")
+  startDate  DateTime  @db.Date
+  endDate    DateTime  @db.Date
+  days       Int       @default(1)
+  reason     String?
+  status     String    @default("PENDING")
+  approvedBy String?
+  approvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("leave")
 }
