@@ -97,3 +97,21 @@ export const hrService = {
   getPayrollReport: (month: number, year: number): Promise<PayrollReport> =>
     unwrap<PayrollReport>(v2.get('/hr/reports/payroll', { params: { month, year } })),
 };
+
+// ─── Money helpers (integer cents) ───────────────────────────────────────────
+
+/** Format integer cents as "Rs. 1,234.00". */
+export function formatCents(cents: number): string {
+  return `Rs. ${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Parse a rupee input string into integer cents. */
+export function rupeesToCents(value: string): number {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+/** Convert integer cents to a plain rupee string for an input field (no symbol). */
+export function centsToRupees(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
