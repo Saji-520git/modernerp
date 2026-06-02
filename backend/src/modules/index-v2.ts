@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { router as configRouter } from './config/config.routes.js';
+import { router as crmRouter } from './crm/crm.routes.js';
 import { router as hrRouter } from './hr/hr.routes.js';
 import { router as tenantRouter } from './tenants/tenant.routes.js';
 
@@ -9,5 +10,6 @@ export const router: Router = Router();
 router.get('/', (_req, res) => res.json({ name: 'BROcode ERP API', version: 'v2' }));
 
 router.use('/config', configRouter);
+router.use('/crm', crmRouter);
 router.use('/hr', hrRouter);
 router.use('/tenants', tenantRouter);
