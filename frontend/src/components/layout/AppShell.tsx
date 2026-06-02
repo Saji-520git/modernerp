@@ -11,6 +11,7 @@ import {
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
   Bell, CornerUpLeft, Tag, Layers,
+  IdCard, CalendarCheck, Wallet, CalendarOff, ClipboardList,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -73,6 +74,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/customers', label: 'Customers', icon: Users, module: 'customers' },
       { to: '/suppliers', label: 'Suppliers', icon: Building, module: 'suppliers' },
+    ],
+  },
+  {
+    label: 'HR',
+    items: [
+      { to: '/hr/staff', label: 'Staff', icon: IdCard, module: 'hr' },
+      { to: '/hr/attendance', label: 'Attendance', icon: CalendarCheck, module: 'hr' },
+      { to: '/hr/salary', label: 'Payroll', icon: Wallet, module: 'hr' },
+      { to: '/hr/leave', label: 'Leave', icon: CalendarOff, module: 'hr' },
+      { to: '/hr/reports', label: 'HR Reports', icon: ClipboardList, module: 'hr' },
     ],
   },
   {

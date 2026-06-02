@@ -31,6 +31,11 @@ import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
 import CategoriesPage from './pages/settings/CategoriesPage';
 import BrandsPage from './pages/settings/BrandsPage';
 import SuperAdminPage from './pages/super-admin/SuperAdminPage';
+import StaffPage from './pages/hr/StaffPage';
+import AttendancePage from './pages/hr/AttendancePage';
+import SalaryPage from './pages/hr/SalaryPage';
+import LeavePage from './pages/hr/LeavePage';
+import HRReportsPage from './pages/hr/HRReportsPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -230,6 +235,44 @@ export default function App() {
           </ModuleRoute>
         } />
         <Route path="contacts" element={<Navigate to="/suppliers" replace />} />
+
+        {/* HR */}
+        <Route path="hr" element={<Navigate to="/hr/staff" replace />} />
+        <Route path="hr/staff" element={
+          <ModuleRoute module="hr">
+            <ErrorBoundary fallbackTitle="Staff page failed to load">
+              <StaffPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="hr/attendance" element={
+          <ModuleRoute module="hr">
+            <ErrorBoundary fallbackTitle="Attendance page failed to load">
+              <AttendancePage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="hr/salary" element={
+          <ModuleRoute module="hr">
+            <ErrorBoundary fallbackTitle="Salary page failed to load">
+              <SalaryPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="hr/leave" element={
+          <ModuleRoute module="hr">
+            <ErrorBoundary fallbackTitle="Leave page failed to load">
+              <LeavePage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="hr/reports" element={
+          <ModuleRoute module="hr">
+            <ErrorBoundary fallbackTitle="HR Reports failed to load">
+              <HRReportsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
 
         {/* REPORTS */}
         <Route path="reports" element={<ModuleRoute module="reports"><Outlet /></ModuleRoute>}>
