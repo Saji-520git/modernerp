@@ -30,6 +30,7 @@ import ImportPage from './pages/settings/ImportPage';
 import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
 import CategoriesPage from './pages/settings/CategoriesPage';
 import BrandsPage from './pages/settings/BrandsPage';
+import SuperAdminPage from './pages/super-admin/SuperAdminPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -290,6 +291,14 @@ export default function App() {
         } />
         <Route path="settings/categories" element={<CategoriesPage />} />
         <Route path="settings/brands" element={<BrandsPage />} />
+
+        {/* BROcode Solutions staff only — not linked anywhere in the UI.
+            Authorization is enforced by the backend super-admin check. */}
+        <Route path="super-admin" element={
+          <ErrorBoundary fallbackTitle="Super Admin failed to load">
+            <SuperAdminPage />
+          </ErrorBoundary>
+        } />
 
         {/* Legacy */}
         <Route path="units" element={<UnitsPage />} />
