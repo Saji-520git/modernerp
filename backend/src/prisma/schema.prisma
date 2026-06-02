@@ -108,6 +108,10 @@ model User {
 
   // HR — optional link to a staff record (system access)
   staff             Staff?
+
+  // Cloud multi-tenant — optional link to a tenant (null = single-client mode)
+  tenantId          String?
+  tenant            Tenant?  @relation(fields: [tenantId], references: [id])
 }
 
 model Category {
@@ -983,4 +987,26 @@ model Leave {
   updatedAt  DateTime  @updatedAt
 
   @@map("leave")
+}
+
+// ─── Cloud Multi-Tenant (SaaS) ───────────────────────────────────────────────
+// A Tenant is one hosted client instance. tenantId is OPTIONAL on User so the
+// existing single-client (Electron) deployments keep working unchanged.
+
+model Tenant {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  plan        String    @default("starter")
+  isActive    Boolean   @default(true)
+  maxUsers    Int       @default(5)
+  modules     Json      @default("{}")
+  settings    Json      @default("{}")
+  trialEndsAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  users       User[]
+
+  @@map("tenants")
 }
