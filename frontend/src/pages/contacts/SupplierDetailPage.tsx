@@ -231,6 +231,12 @@ function PurchaseViewModal({ poId, onClose }: { poId: string; onClose: () => voi
                 </div>
               </div>
 
+              {(() => {
+                // Option B — totalCents is never mutated; subtract confirmed return
+                // credit from the displayed balance only.
+                const returnedCents = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+                const balanceDue = Math.max(0, po.totalCents - po.paidCents - returnedCents);
+                return (
               <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
                 <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{fmtCents(po.subtotalCents)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800">
@@ -239,12 +245,14 @@ function PurchaseViewModal({ poId, onClose }: { poId: string; onClose: () => voi
                 <div className="flex justify-between text-green-600 font-medium">
                   <span>Paid</span><span>{fmtCents(po.paidCents)}</span>
                 </div>
-                {po.totalCents - po.paidCents > 0 && (
+                {balanceDue > 0 && (
                   <div className="flex justify-between text-red-600 font-bold">
-                    <span>Balance Due</span><span>{fmtCents(po.totalCents - po.paidCents)}</span>
+                    <span>Balance Due</span><span>{fmtCents(balanceDue)}</span>
                   </div>
                 )}
               </div>
+                );
+              })()}
             </>
           )}
         </div>

@@ -108,6 +108,8 @@ export interface Purchase {
   lines?: PurchaseLine[];
   receipts?: PurchaseReceipt[];
   supplierPayments?: SupplierPayment[];
+  // Confirmed purchase returns (Option B) — subtract from displayed balance, never from totalCents.
+  purchaseReturns?: { totalCents: number }[];
   _count?: { lines: number };
   createdAt: string;
 }

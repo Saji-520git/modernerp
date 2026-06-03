@@ -139,6 +139,12 @@ export const purchaseService = {
             },
           },
         },
+        // Confirmed returns (Option B) — used to subtract return credit from the
+        // displayed per-PO balance without ever mutating totalCents.
+        purchaseReturns: {
+          where: { status: 'CONFIRMED', isActive: true },
+          select: { totalCents: true },
+        },
       },
     });
     if (!purchase) throw new HttpError(404, 'Purchase order not found');
