@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,6 +26,7 @@ import { categoriesApi, brandsApi } from '../../services/masterData';
 import QuickAddModal from '../../components/common/QuickAddModal';
 import ProductTierPrices from './ProductTierPrices';
 import { useModules } from '../../hooks/useModules';
+import { manufacturingService } from '../../services/manufacturingService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,16 @@ export default function ProductsPage() {
     queryFn:  purchasesApi.listSuppliers,
     staleTime: 5 * 60_000,
   });
+
+  // Manufacturing — which products have a BOM (badge shown only when flag is on).
+  const manufacturingEnabled = isModuleEnabled('manufacturing');
+  const { data: boms = [] } = useQuery({
+    queryKey: ['boms'],
+    queryFn:  manufacturingService.listBOMs,
+    enabled:  manufacturingEnabled,
+    staleTime: 60_000,
+  });
+  const bomProductIds = useMemo(() => new Set(boms.map((b) => b.productId)), [boms]);
 
   // Per-warehouse batch detail for the open drawer
   const { data: allBatches = [], refetch: refetchBatches } = useQuery({
@@ -668,7 +679,14 @@ export default function ProductsPage() {
                         onClick={() => setDrawer(p)}
                         className="text-left hover:text-indigo-600 transition"
                       >
-                        <p className="font-medium text-slate-800 truncate max-w-[200px]">{p.name}</p>
+                        <p className="font-medium text-slate-800 truncate max-w-[200px] flex items-center gap-1.5">
+                          {p.name}
+                          {manufacturingEnabled && bomProductIds.has(p.id) && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] rounded font-semibold uppercase tracking-wide">
+                              BOM
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-slate-400 font-mono">{p.sku}</p>
                         {p.barcode && (
                           <p className="text-[10px] text-slate-300 font-mono">{String(p.barcode)}</p>
