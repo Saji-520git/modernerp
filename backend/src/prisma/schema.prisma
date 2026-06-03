@@ -113,6 +113,9 @@ model User {
   quotationsCreated Quotation[] @relation("QuotationCreatedBy")
   deliveriesCreated Delivery[]  @relation("DeliveryCreatedBy")
 
+  // Manufacturing (Sprint 7)
+  productionOrders  ProductionOrder[] @relation("ProductionOrderCreatedBy")
+
   // Cloud multi-tenant — optional link to a tenant (null = single-client mode)
   tenantId          String?
   tenant            Tenant?  @relation(fields: [tenantId], references: [id])
@@ -186,6 +189,10 @@ model Warehouse {
   stockAlerts      StockAlert[]
   purchaseReceipts PurchaseReceipt[]
   purchaseReturns  PurchaseReturn[]
+
+  // Manufacturing (Sprint 7)
+  productionOrders ProductionOrder[] @relation("ProductionOrderWarehouse")
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -255,6 +262,12 @@ model Product {
 
   // Quotations (Sprint 6) — optional product link on quote lines
   quotationLines     QuotationLine[]
+
+  // Manufacturing (Sprint 7)
+  bom                BOM?                  @relation("BOMProduct")
+  bomMaterialLines   BOMLine[]             @relation("BOMLineMaterial")
+  productionOrders   ProductionOrder[]     @relation("ProductionOrderProduct")
+  productionLines    ProductionOrderLine[] @relation("ProductionLineMaterial")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1250,4 +1263,84 @@ model Delivery {
   @@index([status])
   @@index([scheduledAt])
   @@index([createdAt])
+}
+
+// ─── Manufacturing (Sprint 7) ────────────────────────────────────────────────
+// Bill of Materials: recipe for producing one finished product.
+model BOM {
+  id          String    @id @default(cuid())
+  productId   String    @unique
+  product     Product   @relation("BOMProduct", fields: [productId], references: [id])
+  name        String
+  yieldQty    Decimal   @default(1) @db.Decimal(18, 4)  // units produced per batch run
+  notes       String?
+  isActive    Boolean   @default(true)
+  lines       BOMLine[]
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([productId])
+}
+
+// One raw material line on a BOM.
+model BOMLine {
+  id          String   @id @default(cuid())
+  bomId       String
+  bom         BOM      @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  materialId  String
+  material    Product  @relation("BOMLineMaterial", fields: [materialId], references: [id])
+  qty         Decimal  @db.Decimal(18, 4)  // qty of material per BOM yield
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([bomId])
+  @@index([materialId])
+}
+
+// A production run: consumes materials, outputs finished product into stock.
+model ProductionOrder {
+  id            String    @id @default(cuid())
+  number        String    @unique
+  productId     String
+  product       Product   @relation("ProductionOrderProduct", fields: [productId], references: [id])
+  bomId         String?
+  warehouseId   String
+  warehouse     Warehouse @relation("ProductionOrderWarehouse", fields: [warehouseId], references: [id])
+  quantity      Decimal   @db.Decimal(18, 4)  // planned finished-goods quantity
+  status        String    @default("PENDING") // PENDING / IN_PROGRESS / COMPLETED / CANCELLED
+  totalCostCents Int      @default(0)         // total material cost (integer cents)
+  notes         String?
+  createdById   String
+  createdBy     User      @relation("ProductionOrderCreatedBy", fields: [createdById], references: [id])
+  startedAt     DateTime?
+  completedAt   DateTime?
+  lines         ProductionOrderLine[]
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// One material consumed by a production order (snapshot of planned vs actual).
+model ProductionOrderLine {
+  id            String          @id @default(cuid())
+  orderId       String
+  order         ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  materialId    String
+  material      Product         @relation("ProductionLineMaterial", fields: [materialId], references: [id])
+  plannedQty    Decimal         @db.Decimal(18, 4)
+  actualQty     Decimal         @default(0) @db.Decimal(18, 4)
+  unitCostCents Int             @default(0)  // cost per material unit at run time
+  lineCostCents Int             @default(0)  // plannedQty * unitCost (integer cents)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([orderId])
+  @@index([materialId])
 }
