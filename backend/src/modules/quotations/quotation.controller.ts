@@ -92,25 +92,6 @@ export const sendQuotationWhatsApp: RequestHandler = asyncHandler(async (req, re
   if (!config.isEnabled) {
     throw new HttpError(400, 'WhatsApp is not enabled. Enable it in WhatsApp settings first.');
   }
-  const q = await quotationService.getQuotationById(req.params.id);
-  if (!q.customer?.phone) {
-    throw new HttpError(400, 'Customer has no phone number for WhatsApp');
-  }
-  // NOTE: refined in Item 9 to use message.composer.buildQuoteSummary.
-  const money = (c: number) => (c / 100).toFixed(2);
-  const lineText = q.lines
-    .map((l) => `• ${l.description} x${l.qty} — Rs.${money(l.totalCents)}`)
-    .join('\n');
-  const message = [
-    `*Quotation ${q.number}*`,
-    q.title ? q.title : null,
-    '',
-    lineText,
-    '',
-    `Total: Rs.${money(q.totalCents)}`,
-    q.validUntil ? `Valid until: ${new Date(q.validUntil).toLocaleDateString('en-GB')}` : null,
-  ].filter((x) => x !== null).join('\n');
-
-  const data = await whatsappService.dispatch(q.customer.phone, message, q.customerId ?? null, null);
+  const data = await whatsappService.sendQuoteViaWhatsApp(req.params.id);
   res.json({ success: true, data, message: 'Quote sent via WhatsApp' });
 });
