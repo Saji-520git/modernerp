@@ -126,10 +126,12 @@ export const productionService = {
       if (!bom) throw new HttpError(400, 'This product has no BOM — create one first');
       if (bom.lines.length === 0) throw new HttpError(400, 'The BOM has no material lines');
 
-      // Scale each material by how many batch-yields this order represents.
+      // Scale each material by how many batch-yields this order represents,
+      // then add the line's expected wastage %.
       const scale = data.quantity / Number(bom.yieldQty);
       const lines = bom.lines.map((l) => {
-        const plannedQty = Number(l.qty) * scale;
+        const wasteFactor = 1 + (l.wastePct ?? 0) / 100;
+        const plannedQty = Number(l.qty) * scale * wasteFactor;
         const unitCostCents = l.material.costCents;
         const lineCostCents = Math.round(unitCostCents * plannedQty);
         return {

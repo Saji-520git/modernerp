@@ -5,6 +5,7 @@ import { z } from 'zod';
 const bomLineSchema = z.object({
   materialId: z.string().min(1, 'Material is required'),
   qty: z.number().positive('Quantity must be greater than 0'),
+  wastePct: z.number().min(0).max(100).optional(),
   notes: z.string().max(500).optional().nullable(),
 });
 

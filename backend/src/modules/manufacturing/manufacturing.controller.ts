@@ -33,7 +33,7 @@ export const createBOM: RequestHandler = asyncHandler(async (req, res) => {
     name: input.name,
     yieldQty: input.yieldQty,
     notes: input.notes ?? null,
-    lines: input.lines.map((l) => ({ materialId: l.materialId, qty: l.qty, notes: l.notes ?? null })),
+    lines: input.lines.map((l) => ({ materialId: l.materialId, qty: l.qty, wastePct: l.wastePct, notes: l.notes ?? null })),
   });
   res.status(201).json({ success: true, data, message: 'BOM created' });
 });
@@ -45,7 +45,7 @@ export const updateBOM: RequestHandler = asyncHandler(async (req, res) => {
     yieldQty: input.yieldQty,
     notes: input.notes,
     isActive: input.isActive,
-    lines: input.lines?.map((l) => ({ materialId: l.materialId, qty: l.qty, notes: l.notes ?? null })),
+    lines: input.lines?.map((l) => ({ materialId: l.materialId, qty: l.qty, wastePct: l.wastePct, notes: l.notes ?? null })),
   });
   res.json({ success: true, data, message: 'BOM updated' });
 });

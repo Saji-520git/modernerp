@@ -8,6 +8,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 export interface BOMLineInput {
   materialId: string;
   qty: number;        // qty of material per BOM yield
+  wastePct?: number;  // expected wastage % added to required qty
   notes?: string | null;
 }
 
@@ -44,15 +45,32 @@ const fullInclude = {
 /**
  * Total material cost (integer cents) for a set of BOM lines.
  * costCents is integer cents per material unit; qty is a Decimal quantity.
- * Math.round() guarantees we never leak fractional cents.
+ * Effective qty includes the line's wastage %. Math.round() guarantees we
+ * never leak fractional cents.
  */
 function calculateMaterialCost(
-  lines: { qty: Prisma.Decimal | number; material: { costCents: number } }[],
+  lines: { qty: Prisma.Decimal | number; wastePct?: number; material: { costCents: number } }[],
 ): number {
   return lines.reduce((sum, line) => {
     const qty = Number(line.qty);
-    return sum + Math.round(line.material.costCents * qty);
+    const effective = qty * (1 + (line.wastePct ?? 0) / 100);
+    return sum + Math.round(line.material.costCents * effective);
   }, 0);
+}
+
+/**
+ * Reject a BOM whose materials are invalid:
+ *  - a product cannot be a material of its own BOM (circular reference)
+ *  - the same material cannot appear twice
+ */
+function assertNoBadLines(productId: string, lines: BOMLineInput[]): void {
+  if (lines.some((l) => l.materialId === productId)) {
+    throw new HttpError(400, 'A product cannot be its own material');
+  }
+  const ids = lines.map((l) => l.materialId);
+  if (new Set(ids).size !== ids.length) {
+    throw new HttpError(400, 'Duplicate material in BOM lines');
+  }
 }
 
 /** Validate that all referenced material products exist and are active. */
@@ -139,6 +157,7 @@ export const bomService = {
         throw new HttpError(409, 'This product already has a BOM');
       }
 
+      assertNoBadLines(data.productId, data.lines);
       await assertMaterialsExist(data.lines);
 
       const created = await prisma.bOM.create({
@@ -151,6 +170,7 @@ export const bomService = {
             create: data.lines.map((l) => ({
               materialId: l.materialId,
               qty: l.qty,
+              wastePct: l.wastePct ?? 0,
               notes: l.notes ?? null,
             })),
           },
@@ -175,6 +195,7 @@ export const bomService = {
         if (data.lines.length === 0) {
           throw new HttpError(400, 'A BOM needs at least one material line');
         }
+        assertNoBadLines(existing.productId, data.lines);
         await assertMaterialsExist(data.lines);
       }
 
@@ -196,6 +217,7 @@ export const bomService = {
                     create: data.lines.map((l) => ({
                       materialId: l.materialId,
                       qty: l.qty,
+                      wastePct: l.wastePct ?? 0,
                       notes: l.notes ?? null,
                     })),
                   },

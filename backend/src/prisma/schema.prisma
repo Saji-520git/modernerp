@@ -1291,6 +1291,7 @@ model BOMLine {
   materialId  String
   material    Product  @relation("BOMLineMaterial", fields: [materialId], references: [id])
   qty         Decimal  @db.Decimal(18, 4)  // qty of material per BOM yield
+  wastePct    Float    @default(0)         // expected wastage % added to required qty
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
