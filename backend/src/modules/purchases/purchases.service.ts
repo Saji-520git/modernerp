@@ -234,15 +234,21 @@ export const purchaseService = {
         data: { status: 'CONFIRMED' },
       });
 
+      // Pre-fetch every line's product once (avoids a findUnique per line inside the loop)
+      const lineProductIds = purchase.lines.map((l: any) => l.productId);
+      const lineProducts = await tx.product.findMany({
+        where: { id: { in: lineProductIds } },
+        select: { id: true, baseUnitId: true, unitId: true },
+      });
+      const lineProductMap = new Map(lineProducts.map((p) => [p.id, p]));
+
       // 2. For each line: resolve base qty, add stock + record movement + update cost
       for (const line of purchase.lines) {
         // Resolve how many base units this line represents
         let baseQty: Decimal;
         if (line.unitId) {
-          const product = await tx.product.findUnique({
-            where: { id: line.productId },
-            select: { baseUnitId: true, unitId: true },
-          });
+          const product = lineProductMap.get(line.productId);
+          if (!product) throw new Error(`Product ${line.productId} not found`);
           const baseUnitId = product?.baseUnitId ?? product?.unitId ?? '';
           if (line.unitId !== baseUnitId) {
             const result = await convertToBaseUnit(
@@ -296,7 +302,7 @@ export const purchaseService = {
         });
 
         // Create stock batch row (tracks expiry per batch)
-        await (prisma as any).stockBatch.create({
+        await (tx as any).stockBatch.create({
           data: {
             productId:      line.productId,
             warehouseId:    purchase.warehouseId,
