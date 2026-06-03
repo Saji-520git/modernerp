@@ -133,14 +133,12 @@ export const purchaseReturnService = {
     if (ret.status !== 'DRAFT') throw new HttpError(400, 'Only DRAFT returns can be confirmed');
     if (!ret.isActive)          throw new HttpError(400, 'Return has been deleted');
 
-    const ops: any[] = [];
+    return prisma.$transaction(async (tx) => {
+      for (const line of ret.lines) {
+        const qty = Number(line.qty);
 
-    for (const line of ret.lines) {
-      const qty = Number(line.qty);
-
-      // 1. Create RETURN_OUT stock movement
-      ops.push(
-        prisma.stockMovement.create({
+        // 1. Create RETURN_OUT stock movement
+        await tx.stockMovement.create({
           data: {
             productId:   line.productId,
             warehouseId: ret.warehouseId,
@@ -150,12 +148,10 @@ export const purchaseReturnService = {
             refId:       ret.id,
             note:        `PRET ${ret.number}`,
           },
-        }),
-      );
+        });
 
-      // 2. Decrease Stock.qty — upsert so a missing row is created (negative) rather than silently skipped
-      ops.push(
-        prisma.stock.upsert({
+        // 2. Decrease Stock.qty — upsert so a missing row is created (negative) rather than silently skipped
+        await tx.stock.upsert({
           where: {
             productId_warehouseId: {
               productId:   line.productId,
@@ -170,29 +166,70 @@ export const purchaseReturnService = {
           update: {
             qty: { decrement: qty },
           },
-        }),
-      );
+        });
 
-      // 3. Update purchaseLine.returnedQty
-      ops.push(
-        prisma.purchaseLine.update({
+        // 3. Update purchaseLine.returnedQty
+        await tx.purchaseLine.update({
           where: { id: line.purchaseLineId },
           data:  { returnedQty: { increment: qty } },
-        }),
-      );
-    }
+        });
+      }
 
-    // 4. Mark return CONFIRMED
-    ops.push(
-      (prisma as any).purchaseReturn.update({
+      // 4. Mark return CONFIRMED
+      const confirmed = await (tx as any).purchaseReturn.update({
         where:   { id },
         data:    { status: 'CONFIRMED' },
         include: RETURN_INCLUDE,
-      }),
-    );
+      });
 
-    const results = await prisma.$transaction(ops);
-    return results[results.length - 1];
+      // Step 5: Re-derive purchase paymentStatus after this return is confirmed.
+      // We include the current return manually rather than re-querying to avoid
+      // transaction ordering issues.
+
+      // Load all previously confirmed returns for this PO (NOT including current
+      // one since it may not be visible yet in tx)
+      const previousReturns = await (tx as any).purchaseReturn.findMany({
+        where: {
+          purchaseId: ret.purchaseId,
+          status:     'CONFIRMED',
+          id:         { not: ret.id },
+        },
+        select: { totalCents: true },
+      });
+
+      // Add current return's value manually
+      const totalReturnedCents =
+        previousReturns.reduce((sum: number, r: any) => sum + r.totalCents, 0) + ret.totalCents;
+
+      // Load parent purchase current state
+      const parentPurchase = await tx.purchase.findUnique({
+        where:  { id: ret.purchaseId },
+        select: { totalCents: true, paidCents: true },
+      });
+      if (!parentPurchase) throw new Error('Parent purchase not found');
+
+      // Effective amount still owed (Option B — totalCents itself is never mutated)
+      const effectiveTotalCents = Math.max(
+        0,
+        parentPurchase.totalCents - totalReturnedCents,
+      );
+
+      // Derive new payment status
+      const newPaymentStatus =
+        parentPurchase.paidCents >= effectiveTotalCents && effectiveTotalCents > 0
+          ? 'PAID'
+          : parentPurchase.paidCents > 0
+            ? 'PARTIAL'
+            : 'UNPAID';
+
+      // Update paymentStatus ONLY — never change totalCents or paidCents
+      await tx.purchase.update({
+        where: { id: ret.purchaseId },
+        data:  { paymentStatus: newPaymentStatus },
+      });
+
+      return confirmed;
+    });
   },
 
   // ── Cancel return (DRAFT only) ──────────────────────────────────────────────
