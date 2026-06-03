@@ -317,6 +317,14 @@ export const purchaseService = {
             expiryDate:     (line as any).expiryDate ?? null,
           },
         });
+
+        // Set receivedQty INSIDE the confirm transaction so a purchase return is
+        // always possible even if the post-transaction GRN record (createFullReceiptRecord)
+        // fails. createFullReceiptRecord later sets the same absolute value — idempotent.
+        await tx.purchaseLine.update({
+          where: { id: line.id },
+          data:  { receivedQty: line.qty },
+        });
       }
     });
 
