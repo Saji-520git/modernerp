@@ -11,6 +11,7 @@ import {
   buildDailySummary,
   buildLowStockAlert,
   buildOffer,
+  buildQuoteSummary,
 } from './message.composer.js';
 
 const CONFIG_ID = 'singleton';
@@ -297,6 +298,36 @@ export const whatsappService = {
     const message = language === 'si' ? buildSinhalaReceipt(data) : buildSaleReceipt(data);
     const tpl = await whatsappService.getTemplate('Sale Receipt');
     return whatsappService.dispatch(sale.customer.phone, message, sale.customerId, tpl?.id ?? null);
+  },
+
+  /** Builds and dispatches a quotation summary to its customer. */
+  sendQuoteViaWhatsApp: async (quotationId: string): Promise<SendOutcome> => {
+    const quote = await prisma.quotation.findFirst({
+      where: { id: quotationId, deletedAt: null },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        lines: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!quote) throw new HttpError(404, 'Quotation not found');
+    if (!quote.customer?.phone) throw new HttpError(400, 'Customer has no phone number');
+
+    const settings = await settingsService.get();
+    const message = buildQuoteSummary({
+      quoteNo: quote.number,
+      customerName: quote.customer.name,
+      title: quote.title ?? undefined,
+      items: quote.lines.map((l) => ({
+        name: l.description,
+        qty: l.qty.toString(),
+        amount: money(l.totalCents),
+      })),
+      total: money(quote.totalCents),
+      validUntil: quote.validUntil ? fmtDate(quote.validUntil) : undefined,
+      businessName: settings.businessName,
+    });
+    const tpl = await whatsappService.getTemplate('Quote Summary');
+    return whatsappService.dispatch(quote.customer.phone, message, quote.customerId, tpl?.id ?? null);
   },
 
   /** Loads a customer's outstanding sales and dispatches a payment reminder. */

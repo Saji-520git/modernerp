@@ -13,6 +13,7 @@ import {
   Bell, CornerUpLeft, Tag, Layers,
   IdCard, CalendarCheck, Wallet, CalendarOff, ClipboardList,
   Heart, Star, MessageCircle, Megaphone,
+  FileSignature, PackageCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -63,6 +64,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'OPERATIONS',
     items: [
       { to: '/sales', label: 'Sales', icon: FileText },
+      { to: '/quotations', label: 'Quotations', icon: FileSignature, module: 'quotations' },
+      { to: '/delivery', label: 'Deliveries', icon: PackageCheck, module: 'delivery' },
       { to: '/purchases', label: 'Purchases', icon: Truck, module: 'purchasing' },
       { to: '/returns', label: 'Sale Returns', icon: RotateCcw },
       { to: '/purchase-returns', label: 'Purch. Returns', icon: CornerUpLeft, module: 'purchasing' },

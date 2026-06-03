@@ -5,7 +5,7 @@ import {
   ArrowLeft, Pencil, Plus, CreditCard, X, Check,
   ShieldCheck, AlertTriangle, Users, Receipt, RotateCcw,
   DollarSign, TrendingDown, Wallet, ChevronRight,
-  Star, MessageSquare,
+  Star, MessageSquare, FileText,
 } from 'lucide-react';
 import {
   customersApi,
@@ -30,6 +30,8 @@ import type {
   InteractionType,
 } from '../../types/crm';
 import { useModules } from '../../hooks/useModules';
+import { quotationService } from '../../services/quotationService';
+import { QUOTATION_STATUS_COLORS, type Quotation } from '../../types/quotation';
 import WhatsAppButton from '../../components/WhatsAppButton';
 import { whatsappService } from '../../services/whatsappService';
 import { openWhatsApp } from '../../utils/whatsappHelper';
@@ -1113,7 +1115,7 @@ function InteractionsTab({ customerId }: { customerId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type TabKey = 'sales' | 'payments' | 'returns' | 'account' | 'loyalty' | 'interactions';
+type TabKey = 'sales' | 'payments' | 'returns' | 'account' | 'loyalty' | 'interactions' | 'quotes';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'sales',    label: 'Sales History', icon: <Receipt   size={14} /> },
@@ -1122,11 +1124,66 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'account',  label: 'Account Info',  icon: <Users     size={14} /> },
 ];
 
+// Quotes tab — appended only when the 'quotations' module is enabled.
+const QUOTES_TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'quotes', label: 'Quotes', icon: <FileText size={14} /> },
+];
+
 // CRM tabs — appended only when the 'crm' module is enabled.
 const CRM_TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'loyalty',      label: 'Loyalty',      icon: <Star          size={14} /> },
   { key: 'interactions', label: 'Interactions', icon: <MessageSquare size={14} /> },
 ];
+
+// ─── Quotes Tab ─────────────────────────────────────────────────────────────
+
+function QuotesTab({ customerId }: { customerId: string }) {
+  const navigate = useNavigate();
+  const money = (cents: number) => `Rs. ${(cents / 100).toFixed(2)}`;
+  const { data: quotes = [], isLoading } = useQuery<Quotation[]>({
+    queryKey: ['customer-quotes', customerId],
+    queryFn: () => quotationService.list({ customerId }),
+  });
+
+  if (isLoading) return <div className="p-6 text-sm text-slate-400">Loading…</div>;
+  if (quotes.length === 0) {
+    return (
+      <div className="text-center py-12 text-slate-400">
+        <FileText className="w-10 h-10 mx-auto text-slate-200 mb-2" />
+        <p className="text-sm">No quotations for this customer yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-slate-50">
+        <tr>
+          <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Number</th>
+          <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Title</th>
+          <th className="px-5 py-3 text-center text-xs font-semibold text-slate-500">Status</th>
+          <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Total</th>
+          <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Created</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100">
+        {quotes.map((q) => (
+          <tr key={q.id} onClick={() => navigate(`/quotations/${q.id}`)} className="hover:bg-slate-50 cursor-pointer">
+            <td className="px-5 py-3 font-mono font-semibold text-indigo-600">{q.number}</td>
+            <td className="px-5 py-3 text-slate-500 max-w-[220px] truncate">{q.title ?? '—'}</td>
+            <td className="px-5 py-3 text-center">
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${QUOTATION_STATUS_COLORS[q.status]}`}>
+                {q.status.charAt(0) + q.status.slice(1).toLowerCase()}
+              </span>
+            </td>
+            <td className="px-5 py-3 text-right font-semibold text-slate-800">{money(q.totalCents)}</td>
+            <td className="px-5 py-3 text-slate-400 text-xs">{new Date(q.createdAt).toLocaleDateString('en-GB')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -1135,7 +1192,12 @@ export default function CustomerDetailPage() {
 
   const { isModuleEnabled } = useModules();
   const crmEnabled = isModuleEnabled('crm');
-  const visibleTabs = crmEnabled ? [...TABS, ...CRM_TABS] : TABS;
+  const quotesEnabled = isModuleEnabled('quotations');
+  const visibleTabs = [
+    ...TABS,
+    ...(quotesEnabled ? QUOTES_TABS : []),
+    ...(crmEnabled ? CRM_TABS : []),
+  ];
 
   const [tab, setTab]             = useState<TabKey>('sales');
   const [editOpen, setEditOpen]   = useState(false);
@@ -1372,6 +1434,7 @@ export default function CustomerDetailPage() {
           {tab === 'payments' && <PaymentsTab customerId={id!} />}
           {tab === 'returns'  && <ReturnsTab  customerId={id!} />}
           {tab === 'account'  && <AccountInfoTab customer={customer} onEdit={() => { setEditError(''); setEditOpen(true); }} />}
+          {quotesEnabled && tab === 'quotes'    && <QuotesTab       customerId={id!} />}
           {crmEnabled && tab === 'loyalty'      && <LoyaltyTab      customerId={id!} />}
           {crmEnabled && tab === 'interactions' && <InteractionsTab customerId={id!} />}
         </div>

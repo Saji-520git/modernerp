@@ -25,6 +25,8 @@ export const DEFAULT_MODULES = {
   bakery:        false,
   crm:           false,
   whatsapp:      false,
+  quotations:    false,
+  delivery:      false,
 };
 
 export type ModuleFlags = typeof DEFAULT_MODULES;
@@ -48,9 +50,9 @@ function template(enabled: ModuleKey[]): ModuleFlags {
 }
 
 const TEMPLATES: Record<BusinessType, ModuleFlags> = {
-  grocery:  template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses']),
-  hardware: template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses']),
-  bakery:   template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses', 'manufacturing']),
+  grocery:  template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses', 'delivery']),
+  hardware: template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses', 'quotations']),
+  bakery:   template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses', 'manufacturing', 'quotations']),
   repairs:  template(['pos', 'inventory', 'customers', 'expenses', 'reports', 'repairs']),
   clothing: template(['pos', 'inventory', 'purchasing', 'customers', 'suppliers', 'expenses', 'reports', 'warehouses']),
   general:  template(MODULE_KEYS),

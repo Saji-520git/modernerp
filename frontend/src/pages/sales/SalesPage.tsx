@@ -6,7 +6,7 @@ import {
   Plus, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight,
   Trash2, CreditCard, AlertCircle, RotateCcw, Download, Filter,
   FileText, Printer, ShoppingCart, Receipt, RefreshCw,
-  DollarSign, TrendingUp, Package, Paperclip,
+  DollarSign, TrendingUp, Package, Paperclip, Truck,
 } from 'lucide-react';
 import { PortalDropdown } from '../../components/ui/PortalDropdown';
 import {
@@ -21,6 +21,8 @@ import AttachmentPanel from '../../components/common/AttachmentPanel';
 import WhatsAppButton from '../../components/WhatsAppButton';
 import { whatsappService } from '../../services/whatsappService';
 import { openWhatsApp } from '../../utils/whatsappHelper';
+import { useModules } from '../../hooks/useModules';
+import DeliveryFormModal from '../delivery/DeliveryFormModal';
 import axios from 'axios';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -344,7 +346,9 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
     enabled: !!saleId,
   });
   const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
+  const { isModuleEnabled } = useModules();
   const [showPayment, setShowPayment] = useState(false);
+  const [showDelivery, setShowDelivery] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
   const [waLoading, setWaLoading]     = useState(false);
   const [waMsg, setWaMsg]             = useState<{ ok: boolean; text: string } | null>(null);
@@ -564,6 +568,16 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
           </div>
         )}
 
+        {/* Create a delivery for this sale — only when the delivery module is on */}
+        {isModuleEnabled('delivery') && (
+          <div className="px-6 py-3 border-t border-slate-200 flex items-center gap-3">
+            <button onClick={() => setShowDelivery(true)}
+              className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">
+              <Truck className="w-4 h-4" /> Create Delivery
+            </button>
+          </div>
+        )}
+
         {/* Send receipt via WhatsApp — shown when the customer has a phone */}
         {sale.customer?.phone && (
           <div className="px-6 py-3 border-t border-slate-200 flex items-center gap-3">
@@ -581,6 +595,18 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
         {showPayment && (
           <PaymentModal saleId={sale.id} totalCents={sale.totalCents} currentPaid={sale.paidCents}
             onClose={() => setShowPayment(false)} />
+        )}
+
+        {showDelivery && (
+          <DeliveryFormModal
+            prefill={{
+              saleId: sale.id,
+              customerId: sale.customer?.id ?? null,
+              contactName: sale.customer?.name ?? null,
+              contactPhone: sale.customer?.phone ?? null,
+            }}
+            onClose={() => setShowDelivery(false)}
+          />
         )}
       </div>
     </div>

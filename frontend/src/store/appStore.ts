@@ -21,6 +21,8 @@ export const DEFAULT_MODULES: ModuleFlags = {
   bakery:        false,
   crm:           false,
   whatsapp:      false,
+  quotations:    false,
+  delivery:      false,
 };
 
 interface AppState {

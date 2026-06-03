@@ -33,6 +33,8 @@ Every module has a flag in the client config:
   repairs        : true/false
   crm            : true/false
   whatsapp       : true/false
+  quotations     : true/false
+  delivery       : true/false
 }
 
 Super-admin controls all flags.

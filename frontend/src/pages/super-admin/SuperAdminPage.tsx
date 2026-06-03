@@ -24,6 +24,8 @@ const MODULE_META: { key: string; label: string; description: string }[] = [
   { key: 'bakery',        label: 'Bakery',         description: 'Bakery production tools' },
   { key: 'crm',           label: 'CRM & Loyalty',  description: 'Loyalty points, price tiers, customer intelligence' },
   { key: 'whatsapp',      label: 'WhatsApp Messaging', description: 'Send receipts, reminders, broadcasts via WhatsApp' },
+  { key: 'quotations',    label: 'Quotations & Estimates', description: 'Quotes, estimates, convert-to-sale' },
+  { key: 'delivery',      label: 'Delivery Management', description: 'Delivery tracking and dispatch' },
 ];
 
 const TEMPLATES: { key: BusinessType; label: string }[] = [

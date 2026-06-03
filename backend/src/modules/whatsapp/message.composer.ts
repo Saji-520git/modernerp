@@ -161,6 +161,36 @@ export function buildOffer(data: OfferData): string {
   return lines.join('\n');
 }
 
+export interface QuoteSummaryData {
+  quoteNo: string;
+  customerName: string;
+  title?: string;
+  items: { name: string; qty: string; amount: string }[];
+  total: string;
+  validUntil?: string;
+  businessName: string;
+}
+
+export function buildQuoteSummary(data: QuoteSummaryData): string {
+  const lines: string[] = [];
+  lines.push(`*${data.businessName}*`);
+  lines.push(HR);
+  lines.push(`\u{1F4DD} Quotation: ${data.quoteNo}`);
+  if (data.title) lines.push(`\u{1F3F7}\u{FE0F} ${data.title}`);
+  lines.push(`\u{1F464} Customer: ${data.customerName}`);
+  lines.push('');
+  lines.push('*ITEMS*');
+  for (const it of data.items) {
+    lines.push(`${it.name} × ${it.qty} — Rs.${it.amount}`);
+  }
+  lines.push(HR);
+  lines.push(`*TOTAL: Rs.${data.total}*`);
+  if (data.validUntil) lines.push(`\u{1F4C5} Valid until: ${data.validUntil}`);
+  lines.push('');
+  lines.push('Reply to confirm your order. \u{1F64F}');
+  return lines.join('\n');
+}
+
 /** Same structure as buildSaleReceipt, but with Sinhala labels. */
 export function buildSinhalaReceipt(data: ReceiptData): string {
   const lines: string[] = [];
