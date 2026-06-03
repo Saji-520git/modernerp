@@ -54,11 +54,22 @@ export const supplierPaymentService = {
       throw new HttpError(400, 'Payments can only be recorded on CONFIRMED purchase orders');
     }
 
-    const outstanding = purchase.totalCents - purchase.paidCents;
-    if (data.amountCents > outstanding) {
+    // Option B — totalCents is never mutated; subtract confirmed return credit to
+    // get the true amount still owed before validating an overpayment.
+    const returnsAgg = await (prisma as any).purchaseReturn.aggregate({
+      where: { purchaseId: data.purchaseId, status: 'CONFIRMED', isActive: true },
+      _sum: { totalCents: true },
+    });
+    const returnedCents = returnsAgg._sum.totalCents ?? 0;
+
+    const effectiveOutstanding = Math.max(
+      0,
+      purchase.totalCents - purchase.paidCents - returnedCents,
+    );
+    if (data.amountCents > effectiveOutstanding) {
       throw new HttpError(
         400,
-        `Payment of ${(data.amountCents / 100).toFixed(2)} exceeds outstanding balance of ${(outstanding / 100).toFixed(2)}`,
+        `Payment of Rs.${(data.amountCents / 100).toFixed(2)} exceeds outstanding balance of Rs.${(effectiveOutstanding / 100).toFixed(2)}`,
       );
     }
 
