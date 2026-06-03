@@ -57,7 +57,7 @@ Hotel           : + rooms, bookings (future)
 ### Phase 4 — Foundation (current)
 Sprint 1 : Module flag system + super-admin panel
 Sprint 2 : HR & Staff management
-Sprint 3 : Manufacturing / production orders
+Sprint 3 : Manufacturing / production orders   [DONE — BOM + Production Orders, flag 'manufacturing', v2.6.0-alpha]
 Sprint 4 : Multi-branch / multi-location
 Sprint 5 : Cloud deployment (Docker + VPS)
 

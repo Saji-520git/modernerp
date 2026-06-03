@@ -14,6 +14,7 @@ import {
   IdCard, CalendarCheck, Wallet, CalendarOff, ClipboardList,
   Heart, Star, MessageCircle, Megaphone,
   FileSignature, PackageCheck,
+  Factory,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -88,6 +89,13 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/hr/salary', label: 'Payroll', icon: Wallet, module: 'hr' },
       { to: '/hr/leave', label: 'Leave', icon: CalendarOff, module: 'hr' },
       { to: '/hr/reports', label: 'HR Reports', icon: ClipboardList, module: 'hr' },
+    ],
+  },
+  {
+    label: 'MANUFACTURING',
+    items: [
+      { to: '/manufacturing/boms', label: 'Bill of Materials', icon: Layers, module: 'manufacturing' },
+      { to: '/manufacturing/production', label: 'Production', icon: Factory, module: 'manufacturing' },
     ],
   },
   {
