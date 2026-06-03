@@ -245,6 +245,11 @@ function PurchaseViewModal({ poId, onClose }: { poId: string; onClose: () => voi
                 <div className="flex justify-between text-green-600 font-medium">
                   <span>Paid</span><span>{fmtCents(po.paidCents)}</span>
                 </div>
+                {returnedCents > 0 && (
+                  <div className="flex justify-between text-xs text-green-600">
+                    <span>Incl. return credit</span><span>Rs.{(returnedCents / 100).toFixed(2)}</span>
+                  </div>
+                )}
                 {balanceDue > 0 && (
                   <div className="flex justify-between text-red-600 font-bold">
                     <span>Balance Due</span><span>{fmtCents(balanceDue)}</span>
