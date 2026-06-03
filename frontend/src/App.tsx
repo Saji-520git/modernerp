@@ -41,6 +41,10 @@ import LoyaltySettingsPage from './pages/crm/LoyaltySettingsPage';
 import PriceTiersPage from './pages/crm/PriceTiersPage';
 import WhatsAppSettingsPage from './pages/whatsapp/WhatsAppSettingsPage';
 import WhatsAppBroadcastPage from './pages/whatsapp/WhatsAppBroadcastPage';
+import QuotationsPage from './pages/quotations/QuotationsPage';
+import QuotationFormPage from './pages/quotations/QuotationFormPage';
+import QuotationDetailPage from './pages/quotations/QuotationDetailPage';
+import DeliveryPage from './pages/delivery/DeliveryPage';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -206,6 +210,45 @@ export default function App() {
           <ModuleRoute module="inventory">
             <ErrorBoundary fallbackTitle="Stock Alerts failed to load">
               <AlertsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+
+        {/* QUOTATIONS — /new must precede /:id */}
+        <Route path="quotations" element={
+          <ModuleRoute module="quotations">
+            <ErrorBoundary fallbackTitle="Quotations page failed to load">
+              <QuotationsPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="quotations/new" element={
+          <ModuleRoute module="quotations">
+            <ErrorBoundary fallbackTitle="Quotation form failed to load">
+              <QuotationFormPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="quotations/:id/edit" element={
+          <ModuleRoute module="quotations">
+            <ErrorBoundary fallbackTitle="Quotation form failed to load">
+              <QuotationFormPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="quotations/:id" element={
+          <ModuleRoute module="quotations">
+            <ErrorBoundary fallbackTitle="Quotation detail failed to load">
+              <QuotationDetailPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+
+        {/* DELIVERY */}
+        <Route path="delivery" element={
+          <ModuleRoute module="delivery">
+            <ErrorBoundary fallbackTitle="Delivery page failed to load">
+              <DeliveryPage />
             </ErrorBoundary>
           </ModuleRoute>
         } />
