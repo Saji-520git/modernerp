@@ -44,6 +44,8 @@ import WhatsAppBroadcastPage from './pages/whatsapp/WhatsAppBroadcastPage';
 import QuotationsPage from './pages/quotations/QuotationsPage';
 import QuotationFormPage from './pages/quotations/QuotationFormPage';
 import QuotationDetailPage from './pages/quotations/QuotationDetailPage';
+import BOMPage from './pages/manufacturing/BOMPage';
+import ProductionPage from './pages/manufacturing/ProductionPage';
 import DeliveryPage from './pages/delivery/DeliveryPage';
 import { useAuthStore } from './store/authStore';
 
@@ -249,6 +251,22 @@ export default function App() {
           <ModuleRoute module="delivery">
             <ErrorBoundary fallbackTitle="Delivery page failed to load">
               <DeliveryPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+
+        {/* MANUFACTURING */}
+        <Route path="manufacturing/boms" element={
+          <ModuleRoute module="manufacturing">
+            <ErrorBoundary fallbackTitle="BOM page failed to load">
+              <BOMPage />
+            </ErrorBoundary>
+          </ModuleRoute>
+        } />
+        <Route path="manufacturing/production" element={
+          <ModuleRoute module="manufacturing">
+            <ErrorBoundary fallbackTitle="Production page failed to load">
+              <ProductionPage />
             </ErrorBoundary>
           </ModuleRoute>
         } />
