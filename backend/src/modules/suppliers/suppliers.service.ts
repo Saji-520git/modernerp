@@ -44,7 +44,6 @@ export const suppliersService = {
 
     const totalPurchaseAmount = purchasesAgg._sum.totalCents ?? 0;
     const totalPaid           = purchasesAgg._sum.paidCents  ?? 0;
-    const outstandingBalance  = totalPurchaseAmount - totalPaid;
     const lastOrderDate       = purchasesAgg._max.date ?? null;
 
     const returnsAgg = await (prisma as any).purchaseReturn.aggregate({
@@ -52,6 +51,18 @@ export const suppliersService = {
       _count: { id: true },
     });
     const totalReturns = returnsAgg._count.id ?? 0;
+
+    // Option B — totals are never mutated; subtract CONFIRMED return value here.
+    const confirmedReturnsAgg = await (prisma as any).purchaseReturn.aggregate({
+      where: { supplierId: id, status: 'CONFIRMED', isActive: true },
+      _sum: { totalCents: true },
+    });
+    const totalReturnedCents = confirmedReturnsAgg._sum.totalCents ?? 0;
+
+    const outstandingBalance = Math.max(
+      0,
+      totalPurchaseAmount - totalPaid - totalReturnedCents,
+    );
 
     return {
       ...supplier,
