@@ -48,16 +48,6 @@ export const updatePurchase: RequestHandler = async (req, res) => {
   res.json(result);
 };
 
-export const recordSupplierPayment: RequestHandler = async (req, res) => {
-  if (!req.auth) throw new HttpError(401, 'Not authenticated');
-  const { amountCents, method, note } = req.body as { amountCents: number; method: string; note?: string };
-  res.json(await purchaseService.recordSupplierPayment(req.params.id, { amountCents, method, note }, req.auth.userId));
-};
-
-export const listPurchasePayments: RequestHandler = async (req, res) => {
-  res.json(await purchaseService.listPurchasePayments(req.params.id));
-};
-
 export const fromAlerts: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = fromAlertsSchema.parse(req.body);

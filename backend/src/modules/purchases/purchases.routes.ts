@@ -25,8 +25,8 @@ router.patch('/:id',       h(requirePermission('create_purchases')),  h(ctrl.upd
 router.patch('/:id/confirm', h(requirePermission('confirm_purchases')), h(ctrl.confirmPurchase));
 router.patch('/:id/cancel',  h(requirePermission('create_purchases')), h(ctrl.cancelPurchase));
 router.delete('/:id',      h(requirePermission('create_purchases')),  h(ctrl.deletePurchase));
-router.post('/:id/payments', h(requirePermission('create_purchases')), h(ctrl.recordSupplierPayment));
-router.get('/:id/payments',  h(requirePermission('view_purchases')),  h(ctrl.listPurchasePayments));
+// Legacy supplier-payment routes removed — the supplier-payments module
+// (POST /api/v1/supplier-payments) is the sole payment path.
 
 // GRN Receipts
 router.post('/:id/receipts', h(requirePermission('confirm_purchases')), h(receiptCtrl.createReceiptHandler));

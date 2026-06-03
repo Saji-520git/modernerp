@@ -198,11 +198,8 @@ export const purchasesApi = {
   deletePurchase: (id: string): Promise<{ success: boolean }> =>
     api.delete(`/purchases/${id}`).then((r) => r.data),
 
-  recordSupplierPayment: (id: string, payload: { amountCents: number; method: string; note?: string }): Promise<Purchase> =>
-    api.post(`/purchases/${id}/payments`, payload).then((r) => r.data),
-
-  listPurchasePayments: (id: string): Promise<Array<{id: string; amountCents: number; method: string; date: string; note: string | null; createdBy: { fullName: string }}>> =>
-    api.get(`/purchases/${id}/payments`).then((r) => r.data),
+  // Legacy supplier-payment API methods removed — use supplierPaymentsApi
+  // (services/supplierPayments.ts) which is the sole payment path.
 
   // ── GRN Receipts ──────────────────────────────────────────────────────────
   listReceipts: (purchaseId: string): Promise<PurchaseReceipt[]> =>

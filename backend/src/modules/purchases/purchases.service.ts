@@ -419,41 +419,10 @@ export const purchaseService = {
   },
 
   // ── Supplier payment ──────────────────────────────────────────────────────
-
-  recordSupplierPayment: async (id: string, input: { amountCents: number; method: string; note?: string }, userId: string) => {
-    const purchase = await (prisma as any).purchase.findFirst({ where: { id, deletedAt: null } });
-    if (!purchase) throw new HttpError(404, 'Purchase order not found');
-    if (purchase.status !== 'CONFIRMED') throw new HttpError(400, 'Can only record payment on confirmed purchase orders');
-    if (input.amountCents <= 0) throw new HttpError(400, 'Payment amount must be greater than 0');
-    const outstanding = purchase.totalCents - purchase.paidCents;
-    if (input.amountCents > outstanding) throw new HttpError(400, 'Payment exceeds outstanding balance');
-
-    return prisma.$transaction(async (tx) => {
-      await tx.payment.create({
-        data: {
-          purchaseId:  id,
-          amountCents: input.amountCents,
-          method:      input.method as import('@prisma/client').PaymentMethod,
-          note:        input.note ?? null,
-          createdById: userId,
-        },
-      });
-      return tx.purchase.update({
-        where: { id },
-        data: { paidCents: { increment: input.amountCents } },
-      });
-    });
-  },
-
-  listPurchasePayments: async (id: string) => {
-    const purchase = await (prisma as any).purchase.findFirst({ where: { id, deletedAt: null } });
-    if (!purchase) throw new HttpError(404, 'Purchase order not found');
-    return prisma.payment.findMany({
-      where: { purchaseId: id },
-      orderBy: { createdAt: 'asc' },
-      include: { createdBy: { select: { fullName: true } } },
-    });
-  },
+  // Legacy recordSupplierPayment / listPurchasePayments removed.
+  // The supplier-payments module (POST /api/v1/supplier-payments) is the sole
+  // payment path: it correctly updates both paidCents AND paymentStatus and
+  // writes to the supplier_payments table that the UI reads.
 
   // ── Auto-PO from low stock alerts ─────────────────────────────────────────
 
