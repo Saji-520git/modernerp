@@ -3,12 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, FileText, Edit, Trash2, Copy, Send, CheckCircle, XCircle,
-  Clock, ShoppingCart, AlertCircle, Receipt,
+  Clock, ShoppingCart, AlertCircle, Receipt, Truck,
 } from 'lucide-react';
 import axios from 'axios';
 import { quotationService } from '../../services/quotationService';
 import WhatsAppButton from '../../components/WhatsAppButton';
 import { openWhatsApp } from '../../utils/whatsappHelper';
+import { useModules } from '../../hooks/useModules';
+import DeliveryFormModal from '../delivery/DeliveryFormModal';
 import {
   QUOTATION_STATUS_COLORS, type Quotation, type QuotationStatus,
 } from '../../types/quotation';
@@ -19,9 +21,11 @@ export default function QuotationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isModuleEnabled } = useModules();
   const [error, setError] = useState<string | null>(null);
   const [waLoading, setWaLoading] = useState(false);
   const [waMsg, setWaMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showDelivery, setShowDelivery] = useState(false);
 
   const { data: q, isLoading } = useQuery<Quotation>({
     queryKey: ['quotation', id],
@@ -220,6 +224,12 @@ export default function QuotationDetailPage() {
           className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">
           <Copy className="w-4 h-4" /> Duplicate
         </button>
+        {isModuleEnabled('delivery') && (
+          <button onClick={() => setShowDelivery(true)}
+            className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">
+            <Truck className="w-4 h-4" /> Create Delivery
+          </button>
+        )}
         {isDraft && (
           <button onClick={() => { if (window.confirm('Delete this draft quotation?')) deleteMut.mutate(); }}
             disabled={deleteMut.isPending}
@@ -235,6 +245,18 @@ export default function QuotationDetailPage() {
           <WhatsAppButton label="Send Quote via WhatsApp" onClick={handleSendWhatsApp} isLoading={waLoading} />
           {waMsg && <span className={`text-xs ${waMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{waMsg.text}</span>}
         </div>
+      )}
+
+      {showDelivery && (
+        <DeliveryFormModal
+          prefill={{
+            quotationId: q.id,
+            customerId: q.customerId,
+            contactName: q.customer?.name ?? null,
+            contactPhone: q.customer?.phone ?? null,
+          }}
+          onClose={() => setShowDelivery(false)}
+        />
       )}
     </div>
   );
