@@ -21,6 +21,7 @@ export interface BOMLine {
   materialId: string;
   material: ProductRef;
   qty: number | string;       // Prisma Decimal serialises as string
+  wastePct: number;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -44,7 +45,18 @@ export interface BOM {
 export interface BOMLineInput {
   materialId: string;
   qty: number;
+  wastePct?: number;
   notes?: string | null;
+}
+
+// Used by the production UI to warn about insufficient stock before starting.
+export interface StockWarning {
+  materialId: string;
+  materialName: string;
+  required: number;
+  available: number;
+  unitLabel: string;
+  sufficient: boolean;
 }
 
 export interface CreateBOMDto {

@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Factory, X, RefreshCw, Play, CheckCircle, Ban,
-  Clock, Loader2, DollarSign,
+  Clock, Loader2, DollarSign, AlertTriangle,
 } from 'lucide-react';
 import { manufacturingService } from '../../services/manufacturingService';
 import { productsApi } from '../../services/products';
 import { warehousesApi } from '../../services/warehouses';
 import type {
   ProductionOrder, ProductionStatus, ProductionStats, CreateProductionOrderDto,
+  StockWarning,
 } from '../../types/manufacturing';
 
 const money = (cents: number) => `Rs. ${(cents / 100).toFixed(2)}`;
@@ -71,6 +72,41 @@ export default function ProductionPage() {
     (productResp?.data ?? []).forEach((p) => m.set(p.id, p));
     return m;
   }, [productResp]);
+
+  // Available aggregate stock per (materialId @ warehouseId), from the product list.
+  const stockByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    (productResp?.data ?? []).forEach((p) => {
+      p.stock.forEach((s) => m.set(`${p.id}@${s.warehouseId}`, Number(s.qty)));
+    });
+    return m;
+  }, [productResp]);
+
+  // Start-confirmation flow: load full order (lines) and compare to stock.
+  const [startTarget, setStartTarget] = useState<ProductionOrder | null>(null);
+  const { data: startDetail } = useQuery<ProductionOrder>({
+    queryKey: ['production-order-detail', startTarget?.id],
+    queryFn: () => manufacturingService.getOrder(startTarget!.id),
+    enabled: !!startTarget,
+  });
+
+  const startWarnings: StockWarning[] = useMemo(() => {
+    if (!startDetail) return [];
+    return startDetail.lines.map((l) => {
+      const required = Number(l.plannedQty);
+      const available = stockByKey.get(`${l.materialId}@${startDetail.warehouseId}`) ?? 0;
+      return {
+        materialId: l.materialId,
+        materialName: l.material?.name ?? l.materialId,
+        required,
+        available,
+        unitLabel: 'units',
+        sufficient: available >= required,
+      };
+    });
+  }, [startDetail, stockByKey]);
+
+  const hasShortage = startWarnings.some((w) => !w.sufficient);
 
   // Only products that have a BOM can be produced.
   const producibleProducts = useMemo(
@@ -227,7 +263,7 @@ export default function ProductionPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {o.status === 'PENDING' && (
-                        <button onClick={() => actionMutation.mutate({ id: o.id, action: 'start' })}
+                        <button onClick={() => setStartTarget(o)}
                           className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded">
                           <Play className="w-3.5 h-3.5" /> Start
                         </button>
@@ -314,6 +350,89 @@ export default function ProductionPage() {
                 <button onClick={submit} disabled={createMutation.isPending || producibleProducts.length === 0}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
                   {createMutation.isPending ? 'Creating…' : 'Create Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Start-confirmation modal — stock check preview */}
+      {startTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                <Play className="w-4 h-4 text-blue-600" /> Start Order {startTarget.number}
+              </h2>
+              <button onClick={() => setStartTarget(null)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-500">
+                Starting this order will consume the following materials from{' '}
+                <span className="font-semibold text-slate-700">{startTarget.warehouse?.name ?? 'the warehouse'}</span>.
+              </p>
+
+              {!startDetail ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Checking stock…
+                </div>
+              ) : (
+                <>
+                  {hasShortage && (
+                    <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>Insufficient stock for one or more materials. Starting will fail until stock is available.</span>
+                    </div>
+                  )}
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Material</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Required</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Available</th>
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-slate-500">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {startWarnings.map((w) => (
+                          <tr key={w.materialId}>
+                            <td className="px-3 py-2 text-slate-700">{w.materialName}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{w.required.toFixed(2)}</td>
+                            <td className={`px-3 py-2 text-right font-medium ${w.sufficient ? 'text-slate-600' : 'text-red-600'}`}>
+                              {w.available.toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                w.sufficient ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {w.sufficient ? 'OK' : 'Short'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setStartTarget(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    actionMutation.mutate({ id: startTarget.id, action: 'start' });
+                    setStartTarget(null);
+                  }}
+                  disabled={!startDetail || actionMutation.isPending}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
+                  {hasShortage ? 'Start Anyway' : 'Confirm & Start'}
                 </button>
               </div>
             </div>

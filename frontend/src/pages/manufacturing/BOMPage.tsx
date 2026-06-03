@@ -28,7 +28,7 @@ const emptyForm = (): FormState => ({
   name: '',
   yieldQty: 1,
   notes: '',
-  lines: [{ key: crypto.randomUUID(), materialId: '', qty: 1, notes: '' }],
+  lines: [{ key: crypto.randomUUID(), materialId: '', qty: 1, wastePct: 0, notes: '' }],
 });
 
 export default function BOMPage() {
@@ -99,6 +99,7 @@ export default function BOMPage() {
         key: l.id,
         materialId: l.materialId,
         qty: Number(l.qty),
+        wastePct: l.wastePct ?? 0,
         notes: l.notes ?? '',
       })),
     });
@@ -112,7 +113,7 @@ export default function BOMPage() {
   const addLine = () =>
     setForm((f) => ({
       ...f,
-      lines: [...f.lines, { key: crypto.randomUUID(), materialId: '', qty: 1, notes: '' }],
+      lines: [...f.lines, { key: crypto.randomUUID(), materialId: '', qty: 1, wastePct: 0, notes: '' }],
     }));
 
   const removeLine = (key: string) =>
@@ -129,7 +130,7 @@ export default function BOMPage() {
       name: form.name.trim(),
       yieldQty: form.yieldQty > 0 ? form.yieldQty : 1,
       notes: form.notes.trim() || null,
-      lines: cleanLines.map((l) => ({ materialId: l.materialId, qty: l.qty, notes: l.notes || null })),
+      lines: cleanLines.map((l) => ({ materialId: l.materialId, qty: l.qty, wastePct: l.wastePct ?? 0, notes: l.notes || null })),
     };
     saveMutation.mutate({ id: form.id, dto });
   };
@@ -139,7 +140,8 @@ export default function BOMPage() {
     return form.lines.reduce((sum, l) => {
       const p = products.find((pr) => pr.id === l.materialId);
       if (!p) return sum;
-      return sum + Math.round(p.costCents * (l.qty || 0));
+      const effective = (l.qty || 0) * (1 + (l.wastePct ?? 0) / 100);
+      return sum + Math.round(p.costCents * effective);
     }, 0);
   }, [form.lines, products]);
 
@@ -291,7 +293,14 @@ export default function BOMPage() {
                       <input type="number" min={0} step="any" value={l.qty}
                         onChange={(e) => updateLine(l.key, { qty: parseFloat(e.target.value) || 0 })}
                         placeholder="Qty"
-                        className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm" />
+                        className="w-20 px-2 py-1.5 border border-slate-200 rounded-lg text-sm" />
+                      <div className="relative w-20">
+                        <input type="number" min={0} max={100} step="any" value={l.wastePct ?? 0}
+                          onChange={(e) => updateLine(l.key, { wastePct: parseFloat(e.target.value) || 0 })}
+                          title="Wastage %"
+                          className="w-full pl-2 pr-5 py-1.5 border border-slate-200 rounded-lg text-sm" />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+                      </div>
                       <button onClick={() => removeLine(l.key)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded">
                         <Trash2 className="w-4 h-4" />
