@@ -109,6 +109,10 @@ model User {
   // HR — optional link to a staff record (system access)
   staff             Staff?
 
+  // Quotations + Delivery (Sprint 6) — named relations avoid ambiguity
+  quotationsCreated Quotation[] @relation("QuotationCreatedBy")
+  deliveriesCreated Delivery[]  @relation("DeliveryCreatedBy")
+
   // Cloud multi-tenant — optional link to a tenant (null = single-client mode)
   tenantId          String?
   tenant            Tenant?  @relation(fields: [tenantId], references: [id])
@@ -249,6 +253,9 @@ model Product {
   // CRM — per-tier pricing (Sprint 4)
   productPrices      ProductPrice[]
 
+  // Quotations (Sprint 6) — optional product link on quote lines
+  quotationLines     QuotationLine[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -308,6 +315,11 @@ model Customer {
   sales            Sale[]
   posDrafts        PosDraft[]
   customerPayments CustomerPayment[]
+
+  // Quotations + Delivery (Sprint 6, gated by 'quotations' / 'delivery' flags)
+  quotations       Quotation[]
+  deliveries       Delivery[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -427,6 +439,10 @@ model Sale {
   returns          SaleReturn[]
   payments         Payment[]
   customerPayments CustomerPayment[]
+
+  // Delivery (Sprint 6) — a sale may have one delivery (optional)
+  delivery         Delivery?
+
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -1154,4 +1170,84 @@ model WhatsAppLog {
   @@index([status])
   @@index([createdAt])
   @@map("whatsapp_log")
+}
+
+// ─── Quotations + Delivery (Sprint 6) ──────────────────────────────────────────
+
+model Quotation {
+  id                String    @id @default(cuid())
+  number            String    @unique
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id])
+  title             String?
+  status            String    @default("DRAFT")
+  validUntil        DateTime?
+  subtotalCents     Int       @default(0)
+  discountCents     Int       @default(0)
+  taxCents          Int       @default(0)
+  totalCents        Int       @default(0)
+  note              String?
+  termsConditions   String?
+  convertedToSaleId String?   @unique
+  convertedAt       DateTime?
+  createdById       String
+  createdBy         User      @relation("QuotationCreatedBy", fields: [createdById], references: [id])
+  lines             QuotationLine[]
+  deliveries        Delivery[]
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model QuotationLine {
+  id             String    @id @default(cuid())
+  quotationId    String
+  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        Product?  @relation(fields: [productId], references: [id])
+  description    String
+  qty            Float     @default(1)
+  unitLabel      String    @default("pcs")
+  unitPriceCents Int       @default(0)
+  discountCents  Int       @default(0)
+  totalCents     Int       @default(0)
+  sortOrder      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([quotationId])
+}
+
+model Delivery {
+  id            String     @id @default(cuid())
+  number        String     @unique
+  saleId        String?    @unique
+  sale          Sale?      @relation(fields: [saleId], references: [id])
+  quotationId   String?
+  quotation     Quotation? @relation(fields: [quotationId], references: [id])
+  customerId    String?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  status        String     @default("PENDING")
+  scheduledAt   DateTime?
+  deliveredAt   DateTime?
+  address       String?
+  contactName   String?
+  contactPhone  String?
+  driverName    String?
+  driverPhone   String?
+  note          String?
+  createdById   String
+  createdBy     User       @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
+  deletedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
 }
