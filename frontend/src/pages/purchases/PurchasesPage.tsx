@@ -5,6 +5,8 @@ import {
   Truck, PackageCheck, Paperclip, Printer,
 } from 'lucide-react';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
+import SearchableSelect from '../../components/common/SearchableSelect';
+import { api } from '../../services/api';
 import {
   purchasesApi,
   formatCents,
@@ -1244,6 +1246,21 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
   const [scanToast, setScanToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const scanToastTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Quick-add supplier modal state ──────────────────────────────────────────
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [newSupplierName,  setNewSupplierName]  = useState('');
+  const [newSupplierPhone, setNewSupplierPhone] = useState('');
+  const [addSupplierError, setAddSupplierError] = useState('');
+  const [addingSupplier,   setAddingSupplier]   = useState(false);
+
+  // ── Quick-add product modal state ───────────────────────────────────────────
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({
+    name: '', sku: '', unitId: '', costCents: '', priceCents: '',
+  });
+  const [addProductError, setAddProductError] = useState('');
+  const [addingProduct,   setAddingProduct]   = useState(false);
+
   function showScanToast(msg: string, ok: boolean) {
     if (scanToastTimer.current) clearTimeout(scanToastTimer.current);
     setScanToast({ msg, ok });
@@ -1308,6 +1325,70 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
     () => Object.fromEntries(products.map((p) => [p.id, p])),
     [products],
   );
+
+  // Units list — only fetched while the quick-add product modal is open
+  const { data: unitsList } = useQuery<Array<{ id: string; name: string; shortCode: string }>>({
+    queryKey: ['units-for-quick-add'],
+    queryFn: () => api.get('/units').then((r) => r.data.data ?? r.data),
+    enabled: showAddProductModal,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ── Quick-add: create a supplier inline and auto-select it ──────────────────
+  const handleAddSupplier = async () => {
+    if (!newSupplierName.trim()) {
+      setAddSupplierError('Name is required');
+      return;
+    }
+    try {
+      setAddingSupplier(true);
+      setAddSupplierError('');
+      const response = await api.post('/suppliers', {
+        name:  newSupplierName.trim(),
+        phone: newSupplierPhone.trim() || undefined,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['purchase-suppliers'] });
+      // POST /suppliers returns the created supplier row directly → auto-select it
+      if (response.data?.id) setSupplierId(response.data.id);
+      setShowAddSupplierModal(false);
+      setNewSupplierName('');
+      setNewSupplierPhone('');
+    } catch (err: any) {
+      setAddSupplierError(err?.response?.data?.message || 'Failed to add supplier');
+    } finally {
+      setAddingSupplier(false);
+    }
+  };
+
+  // ── Quick-add: create a product inline ──────────────────────────────────────
+  const handleAddProduct = async () => {
+    if (!newProduct.name.trim()) {
+      setAddProductError('Name is required');
+      return;
+    }
+    if (!newProduct.unitId) {
+      setAddProductError('Unit is required');
+      return;
+    }
+    try {
+      setAddingProduct(true);
+      setAddProductError('');
+      await api.post('/products', {
+        name:   newProduct.name.trim(),
+        sku:    newProduct.sku.trim() || undefined,
+        unitId: newProduct.unitId,
+        costCents:  newProduct.costCents  ? Math.round(parseFloat(newProduct.costCents)  * 100) : 0,
+        priceCents: newProduct.priceCents ? Math.round(parseFloat(newProduct.priceCents) * 100) : 0,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+      setShowAddProductModal(false);
+      setNewProduct({ name: '', sku: '', unitId: '', costCents: '', priceCents: '' });
+    } catch (err: any) {
+      setAddProductError(err?.response?.data?.message || 'Failed to add product');
+    } finally {
+      setAddingProduct(false);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: purchasesApi.createPurchase,
@@ -1441,16 +1522,14 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Supplier *</label>
-            <select
+            <SearchableSelect
               value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="">Select supplier…</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+              onChange={setSupplierId}
+              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+              placeholder="Select supplier…"
+              onAddNew={() => { setAddSupplierError(''); setShowAddSupplierModal(true); }}
+              addNewLabel="Add New Supplier"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Receive to Warehouse *</label>
@@ -1546,18 +1625,14 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                 return (
                   <tr key={line.key} className="border-b border-slate-50 align-top">
                     <td className="px-4 py-2">
-                      <select
+                      <SearchableSelect
                         value={line.productId}
-                        onChange={(e) => handleProductChange(line.key, e.target.value)}
-                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
-                      >
-                        <option value="">Select product…</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.sku})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => handleProductChange(line.key, val)}
+                        options={products.map((p) => ({ value: p.id, label: `${p.name} (${p.sku})` }))}
+                        placeholder="Select product…"
+                        onAddNew={() => { setAddProductError(''); setShowAddProductModal(true); }}
+                        addNewLabel="Add New Product"
+                      />
                     </td>
                     <td className="px-3 py-2">
                       {(() => {
@@ -1683,6 +1758,145 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
         <div className="mt-3 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm text-center">
           {isEdit ? 'Purchase order updated!' : 'Purchase order created!'}{' '}
           Go to <strong>Orders</strong> tab to confirm and receive stock.
+        </div>
+      )}
+
+      {/* ── Quick-add Supplier modal ─────────────────────────────────────────── */}
+      {showAddSupplierModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-slate-800">Add New Supplier</h3>
+              <button onClick={() => setShowAddSupplierModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
+                <input
+                  value={newSupplierName}
+                  onChange={(e) => setNewSupplierName(e.target.value)}
+                  placeholder="Supplier name"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Phone (optional)</label>
+                <input
+                  value={newSupplierPhone}
+                  onChange={(e) => setNewSupplierPhone(e.target.value)}
+                  placeholder="Phone number"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              {addSupplierError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{addSupplierError}</p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowAddSupplierModal(false)}
+                className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddSupplier}
+                disabled={addingSupplier}
+                className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-60"
+              >
+                {addingSupplier ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick-add Product modal ──────────────────────────────────────────── */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-slate-800">Add New Product</h3>
+              <button onClick={() => setShowAddProductModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
+                <input
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Product name"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">SKU (optional)</label>
+                <input
+                  value={newProduct.sku}
+                  onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                  placeholder="Auto-generated if blank"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Unit *</label>
+                <select
+                  value={newProduct.unitId}
+                  onChange={(e) => setNewProduct((p) => ({ ...p, unitId: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">Select unit…</option>
+                  {(unitsList ?? []).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.shortCode})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Cost Price Rs.</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={newProduct.costCents}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, costCents: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Sale Price Rs.</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={newProduct.priceCents}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, priceCents: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+              </div>
+              {addProductError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{addProductError}</p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowAddProductModal(false)}
+                className="flex-1 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddProduct}
+                disabled={addingProduct}
+                className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-60"
+              >
+                {addingProduct ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
