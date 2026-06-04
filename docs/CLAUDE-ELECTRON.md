@@ -41,3 +41,20 @@
        git push origin v1.0.XX-production
     4. Build installer on electron-v1.0
     NEVER: git checkout main && git merge
+
+---
+
+## KNOWN ISSUES (DEFERRED)
+
+- **Purchase confirm stores entered pack cost without per-base conversion**
+  (`backend/src/modules/purchases/purchases.service.ts:307`).
+  When a purchase line uses a non-base unit (e.g. Box), `confirmPurchase`
+  records `unitCostCents` as the cost *as entered for that pack unit* and
+  divides stock-in qty by the conversion factor, but it does NOT divide the
+  stored `unitCostCents` down to the per-base-unit cost. As a result the
+  product's saved cost can reflect the pack price rather than the per-piece
+  price. Frontend FIX 4 now auto-recalculates the displayed per-unit cost on
+  unit change so the user enters the correct figure, but the backend math at
+  line 307 is intentionally left unchanged (out of scope: do NOT touch
+  backend purchase service / stock math). Revisit when purchase-cost
+  normalization is in scope.

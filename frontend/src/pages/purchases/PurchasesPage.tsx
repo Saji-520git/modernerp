@@ -1427,6 +1427,9 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
           ? {
               ...l,
               productId,
+              // Reset unit to the product's base unit so no stale unit from a
+              // previously-selected product remains, and price to its base cost.
+              unitId: product ? (product.baseUnitId ?? product.unitId ?? undefined) : undefined,
               unitCost: product ? (product.costCents / 100).toFixed(2) : '',
               taxPercent: product ? String(product.taxPercent) : '0',
             }
@@ -1659,7 +1662,33 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                           <div>
                             <select
                               value={selectedUnitId}
-                              onChange={(e) => updateLine(line.key, 'unitId', e.target.value)}
+                              onChange={(e) => {
+                                const newUnitId = e.target.value;
+                                setLines((prev) => prev.map((l) => {
+                                  if (l.key !== line.key) return l;
+                                  const prod = productMap[l.productId];
+                                  if (!prod) return { ...l, unitId: newUnitId };
+                                  const baseId = prod.baseUnitId ?? prod.unitId;
+                                  let newCost: number;
+                                  if (!newUnitId || newUnitId === baseId) {
+                                    // Base unit → base cost
+                                    newCost = prod.costCents / 100;
+                                  } else {
+                                    const conv = prod.unitConversions?.find(
+                                      (c) => c.fromUnitId === newUnitId,
+                                    );
+                                    if (conv?.priceCents != null && conv.priceCents > 0) {
+                                      newCost = conv.priceCents / 100;
+                                    } else if (conv?.conversionQty) {
+                                      newCost = (prod.costCents * Number(conv.conversionQty)) / 100;
+                                    } else {
+                                      // Safe fallback to base cost when no conversion exists
+                                      newCost = prod.costCents / 100;
+                                    }
+                                  }
+                                  return { ...l, unitId: newUnitId, unitCost: newCost.toFixed(2) };
+                                }));
+                              }}
                               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
                             >
                               <option value={baseUnitId}>{baseUnit?.shortCode} (base)</option>
