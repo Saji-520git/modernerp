@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Plus, Search } from 'lucide-react';
 
 export interface SearchableSelectOption {
@@ -20,8 +20,10 @@ interface SearchableSelectProps {
 /**
  * Lightweight searchable dropdown (combobox) — native-select replacement.
  *
- * Renders the open list as `position: absolute; z-50` inside a
- * `position: relative` wrapper so it is NOT clipped inside table rows.
+ * The open list is rendered with `position: fixed` and coordinates derived from
+ * the trigger button's `getBoundingClientRect()`. This bypasses any ancestor
+ * `overflow: hidden / auto` (e.g. a scrollable table wrapper) that would
+ * otherwise clip an absolutely-positioned dropdown.
  */
 export default function SearchableSelect({
   value,
@@ -35,7 +37,9 @@ export default function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const selectedLabel = useMemo(
@@ -48,6 +52,36 @@ export default function SearchableSelect({
     if (!q) return options;
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, query]);
+
+  // Measure the trigger and position the fixed dropdown right below it.
+  const updatePosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDropdownPos({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  }, []);
+
+  // Position synchronously before paint when opening (avoids a flash at 0,0).
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+  }, [open, updatePosition]);
+
+  // Keep the dropdown glued to the trigger while scrolling/resizing.
+  useEffect(() => {
+    if (!open) return;
+    const handler = () => updatePosition();
+    // capture=true so we also catch scrolls on inner scrollable ancestors
+    window.addEventListener('scroll', handler, true);
+    window.addEventListener('resize', handler);
+    return () => {
+      window.removeEventListener('scroll', handler, true);
+      window.removeEventListener('resize', handler);
+    };
+  }, [open, updatePosition]);
 
   // Close on outside click
   useEffect(() => {
@@ -85,12 +119,13 @@ export default function SearchableSelect({
   };
 
   return (
-    <div ref={wrapperRef} className={`relative ${className}`}>
+    <div ref={wrapperRef} className={`relative block w-full ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 disabled:cursor-not-allowed bg-white"
+        className="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 disabled:cursor-not-allowed bg-white"
       >
         <span className={selectedLabel ? 'text-slate-700 truncate' : 'text-slate-400 truncate'}>
           {selectedLabel || placeholder}
@@ -99,7 +134,17 @@ export default function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg">
+        <div
+          style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            width: dropdownPos.width,
+            minWidth: 200,
+            zIndex: 9999,
+          }}
+          className="mt-1 bg-white border border-slate-200 rounded-lg shadow-lg"
+        >
           <div className="p-2 border-b border-slate-100">
             <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1.5">
               <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -114,7 +159,7 @@ export default function SearchableSelect({
             </div>
           </div>
 
-          <div className="max-h-60 overflow-y-auto py-1">
+          <div className="max-h-[200px] overflow-y-auto py-1">
             {filtered.length === 0 ? (
               <p className="px-3 py-2 text-sm text-slate-400">No results found</p>
             ) : (
