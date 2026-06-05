@@ -700,6 +700,10 @@ function PaymentDialog({
   const tabRefs    = useRef<(HTMLButtonElement | null)[]>([]);
   const amountRef  = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // Synchronous double-submit guard: flips immediately on the first confirm,
+  // before isPending (a prop) can propagate, blocking a same-frame second
+  // Enter (key repeat / scanner) from firing a second sale.
+  const submittingRef = useRef(false);
 
   const creditOkForTab = customer?.creditEnabled === true && canSellOnCredit;
 
@@ -736,7 +740,9 @@ function PaymentDialog({
   })();
 
   const handleConfirm = () => {
+    if (submittingRef.current) return;
     if (!canConfirm || isPending) return;
+    submittingRef.current = true;
     if (activeTab === 'CASH')   { onConfirm('CASH', receivedCents); return; }
     if (activeTab === 'CARD')   { onConfirm('CARD'); return; }
     if (activeTab === 'BANK')   { onConfirm('BANK_TRANSFER'); return; }
@@ -760,6 +766,12 @@ function PaymentDialog({
     setTimeout(() => tabRefs.current[0]?.focus(), 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Release the double-submit guard once the mutation settles (success or
+  // error) so the cashier can retry a genuinely failed payment.
+  useEffect(() => {
+    if (!isPending) submittingRef.current = false;
+  }, [isPending]);
 
   // Zone-based keyboard handler
   useEffect(() => {
