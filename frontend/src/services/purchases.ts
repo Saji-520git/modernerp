@@ -48,6 +48,8 @@ export interface PurchaseLine {
     isBatchTracked: boolean;
     unit?: { shortCode: string };
   };
+  // Purchased unit for this line (null when the line was entered in the base unit)
+  unit?: { id: string; name: string; shortCode: string } | null;
 }
 
 export interface PurchaseReceiptLine {

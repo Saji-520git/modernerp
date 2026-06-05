@@ -829,7 +829,7 @@ function PurchaseDetailModal({
                     <div className="text-xs text-slate-400">{line.product.sku}</div>
                   </td>
                   <td className="py-2 text-right text-slate-700">
-                    {Number(line.qty)} {line.product.unit?.shortCode}
+                    {Number(line.qty)} {line.unit?.shortCode ?? line.product.unit?.shortCode}
                   </td>
                   <td className="py-2 text-right text-slate-700">
                     {formatCents(line.unitCostCents)}

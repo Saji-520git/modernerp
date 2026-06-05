@@ -118,6 +118,9 @@ export const purchaseService = {
                 unit: { select: { shortCode: true } },
               },
             },
+            // Purchased unit for this line (null = base unit) — used to show the
+            // correct unit label on the PO detail modal instead of the base unit.
+            unit: { select: { id: true, name: true, shortCode: true } },
           },
         },
         supplierPayments: {
