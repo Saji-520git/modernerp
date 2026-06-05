@@ -58,3 +58,10 @@
   line 307 is intentionally left unchanged (out of scope: do NOT touch
   backend purchase service / stock math). Revisit when purchase-cost
   normalization is in scope.
+
+- **POS checkout timeout** (v1.0.28): if the checkout POST exceeds 60s on the
+  client PC, the sale may be recorded without the receipt popup appearing. The
+  cashier is now shown a warning to check the Sales page before re-processing,
+  to avoid duplicate sales. Root cause: offline PostgreSQL cold-start latency.
+  An idempotency key on checkout (server-side de-dupe) is deferred to a future
+  sprint.
