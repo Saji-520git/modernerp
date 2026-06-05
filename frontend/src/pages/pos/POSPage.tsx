@@ -1284,6 +1284,9 @@ export default function POSPage() {
   const [quickAddToast,       setQuickAddToast]        = useState<string | null>(null);
   const [barcodeLoading,      setBarcodeLoading]       = useState(false);
   const [batchCapToast,       setBatchCapToast]       = useState<string | null>(null);
+  // Checkout timeout warning — shown in the main POS view after the payment
+  // modal closes when a checkout request times out (sale may have committed).
+  const [checkoutError,       setCheckoutError]       = useState<string | null>(null);
 
   // Quick-add customer form
   const [newCustName,  setNewCustName]  = useState('');
@@ -1711,6 +1714,22 @@ export default function POSPage() {
     },
     onError: (err: unknown) => {
       sound.error();
+      // Detect a connection timeout separately. On a timeout the backend may
+      // have already committed the sale, so we must NOT silently re-prompt for
+      // payment. Close the payment modal and warn the cashier to verify before
+      // re-ringing (avoids duplicate sales).
+      const e = err as { code?: string; message?: string };
+      const isTimeout = e?.code === 'ECONNABORTED' || (e?.message?.includes('timeout') ?? false);
+      if (isTimeout) {
+        setShowPayment(false);
+        setCheckoutError(
+          'Connection timed out. The sale may have been recorded. ' +
+          'Please check Sales before processing again to avoid duplicate sales.'
+        );
+        // Do NOT call setShowReceipt(true) — we have no receipt data to show.
+        return;
+      }
+
       const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
       const msg =
         data?.message
@@ -2768,6 +2787,24 @@ export default function POSPage() {
             refocusBarcode();
           }}
         />
+      )}
+
+      {/* Checkout timeout warning — persists until dismissed; shown over the
+          main POS view after the payment modal closes on a timeout. */}
+      {checkoutError && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center">
+            <div className="text-amber-600 text-lg font-bold mb-2">⚠ Verify Sale</div>
+            <p className="text-slate-600 text-sm mb-6">{checkoutError}</p>
+            <button
+              type="button"
+              onClick={() => setCheckoutError(null)}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2.5 text-sm font-bold transition"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
 
       {/* QuickAdd / barcode-error toast */}

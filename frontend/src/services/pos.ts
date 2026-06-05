@@ -200,7 +200,9 @@ export const posApi = {
     api.get('/pos/products', { params }).then((r) => r.data),
 
   checkout: (payload: CheckoutPayload): Promise<{ receipt: Receipt; warnings?: string[] }> =>
-    api.post('/pos/checkout', payload).then((r) => r.data),
+    // Longer timeout than the global default: the bundled offline PostgreSQL
+    // can be slow to respond on a cold-start. Only the checkout POST is raised.
+    api.post('/pos/checkout', payload, { timeout: 60000 }).then((r) => r.data),
 
   getReceipt: (id: string): Promise<Receipt> =>
     api.get(`/pos/receipt/${id}`).then((r) => r.data),
