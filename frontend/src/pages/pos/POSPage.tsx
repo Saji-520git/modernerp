@@ -1663,6 +1663,16 @@ export default function POSPage() {
     mutationFn: (payload: Parameters<typeof posApi.checkout>[0]) => posApi.checkout(payload),
     onSuccess: (data) => {
       sound.success();
+      // Guard: ensure receipt data exists. If the server returns 200 with a
+      // missing/malformed body, the sale was still recorded — close the
+      // payment modal and show a safe fallback receipt state instead of
+      // throwing (which would leave the cashier on a blank screen).
+      if (!data?.receipt) {
+        setLastReceipt(null);
+        setShowPayment(false);
+        setShowReceipt(true);
+        return;
+      }
       // Augment receipt: split service-charge amounts back out as separate lines for display
       const svcItems = cart.filter(i => i.isServiceCharge);
       if (svcItems.length > 0) {
