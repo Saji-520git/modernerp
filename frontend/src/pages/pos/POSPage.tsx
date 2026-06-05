@@ -2474,14 +2474,36 @@ export default function POSPage() {
         />
       )}
 
-      {showReceipt && lastReceipt && (
-        <ReceiptModal
-          receipt={lastReceipt}
-          changeCents={lastChangeCents}
-          onNewSale={newSale}
-          onClose={() => { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); }}
-          onPrint={printReceipt}
-        />
+      {showReceipt && (
+        lastReceipt ? (
+          <ReceiptModal
+            receipt={lastReceipt}
+            changeCents={lastChangeCents}
+            onNewSale={newSale}
+            onClose={() => { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); }}
+            onPrint={printReceipt}
+          />
+        ) : (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+              <div className="text-center p-8">
+                <div className="text-green-600 text-xl font-bold mb-2">
+                  ✓ Payment Recorded
+                </div>
+                <p className="text-gray-600 mb-6">
+                  Sale completed successfully. Receipt data unavailable.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setShowReceipt(false); newSale(); }}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2.5 text-sm font-bold transition"
+                >
+                  New Sale
+                </button>
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {showHoldModal && (
