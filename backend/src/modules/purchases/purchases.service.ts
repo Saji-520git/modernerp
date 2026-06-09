@@ -90,6 +90,13 @@ export const purchaseService = {
           warehouse: { select: { id: true, name: true, code: true } },
           createdBy: { select: { id: true, fullName: true } },
           _count:    { select: { lines: true } },
+          // Confirmed returns (Option B) — used to subtract return credit from the
+          // displayed per-PO outstanding (list column + payment dropdown) without
+          // ever mutating totalCents. Mirrors the getPurchase detail include.
+          purchaseReturns: {
+            where: { status: 'CONFIRMED', isActive: true },
+            select: { totalCents: true },
+          },
         },
         // paymentStatus is a scalar on Purchase — returned automatically
       }),

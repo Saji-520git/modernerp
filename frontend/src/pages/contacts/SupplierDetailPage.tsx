@@ -612,8 +612,14 @@ function RecordSupplierPaymentModal({
   const [notes, setNotes]           = useState('');
   const [error, setError]           = useState('');
 
+  // Option B — confirmed return credit reduces what is still owed on a PO.
+  // Mirrors the balance-due calc used in the PO list above and the backend's
+  // effectiveOutstanding; never mutates totalCents.
+  const poOutstanding = (p: { totalCents: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
+    p.totalCents - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+
   const selectedPurchase = outstandingPurchases.find((p) => p.id === purchaseId);
-  const outstanding = selectedPurchase ? selectedPurchase.totalCents - selectedPurchase.paidCents : 0;
+  const outstanding = selectedPurchase ? poOutstanding(selectedPurchase) : 0;
 
   const mutation = useMutation({
     mutationFn: () => supplierPaymentsApi.create({
@@ -669,12 +675,12 @@ function RecordSupplierPaymentModal({
               </p>
             ) : (
               <select value={purchaseId}
-                onChange={(e) => { setPurchaseId(e.target.value); const p = outstandingPurchases.find(x => x.id === e.target.value); if (p) setAmount(((p.totalCents - p.paidCents) / 100).toFixed(2)); }}
+                onChange={(e) => { setPurchaseId(e.target.value); const p = outstandingPurchases.find(x => x.id === e.target.value); if (p) setAmount((poOutstanding(p) / 100).toFixed(2)); }}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="">— Select order —</option>
                 {outstandingPurchases.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.number} · Outstanding: {fmtCents(p.totalCents - p.paidCents)}
+                    {p.number} · Outstanding: {fmtCents(poOutstanding(p))}
                   </option>
                 ))}
               </select>

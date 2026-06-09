@@ -70,15 +70,19 @@ function SupplierPaymentSection({
   poId,
   totalCents,
   paidCents,
+  returnedCents = 0,
   businessName = 'My Business',
 }: {
   poId: string;
   totalCents: number;
   paidCents: number;
+  returnedCents?: number;
   businessName?: string;
 }) {
   const queryClient = useQueryClient();
-  const outstanding = totalCents - paidCents;
+  // Option B — subtract confirmed return credit so the displayed outstanding
+  // matches the backend's effectiveOutstanding (never mutates totalCents).
+  const outstanding = totalCents - paidCents - returnedCents;
 
   // ── form state ──
   const [show,       setShow]       = useState(false);
@@ -871,7 +875,7 @@ function PurchaseDetailModal({
 
         {/* Supplier Payments section — shown on CONFIRMED POs */}
         {po.status === 'CONFIRMED' && (
-          <SupplierPaymentSection poId={id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} />
+          <SupplierPaymentSection poId={id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} returnedCents={(po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)} />
         )}
 
         {/* Purchase Returns section — shown on CONFIRMED POs */}
@@ -1089,7 +1093,9 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                   {po.status === 'CONFIRMED' ? formatCents(po.paidCents ?? 0) : '—'}
                 </td>
                 <td className="px-4 py-3 text-right text-red-600">
-                  {po.status === 'CONFIRMED' ? formatCents((po.totalCents) - (po.paidCents ?? 0)) : '—'}
+                  {po.status === 'CONFIRMED'
+                    ? formatCents((po.totalCents) - (po.paidCents ?? 0) - (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0))
+                    : '—'}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[po.status]}`}>
