@@ -776,7 +776,7 @@ function PaymentDialog({
   // Zone-based keyboard handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+      if (e.key === 'Escape') { if (isPending) return; e.preventDefault(); onClose(); return; }
 
       if (tabsFocused) {
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -818,7 +818,7 @@ function PaymentDialog({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabsFocused, activeTab, available, onClose]);
+  }, [tabsFocused, activeTab, available, onClose, isPending]);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -1007,6 +1007,13 @@ function PaymentDialog({
                 />
               </div>
             </div>
+          )}
+
+          {/* Processing indicator (v1.0.42) — reassures cashier the sale is in flight */}
+          {isPending && (
+            <p className="text-center text-sm text-indigo-600 font-medium animate-pulse mb-2">
+              Processing payment, please wait...
+            </p>
           )}
 
           {/* Confirm */}
@@ -1710,27 +1717,42 @@ export default function POSPage() {
         setShowReceipt(true);
         return;
       }
-      // Augment receipt: split service-charge amounts back out as separate lines for display
+      // Augment receipt: split service-charge amounts back out as separate lines for display.
+      // Guarded (v1.0.42): only augment when receipt.lines is a valid non-empty array, and
+      // wrap the whole flatMap in try/catch. A throw here would be caught by TanStack Query
+      // and rerouted to onError — suppressing the receipt popup even though the sale committed.
+      // On any failure we fall back to the raw receipt so the popup always shows.
       const svcItems = cart.filter(i => i.isServiceCharge);
-      if (svcItems.length > 0) {
-        const augLines = data.receipt.lines.flatMap(line => {
-          const svc = svcItems.find(sc => sc.linkedProductId === line.product.id);
-          if (!svc) return [line];
-          const svcCents = svc.unitPriceCents;
-          const mainUnit = line.unitPriceCents - svcCents;
-          return [
-            { ...line, unitPriceCents: mainUnit, lineTotalCents: mainUnit * line.qty },
-            {
-              product:        { id: svc.product.id, name: svc.product.name, sku: svc.product.sku, receiptName: svc.product.receiptName },
-              qty:            line.qty,
-              unitPriceCents: svcCents,
-              taxPercent:     0,
-              discountCents:  0,
-              lineTotalCents: svcCents * line.qty,
-            },
-          ];
-        });
-        setLastReceipt({ ...data.receipt, lines: augLines });
+
+      const canAugment =
+        svcItems.length > 0 &&
+        Array.isArray(data.receipt.lines) &&
+        data.receipt.lines.length > 0;
+
+      if (canAugment) {
+        try {
+          const augLines = data.receipt.lines.flatMap(line => {
+            const svc = svcItems.find(sc => sc.linkedProductId === line.product?.id);
+            if (!svc) return [line];
+            const svcCents = svc.unitPriceCents;
+            const mainUnit = line.unitPriceCents - svcCents;
+            return [
+              { ...line, unitPriceCents: mainUnit, lineTotalCents: mainUnit * line.qty },
+              {
+                product:        { id: svc.product.id, name: svc.product.name, sku: svc.product.sku, receiptName: svc.product.receiptName },
+                qty:            line.qty,
+                unitPriceCents: svcCents,
+                taxPercent:     0,
+                discountCents:  0,
+                lineTotalCents: svcCents * line.qty,
+              },
+            ];
+          });
+          setLastReceipt({ ...data.receipt, lines: augLines });
+        } catch {
+          // Augmentation failed — use receipt as-is, never block the popup
+          setLastReceipt(data.receipt);
+        }
       } else {
         setLastReceipt(data.receipt);
       }
@@ -1913,7 +1935,7 @@ export default function POSPage() {
       // Escape — close topmost modal/panel
       if (e.key === 'Escape') {
         if (showCloseShift)       { setShowCloseShift(false);       return; }
-        if (showPayment)          { setShowPayment(false);          return; }
+        if (showPayment)          { if (checkoutMutation.isPending) return; setShowPayment(false); return; }
         if (showHoldModal)        { setShowHoldModal(false);        return; }
         if (showShortcuts)        { setShowShortcuts(false);        return; }
         if (showExitBlocked)      { setShowExitBlocked(false);      return; }
@@ -2028,7 +2050,8 @@ export default function POSPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
       showHolds, showReceipt, showCustomer, quickAddBarcode,
-      cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale]);
+      cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
+      checkoutMutation.isPending]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   // Use live shift data from API (has real-time saleCount / totalSalesCents)
