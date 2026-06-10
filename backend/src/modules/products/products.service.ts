@@ -206,6 +206,45 @@ export const productsService = {
     });
   },
 
+  // ─── Smart delete ─────────────────────────────────────────────────────────
+  // Client-facing "Delete" button always succeeds.  Behaviour is decided here:
+  //   • Product with ANY transaction history (sale, purchase, stock movement,
+  //     or batch) → soft delete (isActive:false) so the history stays intact.
+  //   • Product with NO history → permanently removed from the DB.
+  // On hard delete we first clear the non-cascading operational child rows that
+  // reference the product (stock levels, generated stock alerts, held POS-draft
+  // lines) so the final product.delete() cannot hit a FK constraint.
+  // ProductUnitConversion rows cascade automatically (schema onDelete: Cascade).
+  async smartDelete(id: string): Promise<void> {
+    const product = await prisma.product.findUnique({ where: { id }, select: { id: true } });
+    if (!product) throw new HttpError(404, 'Product not found');
+
+    const [saleCount, purchaseCount, movementCount, batchCount] = await Promise.all([
+      prisma.saleLine.count({ where: { productId: id } }),
+      prisma.purchaseLine.count({ where: { productId: id } }),
+      prisma.stockMovement.count({ where: { productId: id } }),
+      prisma.stockBatch.count({ where: { productId: id } }),
+    ]);
+
+    const hasTransactions =
+      saleCount > 0 || purchaseCount > 0 || movementCount > 0 || batchCount > 0;
+
+    if (hasTransactions) {
+      // History exists — keep the record, just hide it everywhere.
+      await prisma.product.update({ where: { id }, data: { isActive: false } });
+      return;
+    }
+
+    // No history — safe to remove permanently.  Clear non-cascading children
+    // first (order matters to avoid FK errors), then delete the product.
+    await prisma.$transaction([
+      prisma.stock.deleteMany({ where: { productId: id } }),
+      prisma.stockAlert.deleteMany({ where: { productId: id } }),
+      prisma.posDraftItem.deleteMany({ where: { productId: id } }),
+      prisma.product.delete({ where: { id } }),
+    ]);
+  },
+
   async meta() {
     const [categories, brands, units] = await prisma.$transaction([
       prisma.category.findMany({ orderBy: { name: 'asc' } }),

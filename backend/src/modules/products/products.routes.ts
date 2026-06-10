@@ -22,6 +22,9 @@ router.get('/:id', requirePermission('view_products'),   ctrl.getById);
 router.post('/',   requirePermission('manage_products'), ctrl.create);
 router.patch('/:id',             requirePermission('manage_products'), ctrl.update);
 router.patch('/:id/toggle-active', requirePermission('manage_products'), ctrl.toggleActive);
+// Smart delete (hard-delete if no history, else soft-delete). Placed after the
+// specific GET routes (/meta, /by-barcode/:barcode) so there is no collision.
+router.delete('/:id',            requirePermission('manage_products'), ctrl.remove);
 
 // Unit conversions sub-resource
 router.get( '/:id/conversions', requirePermission('view_products'),   ctrl.getConversions);

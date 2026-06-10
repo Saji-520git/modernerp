@@ -36,6 +36,11 @@ export const toggleActive: RequestHandler = async (req, res) => {
   res.json(await productsService.toggleActive(req.params.id));
 };
 
+export const remove: RequestHandler = async (req, res) => {
+  await productsService.smartDelete(req.params.id);
+  res.json({ success: true });
+};
+
 export const meta: RequestHandler = async (_req, res) => {
   res.json(await productsService.meta());
 };

@@ -138,6 +138,10 @@ export const productsApi = {
   toggleActive: (id: string): Promise<{ id: string; isActive: boolean; name: string }> =>
     api.patch(`/products/${id}/toggle-active`).then((r) => r.data),
 
+  /** Smart delete — backend hard-deletes if no history, else soft-deletes. */
+  remove: (id: string): Promise<{ success: boolean }> =>
+    api.delete(`/products/${id}`).then((r) => r.data),
+
   meta: (): Promise<ProductMeta> =>
     api.get('/products/meta').then((r) => r.data),
 };

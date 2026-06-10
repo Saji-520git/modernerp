@@ -5,6 +5,7 @@ import {
   Plus, Search, X, ChevronLeft, ChevronRight, Edit2,
   AlertTriangle, Clock, Package, ExternalLink, Tag,
   CheckCircle, XCircle, Barcode, Eye, RefreshCw,
+  Trash2, Loader2,
 } from 'lucide-react';
 import axios from 'axios';
 import {
@@ -161,10 +162,13 @@ export default function ProductsPage() {
 
   // ── List filters ──
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterActive>('true');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [page, setPage] = useState(1);
+
+  // ── Delete confirmation + list-level toast ──
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [listToast, setListToast] = useState<string | null>(null);
 
   // ── Drawer ──
   const [drawer, setDrawer] = useState<Product | null>(null);
@@ -199,11 +203,11 @@ export default function ProductsPage() {
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: productsData, isLoading, refetch } = useQuery({
-    queryKey: ['products', search, activeFilter, categoryFilter, brandFilter, page],
+    queryKey: ['products', search, categoryFilter, brandFilter, page],
     queryFn: () =>
       productsApi.list({
         search: search || undefined,
-        isActive: activeFilter,
+        isActive: 'true',
         categoryId: categoryFilter || undefined,
         brandId: brandFilter || undefined,
         page,
@@ -283,10 +287,18 @@ export default function ProductsPage() {
     },
   });
 
-  const toggleMutation = useMutation({
-    mutationFn: (id: string) => productsApi.toggleActive(id),
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => productsApi.remove(id),
     onSuccess: () => {
+      setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['products'] });
+      setListToast('Product deleted');
+      setTimeout(() => setListToast(null), 3000);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Delete failed';
+      setListToast(msg);
+      setTimeout(() => setListToast(null), 4000);
     },
   });
 
@@ -551,23 +563,6 @@ export default function ProductsPage() {
           />
         </div>
 
-        {/* Active filter pills */}
-        <div className="flex gap-1">
-          {(['true', 'all', 'false'] as FilterActive[]).map((v) => (
-            <button
-              key={v}
-              onClick={() => { setActiveFilter(v); setPage(1); }}
-              className={`px-3 py-1 text-xs rounded-full font-medium transition ${
-                activeFilter === v
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {v === 'true' ? 'Active' : v === 'false' ? 'Inactive' : 'All'}
-            </button>
-          ))}
-        </div>
-
         {/* Category filter */}
         {(meta?.categories ?? []).length > 0 && (
           <select
@@ -597,9 +592,9 @@ export default function ProductsPage() {
         )}
 
         {/* Clear filters */}
-        {(search || categoryFilter || brandFilter || activeFilter !== 'true') && (
+        {(search || categoryFilter || brandFilter) && (
           <button
-            onClick={() => { setSearch(''); setCategoryFilter(''); setBrandFilter(''); setActiveFilter('true'); setPage(1); }}
+            onClick={() => { setSearch(''); setCategoryFilter(''); setBrandFilter(''); setPage(1); }}
             className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition"
           >
             <X size={12} /> Clear
@@ -640,7 +635,6 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Margin</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Stock</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Expiry</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
@@ -728,15 +722,6 @@ export default function ProductsPage() {
                       <ExpiryBadge expiryDate={p.expiryDate} alertDays={p.expiryAlertDays} />
                     </td>
 
-                    {/* Active status */}
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        p.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {p.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-
                     {/* Actions */}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition">
@@ -762,11 +747,11 @@ export default function ProductsPage() {
                           <Tag size={14} />
                         </button>
                         <button
-                          onClick={() => toggleMutation.mutate(p.id)}
-                          title={p.isActive ? 'Deactivate' : 'Activate'}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition"
+                          onClick={() => setDeleteTarget(p)}
+                          title="Delete"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
                         >
-                          {p.isActive ? <XCircle size={14} /> : <CheckCircle size={14} />}
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -1627,6 +1612,56 @@ export default function ProductsPage() {
           setForm((f) => ({ ...f, brandId: brand.id }));
         }}
       />
+
+      {/* ── Delete confirmation ─────────────────────────────────────────────── */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => { if (!deleteMutation.isPending) setDeleteTarget(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Delete Product</h3>
+                <p className="text-xs text-slate-500">{deleteTarget.name}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 mb-5">
+              This product will be permanently removed. This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 py-2 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+              >
+                {deleteMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── List toast ──────────────────────────────────────────────────────── */}
+      {listToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {listToast}
+        </div>
+      )}
     </div>
   );
 }
