@@ -1207,14 +1207,8 @@ export default function POSPage() {
   const canSellOnCredit = user?.permissions?.includes('sell_on_credit') ?? isAdmin;
 
   async function handleLogout() {
-    if (isAdmin) {
-      // ADMIN/MANAGER: sign out immediately — no shift check
-      exitPOS();
-      logout();
-      navigate('/login');
-      return;
-    }
-    // CASHIER: close shift first if one is open
+    // v1.0.49 — ALL roles must close an open shift before signing out
+    // (previously ADMIN/MANAGER bypassed this check).
     if (currentShift) {
       setSignOutCash('');
       setSignOutNote('');

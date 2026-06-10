@@ -119,6 +119,9 @@ export default function AppShell() {
     }
   });
 
+  // v1.0.49 — open-shift warning before sign out (replaces window.alert)
+  const [showShiftWarning, setShowShiftWarning] = useState(false);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? 'true' : 'false');
@@ -139,7 +142,7 @@ export default function AppShell() {
     try {
       const result = await shiftsApi.list({ status: 'OPEN', userId: user?.id });
       if (result.data && result.data.length > 0) {
-        window.alert('Please close your POS shift before logging out.');
+        setShowShiftWarning(true);
         return;
       }
     } catch {
@@ -295,6 +298,40 @@ export default function AppShell() {
       <main className="flex-1 overflow-auto erp-content">
         <Outlet />
       </main>
+
+      {/* v1.0.49 — open-shift warning before sign out */}
+      {showShiftWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="text-center mb-4">
+              <div className="text-3xl mb-2">⚠️</div>
+              <h3 className="font-bold text-gray-900 text-lg mb-2">
+                Open Shift Found
+              </h3>
+              <p className="text-sm text-gray-600">
+                You have an open POS shift. Please go to POS and close your shift before signing out.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setShowShiftWarning(false);
+                  navigate('/pos');
+                }}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl text-sm transition"
+              >
+                Go to POS
+              </button>
+              <button
+                onClick={() => setShowShiftWarning(false)}
+                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
