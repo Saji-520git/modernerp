@@ -628,6 +628,8 @@ export const reportsService = {
           take:    5,
           select:  {
             id: true, paymentNumber: true, amountCents: true, createdAt: true,
+            paymentType: true,
+            supplier: { select: { name: true } },
             purchase: { select: { number: true } },
           },
         }),
@@ -702,13 +704,20 @@ export const reportsService = {
         amountCents: c.amountCents,
         createdAt:   c.createdAt.toISOString(),
       })),
-      ...spays.map((s) => ({
-        type:        'PAYMENT_OUT' as const,
-        refNumber:   s.paymentNumber,
-        description: `Payment for ${s.purchase.number}`,
-        amountCents: s.amountCents,
-        createdAt:   s.createdAt.toISOString(),
-      })),
+      ...spays.map((s) => {
+        // A CREDIT_RECEIVED payment is cash coming back IN from the supplier
+        // (overpaid PO settled after returns) — not a payment OUT.
+        const isCredit = s.paymentType === 'CREDIT_RECEIVED';
+        return {
+          type:        (isCredit ? 'PAYMENT_IN' : 'PAYMENT_OUT') as 'PAYMENT_IN' | 'PAYMENT_OUT',
+          refNumber:   s.paymentNumber,
+          description: isCredit
+            ? `Credit received from ${s.supplier?.name ?? 'supplier'}`
+            : `Payment for ${s.purchase.number}`,
+          amountCents: s.amountCents,
+          createdAt:   s.createdAt.toISOString(),
+        };
+      }),
     ]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 10);
