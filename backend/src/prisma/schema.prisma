@@ -674,6 +674,7 @@ model SupplierPayment {
   supplier      Supplier              @relation(fields: [supplierId], references: [id])
   amountCents   Int                                      // always positive
   paymentMethod PaymentMethod
+  paymentType   String                @default("PAYMENT") // "PAYMENT" | "CREDIT_RECEIVED"
   referenceNo   String?                                  // cheque number or bank ref
   bankName      String?
   paymentDate   DateTime
