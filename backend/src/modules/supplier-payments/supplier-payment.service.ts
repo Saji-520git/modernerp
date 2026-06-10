@@ -13,10 +13,26 @@ async function generateSPAYNumber(): Promise<string> {
   return `${prefix}${String(count + 1).padStart(4, '0')}`;
 }
 
-function derivePaymentStatus(paidCents: number, totalCents: number): PurchasePaymentStatus {
+// Option B — derive against the EFFECTIVE total owed (totalCents minus confirmed
+// return credit), never the raw totalCents. This keeps paymentStatus correct when
+// returns reduce what is owed (e.g. paid 22,500 against an effective 18,750 → PAID).
+function derivePaymentStatus(
+  paidCents: number,
+  effectiveTotalCents: number,
+): PurchasePaymentStatus {
+  if (effectiveTotalCents <= 0) return 'PAID';   // nothing owed (all returned)
   if (paidCents <= 0) return 'UNPAID';
-  if (paidCents >= totalCents) return 'PAID';
+  if (paidCents >= effectiveTotalCents) return 'PAID';
   return 'PARTIAL';
+}
+
+// Sum of confirmed, active return credit for a purchase.
+async function getReturnedCents(purchaseId: string): Promise<number> {
+  const agg = await (prisma as any).purchaseReturn.aggregate({
+    where: { purchaseId, status: 'CONFIRMED', isActive: true },
+    _sum:  { totalCents: true },
+  });
+  return agg._sum.totalCents ?? 0;
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -75,7 +91,10 @@ export const supplierPaymentService = {
 
     const paymentNumber = await generateSPAYNumber();
     const newPaidCents  = purchase.paidCents + data.amountCents;
-    const paymentStatus = derivePaymentStatus(newPaidCents, purchase.totalCents);
+    // Derive against effective total (totalCents minus confirmed return credit),
+    // reusing returnedCents computed above for the overpayment guard.
+    const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+    const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
     return prisma.$transaction(async (tx) => {
       const payment = await tx.supplierPayment.create({
@@ -178,7 +197,10 @@ export const supplierPaymentService = {
       });
 
       const newPaidCents  = Math.max(0, purchase.paidCents - payment.amountCents);
-      const paymentStatus = derivePaymentStatus(newPaidCents, purchase.totalCents);
+      // Re-derive against effective total (subtract confirmed return credit).
+      const returnedCents       = await getReturnedCents(payment.purchaseId);
+      const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+      const paymentStatus       = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
       await (tx as any).purchase.update({
         where: { id: payment.purchaseId },

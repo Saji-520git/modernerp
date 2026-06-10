@@ -214,13 +214,19 @@ export const purchaseReturnService = {
         parentPurchase.totalCents - totalReturnedCents,
       );
 
-      // Derive new payment status
+      // Derive new payment status (4-branch — Option B).
+      //  1. effectiveTotal === 0  → nothing owed (all goods returned) → PAID
+      //  2. paid >= effectiveTotal → fully covered (incl. overpaid)    → PAID
+      //  3. paid  >  0             → some paid, balance remains         → PARTIAL
+      //  4. otherwise                                                   → UNPAID
       const newPaymentStatus =
-        parentPurchase.paidCents >= effectiveTotalCents && effectiveTotalCents > 0
+        effectiveTotalCents === 0
           ? 'PAID'
-          : parentPurchase.paidCents > 0
-            ? 'PARTIAL'
-            : 'UNPAID';
+          : parentPurchase.paidCents >= effectiveTotalCents
+            ? 'PAID'
+            : parentPurchase.paidCents > 0
+              ? 'PARTIAL'
+              : 'UNPAID';
 
       // Update paymentStatus ONLY — never change totalCents or paidCents
       await tx.purchase.update({

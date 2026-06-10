@@ -82,7 +82,8 @@ function SupplierPaymentSection({
   const queryClient = useQueryClient();
   // Option B — subtract confirmed return credit so the displayed outstanding
   // matches the backend's effectiveOutstanding (never mutates totalCents).
-  const outstanding = totalCents - paidCents - returnedCents;
+  // Clamp at 0: overpaid-after-return shows Rs.0.00, never a negative figure.
+  const outstanding = Math.max(0, totalCents - paidCents - returnedCents);
 
   // ── form state ──
   const [show,       setShow]       = useState(false);
@@ -1094,7 +1095,7 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                 </td>
                 <td className="px-4 py-3 text-right text-red-600">
                   {po.status === 'CONFIRMED'
-                    ? formatCents((po.totalCents) - (po.paidCents ?? 0) - (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0))
+                    ? formatCents(Math.max(0, (po.totalCents) - (po.paidCents ?? 0) - (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)))
                     : '—'}
                 </td>
                 <td className="px-4 py-3 text-center">
