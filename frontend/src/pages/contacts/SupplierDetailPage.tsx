@@ -426,14 +426,19 @@ function PaymentsTab({ supplierId }: { supplierId: string }) {
               <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(p.paymentDate)}</td>
               <td className="px-4 py-3">
                 <p className="font-mono text-xs text-slate-600">{p.paymentNumber}</p>
+                {p.paymentType === 'CREDIT_RECEIVED' && (
+                  <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">
+                    Credit Received
+                  </span>
+                )}
                 {p.referenceNo && <p className="text-xs text-slate-400">{p.referenceNo}</p>}
               </td>
               <td className="px-4 py-3 font-mono text-xs text-emerald-600">
                 {/* purchaseId mapped via purchase relation — use paymentNumber prefix */}
                 {p.purchaseId}
               </td>
-              <td className="px-4 py-3 text-right font-semibold text-emerald-600 whitespace-nowrap">
-                {fmtCents(p.amountCents)}
+              <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${p.paymentType === 'CREDIT_RECEIVED' ? 'text-green-600' : 'text-emerald-600'}`}>
+                {p.paymentType === 'CREDIT_RECEIVED' ? '+' : ''}{fmtCents(p.amountCents)}
               </td>
               <td className="px-4 py-3 text-center">
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">
