@@ -15,6 +15,13 @@ router.post(
   asyncHandler(ctrl.createPayment),
 );
 
+// POST /api/v1/supplier-payments/credit   — receive credit back from supplier
+router.post(
+  '/credit',
+  requirePermission('confirm_purchases'),
+  asyncHandler(ctrl.receiveCredit),
+);
+
 // GET  /api/v1/supplier-payments/purchase/:purchaseId  — list for a PO
 router.get(
   '/purchase/:purchaseId',

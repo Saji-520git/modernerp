@@ -47,6 +47,17 @@ export interface CreateSupplierPaymentInput {
   notes?:        string;
 }
 
+export interface ReceiveCreditInput {
+  purchaseId:   string;
+  supplierId:   string;
+  amountCents:  number;
+  method:       PaymentMethod;
+  reference?:   string;
+  date:         string;    // ISO date string
+  notes?:       string;
+  recordedById: string;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const supplierPaymentService = {
@@ -208,6 +219,78 @@ export const supplierPaymentService = {
       });
 
       return { success: true, voidedBy: userId };
+    });
+  },
+
+  // ── Receive credit from supplier ─────────────────────────────────────────────
+  // When confirmed returns reduce what is owed below what was already paid, the
+  // supplier owes US money. "Receive Credit" records that cash coming back: it
+  // stores a CREDIT_RECEIVED payment row and DECREASES Purchase.paidCents by the
+  // received amount, which clears the credit and keeps paymentStatus correct.
+  async receiveCreditFromSupplier(data: ReceiveCreditInput) {
+    // 1. Load purchase with confirmed returns
+    const purchase = await (prisma as any).purchase.findFirst({
+      where: { id: data.purchaseId, deletedAt: null },
+      select: {
+        id: true, status: true, totalCents: true,
+        paidCents: true, supplierId: true, number: true,
+      },
+    });
+    if (!purchase) throw new HttpError(404, 'Purchase order not found');
+
+    const returnsAgg = await (prisma as any).purchaseReturn.aggregate({
+      where: { purchaseId: data.purchaseId, status: 'CONFIRMED', isActive: true },
+      _sum: { totalCents: true },
+    });
+    const returnedCents = returnsAgg._sum.totalCents ?? 0;
+
+    // 2. Calculate credit owed to us
+    const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+    const creditOwed          = Math.max(0, purchase.paidCents - effectiveTotalCents);
+
+    // 3. Validate amount
+    if (data.amountCents <= 0) {
+      throw new HttpError(400, 'Amount must be greater than 0');
+    }
+    if (data.amountCents > creditOwed) {
+      throw new HttpError(
+        400,
+        `Credit received cannot exceed available credit of Rs.${(creditOwed / 100).toFixed(2)}`,
+      );
+    }
+
+    const paymentNumber = await generateSPAYNumber();
+    const newPaidCents  = purchase.paidCents - data.amountCents;
+    const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
+
+    // 4. Persist atomically
+    return prisma.$transaction(async (tx) => {
+      const payment = await (tx as any).supplierPayment.create({
+        data: {
+          paymentNumber,
+          purchaseId:    data.purchaseId,
+          supplierId:    data.supplierId,
+          amountCents:   data.amountCents,
+          paymentMethod: data.method,
+          paymentType:   'CREDIT_RECEIVED',
+          referenceNo:   data.reference ?? null,
+          paymentDate:   new Date(data.date),
+          notes:         data.notes ?? null,
+          createdById:   data.recordedById,
+        },
+        include: {
+          supplier:      { select: { id: true, name: true } },
+          createdByUser: { select: { id: true, fullName: true } },
+        },
+      });
+
+      await (tx as any).purchase.update({
+        where: { id: data.purchaseId },
+        data:  { paidCents: newPaidCents, paymentStatus },
+      });
+
+      // 5. Return the created record
+      return payment;
     });
   },
 };

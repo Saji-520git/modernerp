@@ -1,6 +1,17 @@
 import type { RequestHandler } from 'express';
+import { z } from 'zod';
 import { supplierPaymentService } from './supplier-payment.service.js';
 import type { PaymentMethod } from '@prisma/client';
+
+const receiveCreditSchema = z.object({
+  purchaseId:  z.string().min(1),
+  supplierId:  z.string().min(1),
+  amountCents: z.number().int().positive(),
+  method:      z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'QR_PAY', 'CREDIT', 'CHEQUE']),
+  reference:   z.string().optional(),
+  date:        z.string().min(1),
+  notes:       z.string().optional(),
+});
 
 export const createPayment: RequestHandler = async (req, res) => {
   const userId = req.auth!.userId;
@@ -16,6 +27,22 @@ export const createPayment: RequestHandler = async (req, res) => {
     },
     userId,
   );
+  res.status(201).json(payment);
+};
+
+export const receiveCredit: RequestHandler = async (req, res) => {
+  const userId = req.auth!.userId;
+  const body = receiveCreditSchema.parse(req.body);
+  const payment = await supplierPaymentService.receiveCreditFromSupplier({
+    purchaseId:   body.purchaseId,
+    supplierId:   body.supplierId,
+    amountCents:  body.amountCents,
+    method:       body.method as PaymentMethod,
+    reference:    body.reference,
+    date:         body.date,
+    notes:        body.notes,
+    recordedById: userId,
+  });
   res.status(201).json(payment);
 };
 
