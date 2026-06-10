@@ -68,12 +68,14 @@ const PAY_STATUS_COLORS: Record<PurchasePaymentStatus, string> = {
 
 function SupplierPaymentSection({
   poId,
+  supplierId,
   totalCents,
   paidCents,
   returnedCents = 0,
   businessName = 'My Business',
 }: {
   poId: string;
+  supplierId: string;
   totalCents: number;
   paidCents: number;
   returnedCents?: number;
@@ -83,7 +85,10 @@ function SupplierPaymentSection({
   // Option B — subtract confirmed return credit so the displayed outstanding
   // matches the backend's effectiveOutstanding (never mutates totalCents).
   // Clamp at 0: overpaid-after-return shows Rs.0.00, never a negative figure.
+  const effectiveTotalCents = Math.max(0, totalCents - returnedCents);
   const outstanding = Math.max(0, totalCents - paidCents - returnedCents);
+  // Credit the supplier owes us when returns left the PO overpaid.
+  const creditOwed = Math.max(0, paidCents - effectiveTotalCents);
 
   // ── form state ──
   const [show,       setShow]       = useState(false);
@@ -95,6 +100,15 @@ function SupplierPaymentSection({
   const [notes,      setNotes]      = useState('');
   const [err,           setErr]          = useState('');
   const [expandedPayId, setExpandedPayId] = useState<string | null>(null);
+
+  // ── receive-credit modal state ──
+  const [showCredit,     setShowCredit]     = useState(false);
+  const [creditAmount,   setCreditAmount]   = useState('');
+  const [creditMethod,   setCreditMethod]   = useState<SupplierPaymentMethod>('CASH');
+  const [creditRef,      setCreditRef]      = useState('');
+  const [creditDate,     setCreditDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [creditNotes,    setCreditNotes]    = useState('');
+  const [creditError,    setCreditError]    = useState('');
 
   const showRef = method === 'CHEQUE' || method === 'BANK_TRANSFER';
 
@@ -138,6 +152,47 @@ function SupplierPaymentSection({
       queryClient.invalidateQueries({ queryKey: ['spay', poId] });
     },
   });
+
+  // ── receive-credit mutation ──
+  const creditMut = useMutation({
+    mutationFn: () => supplierPaymentsApi.receiveCredit({
+      purchaseId:  poId,
+      supplierId,
+      amountCents: Math.round(parseFloat(creditAmount) * 100),
+      method:      creditMethod,
+      reference:   creditRef || undefined,
+      date:        creditDate,
+      notes:       creditNotes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', poId] });
+      queryClient.invalidateQueries({ queryKey: ['spay', poId] });
+      setShowCredit(false); setCreditError(''); setCreditAmount('');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setCreditError(msg ?? 'Failed to record credit');
+    },
+  });
+
+  const handleReceiveCredit = () => {
+    const amountCents = Math.round(parseFloat(creditAmount) * 100);
+    if (!amountCents || amountCents <= 0) { setCreditError('Enter a valid amount'); return; }
+    if (amountCents > creditOwed)         { setCreditError(`Amount exceeds available credit of ${formatCents(creditOwed)}`); return; }
+    setCreditError('');
+    creditMut.mutate();
+  };
+
+  const openCreditModal = () => {
+    setCreditAmount((creditOwed / 100).toFixed(2));
+    setCreditMethod('CASH');
+    setCreditRef('');
+    setCreditDate(new Date().toISOString().slice(0, 10));
+    setCreditNotes('');
+    setCreditError('');
+    setShowCredit(true);
+  };
 
   // ── print voucher ──
   const handlePrintVoucher = async (paymentId: string) => {
@@ -233,6 +288,96 @@ function SupplierPaymentSection({
         <span>Paid: <strong className="text-green-600">{formatCents(paidCents)}</strong></span>
         <span>Outstanding: <strong className={outstanding > 0 ? 'text-red-600' : 'text-green-600'}>{formatCents(outstanding)}</strong></span>
       </div>
+
+      {/* Supplier credit available (PO overpaid after returns) */}
+      {creditOwed > 0 && (
+        <div className="flex items-center justify-between text-sm mt-1 mb-2">
+          <span className="text-green-600 font-medium">Supplier Credit Available:</span>
+          <div className="flex items-center gap-2">
+            <span className="text-green-600 font-medium">{formatCents(creditOwed)}</span>
+            <button
+              onClick={openCreditModal}
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold border border-indigo-200 rounded-lg px-2 py-1"
+            >
+              Receive Credit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Receive credit modal */}
+      {showCredit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowCredit(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-base font-semibold text-slate-800">Receive Supplier Credit</h3>
+              <button onClick={() => setShowCredit(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                The supplier owes you <strong>{formatCents(creditOwed)}</strong> from returned goods.
+              </div>
+              {creditError && <p className="text-xs text-red-600">{creditError}</p>}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Amount to Receive (Rs.)</label>
+                  <input
+                    type="number" min="0.01" step="0.01" max={(creditOwed / 100).toFixed(2)} value={creditAmount}
+                    onChange={e => setCreditAmount(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
+                  <input
+                    type="date" value={creditDate}
+                    onChange={e => setCreditDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Method</label>
+                  <select
+                    value={creditMethod}
+                    onChange={e => setCreditMethod(e.target.value as SupplierPaymentMethod)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                    <option value="CHEQUE">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Reference No (optional)</label>
+                  <input
+                    type="text" value={creditRef}
+                    onChange={e => setCreditRef(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Notes (optional)</label>
+                <input
+                  type="text" value={creditNotes}
+                  onChange={e => setCreditNotes(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-100">
+              <button onClick={() => setShowCredit(false)} className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button
+                onClick={handleReceiveCredit}
+                disabled={creditMut.isPending}
+                className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {creditMut.isPending ? 'Saving…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Record payment form */}
       {show && (
@@ -876,7 +1021,7 @@ function PurchaseDetailModal({
 
         {/* Supplier Payments section — shown on CONFIRMED POs */}
         {po.status === 'CONFIRMED' && (
-          <SupplierPaymentSection poId={id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} returnedCents={(po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)} />
+          <SupplierPaymentSection poId={id} supplierId={po.supplier.id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} returnedCents={(po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)} />
         )}
 
         {/* Purchase Returns section — shown on CONFIRMED POs */}
@@ -1095,7 +1240,23 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                 </td>
                 <td className="px-4 py-3 text-right text-red-600">
                   {po.status === 'CONFIRMED'
-                    ? formatCents(Math.max(0, (po.totalCents) - (po.paidCents ?? 0) - (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)))
+                    ? (() => {
+                        const ret = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+                        const paid = po.paidCents ?? 0;
+                        const effTotal = Math.max(0, po.totalCents - ret);
+                        const out = Math.max(0, po.totalCents - paid - ret);
+                        const credit = Math.max(0, paid - effTotal);
+                        return (
+                          <span className="inline-flex items-center justify-end gap-1.5">
+                            <span>{formatCents(out)}</span>
+                            {out === 0 && credit > 0 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">
+                                Credit
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()
                     : '—'}
                 </td>
                 <td className="px-4 py-3 text-center">
