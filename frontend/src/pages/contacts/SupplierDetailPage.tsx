@@ -367,6 +367,17 @@ function PurchasesTab({
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[po.paymentStatus]}`}>
                   {po.paymentStatus}
                 </span>
+                {(() => {
+                  // Option B — supplier owes credit when payments exceed the
+                  // return-adjusted total (never mutates totalCents).
+                  const returnedCents = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+                  const hasCredit = po.paidCents > Math.max(0, po.totalCents - returnedCents);
+                  return hasCredit ? (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">
+                      Credit
+                    </span>
+                  ) : null;
+                })()}
               </td>
               <td className="px-4 py-3 text-center">
                 <button onClick={() => onViewPO(po.id)}
