@@ -81,6 +81,7 @@ export interface SupplierPayment {
   supplierId:    string;
   amountCents:   number;
   paymentMethod: string;
+  paymentType?:  string;   // "PAYMENT" | "CREDIT_RECEIVED"
   referenceNo:   string | null;
   bankName:      string | null;
   paymentDate:   string;

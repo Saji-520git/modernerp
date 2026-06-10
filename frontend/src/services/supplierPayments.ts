@@ -19,11 +19,24 @@ export interface SupplierPaymentVoucher extends SupplierPayment {
   purchase: { id: string; number: string; totalCents: number };
 }
 
+export interface ReceiveCreditPayload {
+  purchaseId:  string;
+  supplierId:  string;
+  amountCents: number;
+  method:      SupplierPaymentMethod;
+  reference?:  string;
+  date:        string;   // ISO date string YYYY-MM-DD
+  notes?:      string;
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const supplierPaymentsApi = {
   create: (payload: CreateSupplierPaymentPayload): Promise<SupplierPayment> =>
     api.post('/supplier-payments', payload).then((r) => r.data),
+
+  receiveCredit: (payload: ReceiveCreditPayload): Promise<SupplierPayment> =>
+    api.post('/supplier-payments/credit', payload).then((r) => r.data),
 
   listByPurchase: (purchaseId: string): Promise<SupplierPayment[]> =>
     api.get(`/supplier-payments/purchase/${purchaseId}`).then((r) => r.data),
@@ -37,6 +50,11 @@ export const supplierPaymentsApi = {
   void: (paymentId: string): Promise<{ success: boolean }> =>
     api.delete(`/supplier-payments/${paymentId}`).then((r) => r.data),
 };
+
+// Convenience named export — records cash received back from a supplier whose PO
+// became overpaid after confirmed returns.
+export const receiveSupplierCredit = (payload: ReceiveCreditPayload): Promise<SupplierPayment> =>
+  supplierPaymentsApi.receiveCredit(payload);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
