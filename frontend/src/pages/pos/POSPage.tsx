@@ -1434,8 +1434,21 @@ export default function POSPage() {
       pageSize:    120,
     }),
     enabled: !!warehouseId,
+    staleTime: 30 * 1000, // v1.0.46 — keep stock badges reasonably fresh (30s)
   });
   const products = productsData?.data ?? [];
+
+  // ── v1.0.46 — policy-aware available stock for a live POS product ──────────────
+  // Mirrors addToCart/commitEdit cap logic: batch + BLOCK → sellableQty;
+  // batch + WARN/ALLOW → total physical stock (includes expired); non-batch → total.
+  const capPolicy = (appSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
+  const availableStockFor = useCallback((product: PosProduct): number => {
+    const bs = product.batchSummary;
+    if (bs && bs.expiryStatus !== 'none') {
+      return capPolicy === 'BLOCK' ? bs.sellableQty : totalStock(product);
+    }
+    return totalStock(product);
+  }, [capPolicy]);
 
   // ── Totals (per spec — discount before tax) ───────────────────────────────────
   // cartSubtotalCents = Σ (lineSubtotal - itemDiscountCents)
@@ -1461,6 +1474,17 @@ export default function POSPage() {
   const cartGrossSubtotalCents = cart.reduce((s, i) => s + i.qty * i.unitPriceCents, 0);
   // Total item-level savings (sum of per-line discount cents)
   const totalItemDiscountCents = cart.reduce((s, i) => s + i.itemDiscountCents, 0);
+
+  // ── v1.0.46 — oversell guard ──────────────────────────────────────────────────
+  // True if any non-service cart line exceeds live available stock. Drives the
+  // PAY NOW disabled state + warning. Backend remains the final authority.
+  const hasOversoldItem = cart
+    .filter(i => !i.isServiceCharge)
+    .some(i => {
+      const posProduct = products.find(p => p.id === i.product.id);
+      if (!posProduct) return false; // not in live list (filtered/svc) — let backend guard
+      return i.qty > availableStockFor(posProduct);
+    });
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: PosProduct) => {
@@ -1566,6 +1590,24 @@ export default function POSPage() {
 
   const updateQty = useCallback((productId: string, qty: number) => {
     if (qty <= 0) { removeFromCart(productId); return; }
+
+    // v1.0.46 — cap requested qty at available stock. The +/- steppers call this
+    // directly and bypass CartLine's typed-input cap, so enforce it here too.
+    // Uses live product data; service-charge lines (svc_*) aren't in `products`
+    // and fall through unchanged.
+    const posProduct = products.find(p => p.id === productId);
+    if (posProduct) {
+      const available = availableStockFor(posProduct);
+      if (available <= 0) {
+        setBatchCapToast('No stock available');
+        return;
+      }
+      if (qty > available) {
+        qty = available;
+        setBatchCapToast(`Only ${available} available`);
+      }
+    }
+
     setCart(prev => prev.map(i => {
       // Service-charge line follows its parent product's qty for all modes
       // except per_transaction (flat — stays at qty=1, falls through unchanged).
@@ -1584,7 +1626,7 @@ export default function POSPage() {
       return { ...i, qty, itemDiscountCents: newDiscountCents };
     }));
     refocusBarcode();
-  }, [removeFromCart, refocusBarcode]);
+  }, [removeFromCart, refocusBarcode, products, availableStockFor]);
 
   const clearCart = useCallback(() => {
     receiptPendingRef.current = false;   // v1.0.43 — acknowledge any pending receipt
@@ -2488,20 +2530,29 @@ export default function POSPage() {
               </label>
             )}
 
+            {/* v1.0.46 — oversell warning above PAY NOW */}
+            {hasOversoldItem && (
+              <p className="text-xs text-red-600 text-center mb-2 font-medium">
+                ⚠ Cart contains items exceeding available stock. Reduce quantities before checkout.
+              </p>
+            )}
+
             {/* PAY NOW */}
             <button
               type="button"
               onClick={() => {
-                if (cart.length === 0 || !warehouseId) return;
+                if (cart.length === 0 || !warehouseId || hasOversoldItem) return;
                 setShowPayment(true);
               }}
-              disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending}
+              disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
               className={cls(
                 'w-full py-4 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
                 'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
                 cart.length === 0 || !warehouseId
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-[0.98]',
+                  : hasOversoldItem
+                    ? 'bg-red-500 cursor-not-allowed text-white opacity-75'
+                    : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-[0.98]',
               )}
             >
               {checkoutMutation.isPending
