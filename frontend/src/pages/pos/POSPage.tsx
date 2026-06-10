@@ -2058,6 +2058,7 @@ export default function POSPage() {
       // F8 — open checkout / pay now
       if (e.key === 'F8') {
         e.preventDefault();
+        if (hasOversoldItem) return; // v1.0.47 — block checkout while cart oversold
         if (cart.length > 0 && !showPayment) setShowPayment(true);
         return;
       }
@@ -2106,6 +2107,7 @@ export default function POSPage() {
         const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
         if (!isInput && cart.length > 0) {
           e.preventDefault();
+          if (hasOversoldItem) return; // v1.0.47 — block checkout while cart oversold
           setShowPayment(true);
           return;
         }
@@ -2124,7 +2126,7 @@ export default function POSPage() {
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
       showHolds, showReceipt, showCustomer, quickAddBarcode,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
-      checkoutMutation.isPending]);
+      checkoutMutation.isPending, hasOversoldItem]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   // Use live shift data from API (has real-time saleCount / totalSalesCents)
