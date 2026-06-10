@@ -1644,6 +1644,7 @@ export default function POSPage() {
     const code = barcodeInput.trim();
     if (!code) {
       // Empty barcode + items in cart → open payment dialog
+      if (hasOversoldItem) return; // v1.0.48 — block checkout while cart oversold
       if (cart.length > 0) setShowPayment(true);
       return;
     }
@@ -1707,7 +1708,7 @@ export default function POSPage() {
       setBarcodeLoading(false);
       // Only refocus barcode if we didn't focus qty (i.e. 404 path or error)
     }
-  }, [barcodeInput, cart.length, products, addToCart, refocusBarcode, appSettings]);
+  }, [barcodeInput, cart.length, products, addToCart, refocusBarcode, appSettings, hasOversoldItem]);
 
   // ── Hold helpers ──────────────────────────────────────────────────────────────
   const holdBill = useCallback((label: string) => {
@@ -2483,7 +2484,7 @@ export default function POSPage() {
                   value={cartDiscountValue}
                   maxAmount={cartSubtotalCents}
                   onChange={v => setCartDiscountValue(v)}
-                  onEnter={() => { if (cart.length > 0) setShowPayment(true); }}
+                  onEnter={() => { if (hasOversoldItem) return; if (cart.length > 0) setShowPayment(true); }}
                 />
               </div>
             </div>
