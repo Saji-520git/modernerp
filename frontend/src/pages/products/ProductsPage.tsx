@@ -24,7 +24,7 @@ import { inventoryApi, type BatchDetail } from '../../services/inventory';
 import { purchasesApi } from '../../services/purchases';
 import { daysUntilExpiry } from '../../services/pos';
 import { categoriesApi, brandsApi } from '../../services/masterData';
-import QuickAddModal from '../../components/common/QuickAddModal';
+import SearchableSelect from '../../components/common/SearchableSelect';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,10 +179,6 @@ export default function ProductsPage() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [formErr, setFormErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // ── Quick-add category / brand ──
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [showAddBrand,    setShowAddBrand]    = useState(false);
 
   // ── Barcode check ──
   const [barcodeCheck, setBarcodeCheck] = useState<BarcodeCheckState | null>(null);
@@ -1192,43 +1188,51 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
-                    <select
-                      value={form.categoryId}
-                      onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700"
-                    >
-                      <option value="">No category</option>
-                      {(meta?.categories ?? []).map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddCategory(true)}
-                      className="mt-1 text-xs text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <Plus size={11} /> Add new category
-                    </button>
+                    <SearchableSelect
+                      value={form.categoryId ?? ''}
+                      onChange={(id) => setForm((f) => ({ ...f, categoryId: id }))}
+                      options={(meta?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                      placeholder="Search or add category…"
+                      addNewLabel="+ Add new category"
+                      onAddNew={async (name) => {
+                        const n = name.trim();
+                        if (!n) return;
+                        try {
+                          const created = await categoriesApi.create(n);
+                          await qc.invalidateQueries({ queryKey: ['products-meta'] });
+                          setForm((f) => ({ ...f, categoryId: created.id }));
+                        } catch (err) {
+                          setFormErr(
+                            (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+                              ?? 'Failed to add category',
+                          );
+                        }
+                      }}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Brand</label>
-                    <select
-                      value={form.brandId}
-                      onChange={(e) => setForm((f) => ({ ...f, brandId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700"
-                    >
-                      <option value="">No brand</option>
-                      {(meta?.brands ?? []).map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddBrand(true)}
-                      className="mt-1 text-xs text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <Plus size={11} /> Add new brand
-                    </button>
+                    <SearchableSelect
+                      value={form.brandId ?? ''}
+                      onChange={(id) => setForm((f) => ({ ...f, brandId: id }))}
+                      options={(meta?.brands ?? []).map((b) => ({ value: b.id, label: b.name }))}
+                      placeholder="Search or add brand…"
+                      addNewLabel="+ Add new brand"
+                      onAddNew={async (name) => {
+                        const n = name.trim();
+                        if (!n) return;
+                        try {
+                          const created = await brandsApi.create(n);
+                          await qc.invalidateQueries({ queryKey: ['products-meta'] });
+                          setForm((f) => ({ ...f, brandId: created.id }));
+                        } catch (err) {
+                          setFormErr(
+                            (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+                              ?? 'Failed to add brand',
+                          );
+                        }
+                      }}
+                    />
                   </div>
                 </div>
               </section>
@@ -1612,30 +1616,6 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
-
-      {/* Quick-add Category */}
-      <QuickAddModal
-        label="Category"
-        isOpen={showAddCategory}
-        onClose={() => setShowAddCategory(false)}
-        onCreate={(name) => categoriesApi.create(name)}
-        onCreated={(cat) => {
-          qc.invalidateQueries({ queryKey: ['product-meta'] });
-          setForm((f) => ({ ...f, categoryId: cat.id }));
-        }}
-      />
-
-      {/* Quick-add Brand */}
-      <QuickAddModal
-        label="Brand"
-        isOpen={showAddBrand}
-        onClose={() => setShowAddBrand(false)}
-        onCreate={(name) => brandsApi.create(name)}
-        onCreated={(brand) => {
-          qc.invalidateQueries({ queryKey: ['product-meta'] });
-          setForm((f) => ({ ...f, brandId: brand.id }));
-        }}
-      />
 
       {/* ── Delete confirmation ─────────────────────────────────────────────── */}
       {deleteTarget && (

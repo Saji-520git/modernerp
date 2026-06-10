@@ -2120,29 +2120,45 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
-                  <select
+                  <SearchableSelect
                     value={newProduct.categoryId}
-                    onChange={(e) => setNewProduct((p) => ({ ...p, categoryId: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  >
-                    <option value="">— None —</option>
-                    {(productMeta?.categories ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={(id) => setNewProduct((p) => ({ ...p, categoryId: id }))}
+                    options={(productMeta?.categories ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                    placeholder="Search or add category…"
+                    addNewLabel="+ Add new category"
+                    onAddNew={async (name) => {
+                      const n = name.trim();
+                      if (!n) return;
+                      try {
+                        const res = await api.post('/master-data/categories', { name: n });
+                        await queryClient.invalidateQueries({ queryKey: ['product-meta-for-quick-add'] });
+                        setNewProduct((p) => ({ ...p, categoryId: res.data.id }));
+                      } catch (err: any) {
+                        setAddProductError(err?.response?.data?.message || 'Failed to add category');
+                      }
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Brand</label>
-                  <select
+                  <SearchableSelect
                     value={newProduct.brandId}
-                    onChange={(e) => setNewProduct((p) => ({ ...p, brandId: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  >
-                    <option value="">— None —</option>
-                    {(productMeta?.brands ?? []).map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
+                    onChange={(id) => setNewProduct((p) => ({ ...p, brandId: id }))}
+                    options={(productMeta?.brands ?? []).map((b) => ({ value: b.id, label: b.name }))}
+                    placeholder="Search or add brand…"
+                    addNewLabel="+ Add new brand"
+                    onAddNew={async (name) => {
+                      const n = name.trim();
+                      if (!n) return;
+                      try {
+                        const res = await api.post('/master-data/brands', { name: n });
+                        await queryClient.invalidateQueries({ queryKey: ['product-meta-for-quick-add'] });
+                        setNewProduct((p) => ({ ...p, brandId: res.data.id }));
+                      } catch (err: any) {
+                        setAddProductError(err?.response?.data?.message || 'Failed to add brand');
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

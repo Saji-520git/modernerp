@@ -12,7 +12,7 @@ interface SearchableSelectProps {
   options: SearchableSelectOption[];
   placeholder?: string;
   disabled?: boolean;
-  onAddNew?: () => void;
+  onAddNew?: (query: string) => void | Promise<void>;
   addNewLabel?: string;
   className?: string;
 }
@@ -183,9 +183,10 @@ export default function SearchableSelect({
               <button
                 type="button"
                 onClick={() => {
+                  const typed = query;
                   setOpen(false);
                   setQuery('');
-                  onAddNew();
+                  onAddNew(typed);
                 }}
                 className="w-full flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 transition"
               >
