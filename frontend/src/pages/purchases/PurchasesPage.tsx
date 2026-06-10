@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, X, CheckCircle, XCircle, Eye, Search, ChevronLeft, ChevronRight, Download,
-  Truck, PackageCheck, Paperclip, Printer,
+  Truck, PackageCheck, Paperclip, Printer, Loader2,
 } from 'lucide-react';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
 import SearchableSelect from '../../components/common/SearchableSelect';
@@ -747,6 +747,7 @@ function PurchaseReturnSection({ poId }: { poId: string }) {
   const [newLineQtys, setNewLineQtys] = useState<Record<string, string>>({});
   const [newReason, setNewReason] = useState('');
   const [formErr, setFormErr] = useState('');
+  const [printingReturnId, setPrintingReturnId] = useState<string | null>(null);
 
   const { data: returns = [], isLoading } = useQuery<PurchaseReturn[]>({
     queryKey: ['purchase-returns', poId],
@@ -871,9 +872,24 @@ function PurchaseReturnSection({ poId }: { poId: string }) {
               </div>
               <span className="text-sm font-bold text-orange-700 shrink-0">{fmtReturnCents(r.totalCents)}</span>
               {r.status === 'CONFIRMED' && (
-                <button onClick={() => printDebitNote(r)}
-                  className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition shrink-0">
-                  <Printer size={12} />
+                <button
+                  onClick={async () => {
+                    try {
+                      setPrintingReturnId(r.id);
+                      // List rows omit line items; fetch the full return (with lines) before printing.
+                      const fullReturn = await purchaseReturnsApi.get(r.id);
+                      printDebitNote(fullReturn);
+                    } catch {
+                      window.alert('Failed to load return details for printing');
+                    } finally {
+                      setPrintingReturnId(null);
+                    }
+                  }}
+                  disabled={printingReturnId === r.id}
+                  className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition shrink-0 disabled:opacity-60">
+                  {printingReturnId === r.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Printer size={12} />}
                 </button>
               )}
               {r.status === 'DRAFT' && (
