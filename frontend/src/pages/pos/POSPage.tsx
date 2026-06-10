@@ -1148,6 +1148,7 @@ function productToPosProduct(p: Product): PosProduct {
     defaultDiscountCents: p.defaultDiscountCents ?? 0,
     serviceChargeCents:   p.serviceChargeCents ?? 0,
     serviceChargeLabel:   p.serviceChargeLabel ?? null,
+    serviceChargeMode:    p.serviceChargeMode ?? 'per_item',
     receiptName:          p.receiptName ?? null,
     taxPercent:           p.taxPercent,
     imageUrl:        p.imageUrl ?? null,
@@ -1521,8 +1522,11 @@ export default function POSPage() {
           defaultDiscountCents: 0,
           serviceChargeCents: 0,
         };
+        // Proportional mode: svc qty mirrors the parent line qty; per_item: always 1.
+        // unitPriceCents stays the flat per-unit rate — qty carries the multiplier.
+        const svcQty = product.serviceChargeMode === 'proportional' ? newItems[0].qty : 1;
         newItems.push({
-          product: svcProduct, qty: 1, unitPriceCents: svcCents,
+          product: svcProduct, qty: svcQty, unitPriceCents: svcCents,
           itemDiscountType: 'percent', itemDiscountValue: 0, itemDiscountCents: 0,
           isServiceCharge: true, linkedProductId: product.id,
         });
@@ -1544,6 +1548,15 @@ export default function POSPage() {
   const updateQty = useCallback((productId: string, qty: number) => {
     if (qty <= 0) { removeFromCart(productId); return; }
     setCart(prev => prev.map(i => {
+      // Proportional service-charge line follows its parent product's qty.
+      // (per_item svc lines stay at qty=1 — they fall through unchanged.)
+      if (
+        i.isServiceCharge &&
+        i.linkedProductId === productId &&
+        i.product.serviceChargeMode === 'proportional'
+      ) {
+        return { ...i, qty };
+      }
       if (i.product.id !== productId) return i;
       const newLineSubtotal = qty * i.unitPriceCents;
       const newDiscountCents = i.itemDiscountType === 'percent'
@@ -1780,13 +1793,18 @@ export default function POSPage() {
       items: cart
         .filter(i => !i.isServiceCharge)
         .map(i => {
-          // Fold any service charge for this product into its unitPriceCents
-          const svcItem = cart.find(sc => sc.isServiceCharge && sc.linkedProductId === i.product.id);
-          const svcCents = svcItem ? svcItem.unitPriceCents : 0;
+          // Fold any service charge for this product into its unitPriceCents.
+          // svc TOTAL = flat per-unit rate × svc qty:
+          //   per_item     → qty 1            → flat Rs.X once
+          //   proportional → qty = parent qty → Rs.X × parent qty
+          // Divide by parent qty because the backend computes the line total
+          // as unitPriceCents × qty (so this re-multiplies back to svc TOTAL).
+          const svcItem  = cart.find(sc => sc.isServiceCharge && sc.linkedProductId === i.product.id);
+          const svcTotal = svcItem ? svcItem.unitPriceCents * svcItem.qty : 0;
           return {
             productId:      i.product.id,
             qty:            i.qty,
-            unitPriceCents: i.unitPriceCents + svcCents,
+            unitPriceCents: i.unitPriceCents + (i.qty > 0 ? svcTotal / i.qty : 0),
             discountCents:  i.itemDiscountCents,
           };
         }),

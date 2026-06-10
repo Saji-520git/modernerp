@@ -26,6 +26,7 @@ export const createProductSchema = z.object({
   defaultDiscountCents:  z.number().int().min(0).default(0),
   serviceChargeCents:    z.number().int().min(0).default(0),
   serviceChargeLabel:    z.string().optional().nullable(),
+  serviceChargeMode:     z.string().optional().default('per_item'),
   receiptName:           z.string().optional().nullable(),
   taxPercent:   z.number().min(0).max(100).default(0),
   reorderLevel:    z.number().int().min(0).default(0),

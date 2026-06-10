@@ -29,6 +29,7 @@ export interface PosProduct {
   defaultDiscountCents: number;
   serviceChargeCents: number;
   serviceChargeLabel: string | null;
+  serviceChargeMode?: string;
   receiptName: string | null;
   taxPercent: number;
   imageUrl: string | null;

@@ -213,6 +213,7 @@ model Product {
   defaultDiscountCents   Int   @default(0)   // auto-applied discount at POS (cashier can override)
   serviceChargeCents     Int   @default(0)   // auto-added service charge per item at POS
   serviceChargeLabel     String?             // label shown on receipt (e.g. "Delivery", "Service")
+  serviceChargeMode      String @default("per_item")  // "per_item" | "proportional"
   receiptName            String?             // name printed on receipt (if different from product name)
   taxPercent             Float @default(0)
   reorderLevel  Int   @default(0)

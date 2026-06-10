@@ -66,6 +66,7 @@ export const posService = {
           defaultDiscountCents: true,
           serviceChargeCents: true,
           serviceChargeLabel: true,
+          serviceChargeMode: true,
           taxPercent: true,
           imageUrl: true,
           expiryDate: true,

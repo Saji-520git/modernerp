@@ -52,6 +52,7 @@ interface FormState {
   defaultDiscount: string;
   serviceCharge: string;
   serviceChargeLabel: string;
+  serviceChargeMode: string;
   taxPercent: string;
   reorderLevel: string;
   reorderQty: string;
@@ -79,7 +80,7 @@ function emptyForm(): FormState {
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
     receiptName: '',
-    cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', taxPercent: '0',
+    cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', serviceChargeMode: 'per_item', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
     expiryDate: '', expiryAlertDays: '30',
     isBatchTracked: false,
@@ -106,6 +107,7 @@ function formFromProduct(p: Product): FormState {
     defaultDiscount: p.defaultDiscountCents > 0 ? (p.defaultDiscountCents / 100).toFixed(2) : '',
     serviceCharge: (p.serviceChargeCents ?? 0) > 0 ? ((p.serviceChargeCents ?? 0) / 100).toFixed(2) : '',
     serviceChargeLabel: p.serviceChargeLabel ?? '',
+    serviceChargeMode: p.serviceChargeMode ?? 'per_item',
     taxPercent: String(p.taxPercent),
     reorderLevel: String(p.reorderLevel),
     reorderQty: String(p.reorderQty),
@@ -442,6 +444,7 @@ export default function ProductsPage() {
       defaultDiscountCents,
       serviceChargeCents,
       serviceChargeLabel: form.serviceChargeLabel.trim() || null,
+      serviceChargeMode: form.serviceChargeMode || 'per_item',
       taxPercent:   parseFloat(form.taxPercent) || 0,
       reorderLevel: parseInt(form.reorderLevel) || 0,
       reorderQty:   parseInt(form.reorderQty) || 0,
@@ -1313,6 +1316,37 @@ export default function ProductsPage() {
                 {/* Service Charge */}
                 <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
                   <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Service Charge</p>
+                  <div className="mb-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Charge Mode</label>
+                    <div className="flex flex-wrap gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="serviceChargeMode"
+                          value="per_item"
+                          checked={form.serviceChargeMode === 'per_item' || !form.serviceChargeMode}
+                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'per_item' }))}
+                        />
+                        <span className="text-sm text-slate-700">
+                          Per line item
+                          <span className="text-xs text-slate-500 ml-1">(always Rs.X per sale)</span>
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="serviceChargeMode"
+                          value="proportional"
+                          checked={form.serviceChargeMode === 'proportional'}
+                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'proportional' }))}
+                        />
+                        <span className="text-sm text-slate-700">
+                          Proportional to qty
+                          <span className="text-xs text-slate-500 ml-1">(Rs.X × qty sold)</span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Amount (Rs.)</label>
