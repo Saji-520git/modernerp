@@ -1490,12 +1490,12 @@ export default function POSPage() {
         }
         const next = [...prev];
         next[idx] = { ...next[idx], qty: newQty };
-        // Sync proportional svc line qty to match the new parent qty
-        // (per_item svc lines stay at qty=1 — they fall through unchanged).
+        // Sync svc line qty to match the new parent qty for all modes except
+        // per_transaction (flat — stays at qty=1, falls through unchanged).
         return next.map(item =>
           item.isServiceCharge &&
           item.linkedProductId === product.id &&
-          item.product.serviceChargeMode === 'proportional'
+          item.product.serviceChargeMode !== 'per_transaction'
             ? { ...item, qty: newQty }
             : item,
         );
@@ -1530,9 +1530,10 @@ export default function POSPage() {
           defaultDiscountCents: 0,
           serviceChargeCents: 0,
         };
-        // Proportional mode: svc qty mirrors the parent line qty; per_item: always 1.
+        // per_transaction: flat — svc qty always 1. Every other mode (per_unit,
+        // legacy per_item/proportional, null) multiplies by the parent line qty.
         // unitPriceCents stays the flat per-unit rate — qty carries the multiplier.
-        const svcQty = product.serviceChargeMode === 'proportional' ? newItems[0].qty : 1;
+        const svcQty = product.serviceChargeMode === 'per_transaction' ? 1 : newItems[0].qty;
         newItems.push({
           product: svcProduct, qty: svcQty, unitPriceCents: svcCents,
           itemDiscountType: 'percent', itemDiscountValue: 0, itemDiscountCents: 0,
@@ -1556,12 +1557,12 @@ export default function POSPage() {
   const updateQty = useCallback((productId: string, qty: number) => {
     if (qty <= 0) { removeFromCart(productId); return; }
     setCart(prev => prev.map(i => {
-      // Proportional service-charge line follows its parent product's qty.
-      // (per_item svc lines stay at qty=1 — they fall through unchanged.)
+      // Service-charge line follows its parent product's qty for all modes
+      // except per_transaction (flat — stays at qty=1, falls through unchanged).
       if (
         i.isServiceCharge &&
         i.linkedProductId === productId &&
-        i.product.serviceChargeMode === 'proportional'
+        i.product.serviceChargeMode !== 'per_transaction'
       ) {
         return { ...i, qty };
       }

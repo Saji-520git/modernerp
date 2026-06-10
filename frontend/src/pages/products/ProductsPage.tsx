@@ -80,7 +80,7 @@ function emptyForm(): FormState {
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
     receiptName: '',
-    cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', serviceChargeMode: 'per_item', taxPercent: '0',
+    cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', serviceChargeMode: 'per_unit', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
     expiryDate: '', expiryAlertDays: '30',
     isBatchTracked: false,
@@ -107,7 +107,7 @@ function formFromProduct(p: Product): FormState {
     defaultDiscount: p.defaultDiscountCents > 0 ? (p.defaultDiscountCents / 100).toFixed(2) : '',
     serviceCharge: (p.serviceChargeCents ?? 0) > 0 ? ((p.serviceChargeCents ?? 0) / 100).toFixed(2) : '',
     serviceChargeLabel: p.serviceChargeLabel ?? '',
-    serviceChargeMode: p.serviceChargeMode ?? 'per_item',
+    serviceChargeMode: p.serviceChargeMode ?? 'per_unit',
     taxPercent: String(p.taxPercent),
     reorderLevel: String(p.reorderLevel),
     reorderQty: String(p.reorderQty),
@@ -444,7 +444,7 @@ export default function ProductsPage() {
       defaultDiscountCents,
       serviceChargeCents,
       serviceChargeLabel: form.serviceChargeLabel.trim() || null,
-      serviceChargeMode: form.serviceChargeMode || 'per_item',
+      serviceChargeMode: form.serviceChargeMode || 'per_unit',
       taxPercent:   parseFloat(form.taxPercent) || 0,
       reorderLevel: parseInt(form.reorderLevel) || 0,
       reorderQty:   parseInt(form.reorderQty) || 0,
@@ -1323,26 +1323,26 @@ export default function ProductsPage() {
                         <input
                           type="radio"
                           name="serviceChargeMode"
-                          value="per_item"
-                          checked={form.serviceChargeMode === 'per_item' || !form.serviceChargeMode}
-                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'per_item' }))}
+                          value="per_unit"
+                          checked={form.serviceChargeMode === 'per_unit' || form.serviceChargeMode === 'per_item' || !form.serviceChargeMode}
+                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'per_unit' }))}
                         />
                         <span className="text-sm text-slate-700">
-                          Per line item
-                          <span className="text-xs text-slate-500 ml-1">(always Rs.X per sale)</span>
+                          Per unit / qty
+                          <span className="text-xs text-slate-500 ml-1">(Rs.X × qty sold)</span>
                         </span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
                           name="serviceChargeMode"
-                          value="proportional"
-                          checked={form.serviceChargeMode === 'proportional'}
-                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'proportional' }))}
+                          value="per_transaction"
+                          checked={form.serviceChargeMode === 'per_transaction'}
+                          onChange={() => setForm((f) => ({ ...f, serviceChargeMode: 'per_transaction' }))}
                         />
                         <span className="text-sm text-slate-700">
-                          Proportional to qty
-                          <span className="text-xs text-slate-500 ml-1">(Rs.X × qty sold)</span>
+                          Per transaction
+                          <span className="text-xs text-slate-500 ml-1">(flat Rs.X once per sale)</span>
                         </span>
                       </label>
                     </div>
