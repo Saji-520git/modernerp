@@ -1490,7 +1490,15 @@ export default function POSPage() {
         }
         const next = [...prev];
         next[idx] = { ...next[idx], qty: newQty };
-        return next;
+        // Sync proportional svc line qty to match the new parent qty
+        // (per_item svc lines stay at qty=1 — they fall through unchanged).
+        return next.map(item =>
+          item.isServiceCharge &&
+          item.linkedProductId === product.id &&
+          item.product.serviceChargeMode === 'proportional'
+            ? { ...item, qty: newQty }
+            : item,
+        );
       }
       if (maxQty !== null && maxQty <= 0) {
         setBatchCapToast('No stock available');
