@@ -467,6 +467,30 @@ export default function ProductsPage() {
         barcode:       c.barcode.trim() || null,
       }));
 
+    // Guard: a Purchase/Sales unit that differs from the base unit is meaningless
+    // without a conversion rule — stock would not convert on confirm. Block save.
+    const effectiveBaseUnitId = form.baseUnitId || form.unitId;
+    if (form.purchaseUnitId && effectiveBaseUnitId && form.purchaseUnitId !== effectiveBaseUnitId) {
+      const hasConversion = conversions.some((c) => c.fromUnitId === form.purchaseUnitId);
+      if (!hasConversion) {
+        setFormErr(
+          'Purchase Unit differs from Base Unit but no conversion is configured. ' +
+          'Add a conversion rule below (e.g. 1 Box = 10 Piece) before saving.',
+        );
+        return;
+      }
+    }
+    if (form.salesUnitId && effectiveBaseUnitId && form.salesUnitId !== effectiveBaseUnitId) {
+      const hasConversion = conversions.some((c) => c.fromUnitId === form.salesUnitId);
+      if (!hasConversion) {
+        setFormErr(
+          'Sales Unit differs from Base Unit but no conversion is configured. ' +
+          'Add a conversion rule below (e.g. 1 Box = 10 Piece) before saving.',
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (editingProduct) {

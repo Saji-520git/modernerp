@@ -209,6 +209,7 @@ export const purchaseService = {
         lines: {
           create: computedLines.map((l) => ({
             productId: l.productId,
+            unitId: l.unitId ?? null,
             qty: l.qty,
             unitCostCents: l.unitCostCents,
             taxPercent: l.taxPercent,
@@ -425,6 +426,7 @@ export const purchaseService = {
           lines: {
             create: lines.map((l) => ({
               productId:     l.productId,
+              unitId:        l.unitId ?? null,
               qty:           l.qty,
               unitCostCents: l.unitCostCents,
               taxPercent:    0,

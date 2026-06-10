@@ -54,6 +54,7 @@ interface LineForm {
   taxPercent: string;
   unitId?: string;  // selected purchase unit (undefined = base unit)
   expiryDate: string; // YYYY-MM-DD or ''
+  noConversionWarning?: boolean; // true when selected unit has no conversion rule
 }
 
 // ─── Payment Status badge ─────────────────────────────────────────────────────
@@ -1904,7 +1905,16 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                                       newCost = prod.costCents / 100;
                                     }
                                   }
-                                  return { ...l, unitId: newUnitId, unitCost: newCost.toFixed(2) };
+                                  // Warn (do NOT block) if the chosen unit has no
+                                  // conversion rule — stock qty would not convert.
+                                  let noConversionWarning = false;
+                                  if (newUnitId && baseId && newUnitId !== baseId) {
+                                    const hasConversion = prod.unitConversions?.some(
+                                      (c) => c.fromUnitId === newUnitId && (c as any).isActive !== false,
+                                    );
+                                    if (!hasConversion) noConversionWarning = true;
+                                  }
+                                  return { ...l, unitId: newUnitId, unitCost: newCost.toFixed(2), noConversionWarning };
                                 }));
                               }}
                               className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -1919,6 +1929,11 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                             {selectedConv && qty > 0 && (
                               <p className="text-[10px] text-indigo-500 mt-0.5 px-1">
                                 → {baseQtyPreview} {baseUnit?.shortCode} added to stock
+                              </p>
+                            )}
+                            {line.noConversionWarning && (
+                              <p className="text-xs text-amber-600 mt-1 px-1">
+                                ⚠ No conversion set for this unit. Stock qty will not convert correctly. Edit the product to add a conversion.
                               </p>
                             )}
                           </div>
