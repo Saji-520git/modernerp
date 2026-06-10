@@ -7,9 +7,9 @@ import { resolvePermissions, type Permission } from '../../config/permissions.js
 import type { LoginInput, RegisterInput } from './auth.schema.js';
 
 function signTokens(userId: string, role: string, permissions: Permission[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const access = jwt.sign({ userId, role, permissions }, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN as any,
+    // v1.0.43 — fixed 24h so cashier sessions don't expire mid-shift (env default was '15m')
+    expiresIn: '24h',
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const refresh = jwt.sign({ userId, role }, env.JWT_REFRESH_SECRET, {

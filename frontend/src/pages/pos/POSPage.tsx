@@ -1280,6 +1280,9 @@ export default function POSPage() {
   const [customer, setCustomer]                 = useState<CustomerOption | null>(null);
   const [warehouseId, setWarehouseId]           = useState('');
   const [lastReceipt, setLastReceipt]           = useState<Receipt | null>(null);
+  // v1.0.43 — true once a sale completes, until the cashier acknowledges via "New Sale".
+  // Drives the receipt-recovery effect that re-opens the popup if it ever closes early.
+  const receiptPendingRef                       = useRef(false);
   const [lastChangeCents, setLastChangeCents]   = useState(0);
   const [holds, setHolds]                       = useState<HoldBill[]>(loadHolds);
 
@@ -1584,6 +1587,7 @@ export default function POSPage() {
   }, [removeFromCart, refocusBarcode]);
 
   const clearCart = useCallback(() => {
+    receiptPendingRef.current = false;   // v1.0.43 — acknowledge any pending receipt
     try { localStorage.removeItem(CART_KEY); } catch { /* ignore */ }
     sound.clear();
     setCart([]);
@@ -1767,6 +1771,8 @@ export default function POSPage() {
         setBatchCapToast(data.warnings.join(' · '));
       }
       qc.invalidateQueries({ queryKey: ['pos-products'] });
+      // v1.0.43 — mark this sale's receipt as pending acknowledgement (cleared on New Sale)
+      receiptPendingRef.current = true;
     },
     onError: (err: unknown) => {
       sound.error();
@@ -1783,6 +1789,20 @@ export default function POSPage() {
           'Please check Sales before processing again to avoid duplicate sales.'
         );
         // Do NOT call setShowReceipt(true) — we have no receipt data to show.
+        return;
+      }
+
+      // v1.0.43 — Detect an expired session (401). The cashier's JWT lapsed
+      // before this checkout, so the sale almost certainly was NOT recorded.
+      // Close the payment modal and tell them to re-authenticate, but warn
+      // them to verify Sales in case the request did land server-side.
+      const isUnauthorized = (err as { response?: { status?: number } })?.response?.status === 401;
+      if (isUnauthorized) {
+        setShowPayment(false);
+        setCheckoutError(
+          'Your session has expired. Please sign out and sign back in to continue. ' +
+          'The last sale may not have been recorded — check Sales.'
+        );
         return;
       }
 
@@ -1844,10 +1864,21 @@ export default function POSPage() {
   }, [warehouseId, cart, customer, cartDiscountCents, cartDiscountType, cartDiscountValue, isStaffSale, isAdmin, checkoutMutation]);
 
   const newSale = useCallback(() => {
+    receiptPendingRef.current = false;   // v1.0.43 — cashier acknowledged the receipt
     clearCart();
     setIsStaffSale(false);
     setShowReceipt(false);
   }, [clearCart]);
+
+  // v1.0.43 — Receipt recovery safety net. If a completed sale's receipt popup
+  // closes for any reason before the cashier clicks "New Sale", re-open it so the
+  // sale is never silently lost from view. Acknowledged only via newSale/clearCart
+  // (which clear receiptPendingRef). Intentionally re-opens on the ReceiptModal X.
+  useEffect(() => {
+    if (receiptPendingRef.current && !showReceipt && lastReceipt !== null) {
+      setShowReceipt(true);
+    }
+  }, [showReceipt, lastReceipt]);
 
   const handleStaffSaleChange = useCallback((checked: boolean) => {
     setIsStaffSale(checked);
