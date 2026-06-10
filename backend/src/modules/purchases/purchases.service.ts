@@ -281,6 +281,17 @@ export const purchaseService = {
           baseQty = new Decimal(line.qty.toString());
         }
 
+        // Derive the per-base-unit cost. The line stores the cost of ONE purchase
+        // unit (e.g. 1 case @ Rs.62,500); stock is held in base units (e.g. boxes),
+        // so the stored cost must be divided by the conversion factor.
+        //   factor          = baseQty / qty   (e.g. 25 boxes / 1 case = 25)
+        //   costPerBaseCents = unitCostCents / factor   (62,500 / 25 = 2,500)
+        const lineQty = new Decimal(line.qty.toString());
+        const factor = lineQty.isZero() ? new Decimal(1) : baseQty.div(lineQty);
+        const costPerBaseCents = factor.isZero()
+          ? line.unitCostCents
+          : Math.round(line.unitCostCents / factor.toNumber());
+
         // Upsert stock (always in base units)
         await tx.stock.upsert({
           where: {
@@ -314,7 +325,7 @@ export const purchaseService = {
         // (physical stock means it should be sellable regardless of prior inactive status)
         await tx.product.update({
           where: { id: line.productId },
-          data: { costCents: line.unitCostCents, isActive: true },
+          data: { costCents: costPerBaseCents, isActive: true },
         });
 
         // Create stock batch row (tracks expiry per batch)

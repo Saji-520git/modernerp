@@ -1441,6 +1441,7 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '', sku: '', unitId: '', costCents: '', priceCents: '',
+    categoryId: '', brandId: '',
   });
   const [addProductError, setAddProductError] = useState('');
   const [addingProduct,   setAddingProduct]   = useState(false);
@@ -1538,6 +1539,17 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
     staleTime: 5 * 60 * 1000,
   });
 
+  // Categories + brands for the quick-add product modal (both optional fields)
+  const { data: productMeta } = useQuery<{
+    categories: Array<{ id: string; name: string }>;
+    brands:     Array<{ id: string; name: string }>;
+  }>({
+    queryKey: ['product-meta-for-quick-add'],
+    queryFn: () => api.get('/products/meta').then((r) => r.data),
+    enabled: showAddProductModal,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ── Quick-add: create a supplier inline and auto-select it ──────────────────
   const handleAddSupplier = async () => {
     if (!newSupplierName.trim()) {
@@ -1581,12 +1593,14 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
         name:   newProduct.name.trim(),
         sku:    newProduct.sku.trim() || undefined,
         unitId: newProduct.unitId,
+        categoryId: newProduct.categoryId || undefined,
+        brandId:    newProduct.brandId    || undefined,
         costCents:  newProduct.costCents  ? Math.round(parseFloat(newProduct.costCents)  * 100) : 0,
         priceCents: newProduct.priceCents ? Math.round(parseFloat(newProduct.priceCents) * 100) : 0,
       });
       await queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
       setShowAddProductModal(false);
-      setNewProduct({ name: '', sku: '', unitId: '', costCents: '', priceCents: '' });
+      setNewProduct({ name: '', sku: '', unitId: '', costCents: '', priceCents: '', categoryId: '', brandId: '' });
     } catch (err: any) {
       setAddProductError(err?.response?.data?.message || 'Failed to add product');
     } finally {
@@ -2087,6 +2101,34 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                     <option key={u.id} value={u.id}>{u.name} ({u.shortCode})</option>
                   ))}
                 </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+                  <select
+                    value={newProduct.categoryId}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, categoryId: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">— None —</option>
+                    {(productMeta?.categories ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Brand</label>
+                  <select
+                    value={newProduct.brandId}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, brandId: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">— None —</option>
+                    {(productMeta?.brands ?? []).map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

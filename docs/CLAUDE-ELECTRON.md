@@ -46,18 +46,15 @@
 
 ## KNOWN ISSUES (DEFERRED)
 
-- **Purchase confirm stores entered pack cost without per-base conversion**
-  (`backend/src/modules/purchases/purchases.service.ts:307`).
-  When a purchase line uses a non-base unit (e.g. Box), `confirmPurchase`
-  records `unitCostCents` as the cost *as entered for that pack unit* and
-  divides stock-in qty by the conversion factor, but it does NOT divide the
-  stored `unitCostCents` down to the per-base-unit cost. As a result the
-  product's saved cost can reflect the pack price rather than the per-piece
-  price. Frontend FIX 4 now auto-recalculates the displayed per-unit cost on
-  unit change so the user enters the correct figure, but the backend math at
-  line 307 is intentionally left unchanged (out of scope: do NOT touch
-  backend purchase service / stock math). Revisit when purchase-cost
-  normalization is in scope.
+- **v1.0.34: Unit conversion on purchase confirm — baseQty derived from
+  conversionQty before stock upsert and StockBatch creation.** `confirmPurchase`
+  now also derives the per-base-unit cost: `costPerBaseCents =
+  Math.round(unitCostCents / factor)` where `factor = baseQty / qty`, and stores
+  it on `Product.costCents` (StockBatch has no cost field in this schema, so the
+  product's last-cost is the single source of truth for COGS). Purchasing 1 case
+  @ Rs.62,500 where 1 case = 25 boxes now correctly stores Rs.2,500/box. PO detail
+  still displays what was purchased ("1 case @ Rs.62,500") — conversion happens
+  only in stock math.
 
 - **POS checkout timeout** (v1.0.28): if the checkout POST exceeds 60s on the
   client PC, the sale may be recorded without the receipt popup appearing. The
