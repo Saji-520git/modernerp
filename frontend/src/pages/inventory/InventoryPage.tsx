@@ -914,6 +914,21 @@ function TransferTab() {
 
 // ─── Movement History Tab ─────────────────────────────────────────────────────
 
+// Display-only sign derivation. Stock math NEVER reads stockMovement.qty — it uses
+// its own increment/decrement — so normalizing the sign here is purely cosmetic.
+// Backend sign storage is inconsistent (RETURN_OUT and non-POS SALE_OUT are stored
+// positive even though they reduce stock), so we derive the sign by direction:
+//   OUT types → always negative · IN types → always positive
+//   ADJUSTMENT carries its own signed delta → shown exactly as stored.
+const MOVEMENT_OUT_TYPES: MovementType[] = ['RETURN_OUT', 'SALE_OUT', 'TRANSFER_OUT', 'WRITE_OFF'];
+const MOVEMENT_IN_TYPES:  MovementType[] = ['PURCHASE_IN', 'RETURN_IN', 'TRANSFER_IN'];
+
+function signedMovementQty(type: MovementType, qty: number): number {
+  if (MOVEMENT_OUT_TYPES.includes(type)) return -Math.abs(qty);
+  if (MOVEMENT_IN_TYPES.includes(type))  return  Math.abs(qty);
+  return qty; // ADJUSTMENT (and any unknown) — preserve stored sign
+}
+
 function HistoryTab() {
   const [page, setPage] = useState(1);
   const [type, setType] = useState<MovementType | ''>('');
@@ -993,9 +1008,14 @@ function HistoryTab() {
                     {MOVEMENT_LABELS[m.type]}
                   </span>
                 </td>
-                <td className={`px-4 py-3 text-right font-semibold ${m.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                  {m.qty > 0 ? '+' : ''}{m.qty}
-                </td>
+                {(() => {
+                  const sq = signedMovementQty(m.type, m.qty);
+                  return (
+                    <td className={`px-4 py-3 text-right font-semibold ${sq > 0 ? 'text-green-600' : sq < 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                      {sq > 0 ? '+' : ''}{sq}
+                    </td>
+                  );
+                })()}
                 <td className="px-4 py-3 text-slate-500 text-xs max-w-xs truncate">{m.note ?? '—'}</td>
               </tr>
             ))}
