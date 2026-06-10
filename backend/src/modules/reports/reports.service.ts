@@ -640,8 +640,39 @@ export const reportsService = {
 
     const outstandingReceivablesCents =
       (receivablesAgg._sum.totalCents ?? 0) - (receivablesAgg._sum.paidCents ?? 0);
-    const outstandingPayablesCents =
-      (payablesAgg._sum.totalCents ?? 0) - (payablesAgg._sum.paidCents ?? 0);
+
+    // Option B — confirmed purchase returns reduce what is still owed on a PO.
+    // Prisma aggregate() cannot filter on a nested relation, so use a two-step query:
+    //   1. collect the IDs of the same UNPAID/PARTIAL POs counted in payablesAgg,
+    //   2. sum confirmed returns for those POs only.
+    const unpaidPurchaseIds = await prisma.purchase.findMany({
+      where: {
+        status:        'CONFIRMED',
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        deletedAt:     null,
+      },
+      select: { id: true },
+    }).then((rows) => rows.map((r) => r.id));
+
+    const payableReturnsAgg = unpaidPurchaseIds.length > 0
+      ? await prisma.purchaseReturn.aggregate({
+          where: {
+            purchaseId: { in: unpaidPurchaseIds },
+            status:     'CONFIRMED',
+            isActive:   true,
+          },
+          _sum: { totalCents: true },
+        })
+      : { _sum: { totalCents: 0 } };
+
+    const payableReturnedCents = payableReturnsAgg._sum.totalCents ?? 0;
+
+    const outstandingPayablesCents = Math.max(
+      0,
+      (payablesAgg._sum.totalCents ?? 0)
+      - (payablesAgg._sum.paidCents ?? 0)
+      - payableReturnedCents,
+    );
 
     const last7Days = days.map((day, i) => ({
       date:       day.toISOString().split('T')[0],
