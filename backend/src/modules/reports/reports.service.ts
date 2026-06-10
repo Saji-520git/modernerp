@@ -762,7 +762,10 @@ export const reportsService = {
       const purchaseReturns = returnResult._sum.totalCents ?? 0;
       const expenses        = expResult._sum.amount ?? 0;
 
-      const grossProfit    = revenue - (cogs - purchaseReturns);
+      // Purchase returns of unsold goods are a balance-sheet event (inventory ↓,
+      // payable ↓) — they do NOT reduce COGS, which only counts items actually sold.
+      // purchaseReturns is still surfaced in the response object below for reference.
+      const grossProfit    = revenue - cogs;
       const netProfit      = grossProfit - expenses;
       const grossMarginPct = revenue > 0 ? Math.round((grossProfit / revenue) * 1000) / 10 : 0;
       const netMarginPct   = revenue > 0 ? Math.round((netProfit  / revenue) * 1000) / 10 : 0;
