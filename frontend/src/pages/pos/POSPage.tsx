@@ -361,7 +361,7 @@ const CartLine = forwardRef<CartLineHandle, {
     background: '#f1f5f9', border: '.5px solid #cbd5e1',
     borderRadius: 6, padding: '3px 10px',
     fontSize: 13, fontWeight: 600,
-    width: 52, textAlign: 'center', color: '#1e1b4b',
+    width: 80, textAlign: 'center', color: '#1e1b4b',
   };
 
   return (
