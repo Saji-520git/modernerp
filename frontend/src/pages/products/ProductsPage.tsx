@@ -508,29 +508,24 @@ export default function ProductsPage() {
         barcode:       c.barcode.trim() || null,
       }));
 
-    // Guard: a Purchase/Sales unit that differs from the base unit is meaningless
-    // without a conversion rule — stock would not convert on confirm. Block save.
-    const effectiveBaseUnitId = form.baseUnitId || form.unitId;
-    if (form.purchaseUnitId && effectiveBaseUnitId && form.purchaseUnitId !== effectiveBaseUnitId) {
-      const hasConversion = conversions.some((c) => c.fromUnitId === form.purchaseUnitId);
-      if (!hasConversion) {
+    // v1.0.45 — unit validation.
+    const effectiveBase = form.baseUnitId || form.unitId || '';
+
+    // PURCHASE UNIT — hard block.
+    // Purchase unit needs a conversion FROM it TO the base unit so stock math
+    // works correctly on purchase confirm.
+    if (form.purchaseUnitId && form.purchaseUnitId !== effectiveBase) {
+      const hasPurchaseConv = conversions.some((c) => c.fromUnitId === form.purchaseUnitId);
+      if (!hasPurchaseConv) {
         setFormErr(
-          'Purchase Unit differs from Base Unit but no conversion is configured. ' +
-          'Add a conversion rule below (e.g. 1 Box = 10 Piece) before saving.',
+          'Purchase Unit differs from Base Unit. Add a conversion: ' +
+          '1 [Purchase Unit] = X [Base Unit] (e.g. 1 Bottle = 5000 Gram).',
         );
         return;
       }
     }
-    if (form.salesUnitId && effectiveBaseUnitId && form.salesUnitId !== effectiveBaseUnitId) {
-      const hasConversion = conversions.some((c) => c.fromUnitId === form.salesUnitId);
-      if (!hasConversion) {
-        setFormErr(
-          'Sales Unit differs from Base Unit but no conversion is configured. ' +
-          'Add a conversion rule below (e.g. 1 Box = 10 Piece) before saving.',
-        );
-        return;
-      }
-    }
+
+    // SALES UNIT — warning only, do NOT block save (handled via hint text in UI).
 
     setSaving(true);
     try {
@@ -1484,6 +1479,9 @@ export default function ProductsPage() {
                         <option key={u.id} value={u.id}>{u.name} ({u.shortCode})</option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                      Stock is always counted in this unit. For loose items sold by weight, use the smallest unit here (e.g. Gram, not Bottle).
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Purchase Unit</label>
@@ -1497,6 +1495,9 @@ export default function ProductsPage() {
                         <option key={u.id} value={u.id}>{u.name} ({u.shortCode})</option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      If different from base unit, add a conversion rule below.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Sales / POS Unit</label>
@@ -1510,6 +1511,9 @@ export default function ProductsPage() {
                         <option key={u.id} value={u.id}>{u.name} ({u.shortCode})</option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      For best results, match this to the Base Unit. Mismatches may affect stock deduction accuracy.
+                    </p>
                   </div>
                 </div>
               </section>
