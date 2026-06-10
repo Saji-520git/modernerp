@@ -26,6 +26,10 @@ import { daysUntilExpiry } from '../../services/pos';
 import { categoriesApi, brandsApi } from '../../services/masterData';
 import SearchableSelect from '../../components/common/SearchableSelect';
 
+// v1.0.44 — localStorage key for the in-progress product-form draft. Lets a
+// half-filled form survive a session expiry / reload so the user can recover it.
+const PRODUCT_DRAFT_KEY = 'brocode_product_draft';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type FilterActive = 'true' | 'false' | 'all';
@@ -182,6 +186,9 @@ export default function ProductsPage() {
   const [formErr, setFormErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // ── Form draft recovery (v1.0.44) ──
+  const [draftFound, setDraftFound] = useState<{ form: FormState; savedAt: string } | null>(null);
+
   // ── Barcode check ──
   const [barcodeCheck, setBarcodeCheck] = useState<BarcodeCheckState | null>(null);
   const checkIdRef = useRef(0);
@@ -266,6 +273,40 @@ export default function ProductsPage() {
       })
       .catch(() => {/* no conversions yet */});
   }, [editingProduct]);
+
+  // v1.0.44 — auto-save the in-progress form to localStorage (debounced 1s).
+  // Only while the modal is open and a name has been entered.
+  useEffect(() => {
+    if (!modalOpen) return;
+    if (!form.name?.trim()) return;
+
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          PRODUCT_DRAFT_KEY,
+          JSON.stringify({ form, savedAt: new Date().toISOString() }),
+        );
+      } catch {
+        // localStorage full — ignore
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [form, modalOpen]);
+
+  // v1.0.44 — on mount, surface any saved draft so the user can recover it.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PRODUCT_DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft?.form?.name?.trim()) {
+        setDraftFound(draft);
+      }
+    } catch {
+      localStorage.removeItem(PRODUCT_DRAFT_KEY);
+    }
+  }, []);
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -404,6 +445,7 @@ export default function ProductsPage() {
   }
 
   function closeModal() {
+    localStorage.removeItem(PRODUCT_DRAFT_KEY); // v1.0.44 — discard draft on cancel/close
     setModalOpen(false);
     checkIdRef.current++; // cancel any in-flight barcode check
     setBarcodeCheck(null);
@@ -503,6 +545,8 @@ export default function ProductsPage() {
           await unitsApi.setConversions(created.id, convPayload);
         }
       }
+      localStorage.removeItem(PRODUCT_DRAFT_KEY); // v1.0.44 — saved successfully, drop draft
+      setDraftFound(null);
       closeModal();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })
@@ -632,6 +676,42 @@ export default function ProductsPage() {
           <RefreshCw size={14} />
         </button>
       </div>
+
+      {/* ── Draft recovery banner (v1.0.44) ─────────────────────────────────── */}
+      {draftFound && (
+        <div className="mx-6 mb-4 mt-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              Unsaved product draft found
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              "{draftFound.form.name}" — saved at{' '}
+              {new Date(draftFound.savedAt).toLocaleTimeString()}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setForm(draftFound.form);
+                setModalOpen(true);
+                setDraftFound(null);
+              }}
+              className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 transition"
+            >
+              Continue editing
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem(PRODUCT_DRAFT_KEY);
+                setDraftFound(null);
+              }}
+              className="px-3 py-1.5 bg-white text-amber-700 text-xs font-medium rounded-lg border border-amber-300 hover:bg-amber-50 transition"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Table ───────────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-auto">

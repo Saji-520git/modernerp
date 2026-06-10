@@ -70,6 +70,12 @@ export default function App() {
   // clears the auth store, and the Protected guard redirects to /login.
   const [checking, setChecking] = useState(true);
 
+  // v1.0.44 — session-expiry banner. The axios interceptor dispatches
+  // 'auth:expired' on a 401 and delays the actual logout by 5s; this banner
+  // counts down so the cashier sees the warning before being redirected.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+
   useEffect(() => {
     let cancelled = false;
     const token = useAuthStore.getState().accessToken;
@@ -78,6 +84,31 @@ export default function App() {
       .catch(() => { /* interceptor handles 401 logout */ })
       .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const handler = () => {
+      setSessionExpired(true);
+      setCountdown(5);
+      interval = setInterval(() => {
+        setCountdown((c) => {
+          if (c <= 1) {
+            if (interval) clearInterval(interval);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+    };
+
+    window.addEventListener('auth:expired', handler);
+
+    return () => {
+      window.removeEventListener('auth:expired', handler);
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
   if (checking) {
@@ -92,8 +123,27 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
+    <>
+      {sessionExpired && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white px-4 py-3 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">⚠</span>
+            <div>
+              <p className="font-bold text-sm">Session Expired</p>
+              <p className="text-xs opacity-90">
+                Redirecting to login in {countdown}s. Please note any unsaved information.
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs opacity-75">
+              Your data is safe. Log back in to continue.
+            </p>
+          </div>
+        </div>
+      )}
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
 
       <Route
         path="/"
@@ -271,6 +321,7 @@ export default function App() {
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
