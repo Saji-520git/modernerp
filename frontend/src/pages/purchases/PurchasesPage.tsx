@@ -2108,6 +2108,11 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
                     placeholder="0.00"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
+                  {!newProduct.priceCents && (
+                    <p className="text-amber-500 text-xs mt-1">
+                      ⚠️ No selling price set — product will not appear in POS until price is added in Products page
+                    </p>
+                  )}
                 </div>
               </div>
               {addProductError && (
