@@ -53,6 +53,10 @@ export default function SearchableSelect({
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, query]);
 
+  const exactMatchExists = options.some(
+    (o) => o.label.toLowerCase() === query.trim().toLowerCase(),
+  );
+
   // Measure the trigger and position the fixed dropdown right below it.
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -178,7 +182,7 @@ export default function SearchableSelect({
             )}
           </div>
 
-          {onAddNew && (
+          {onAddNew && query.trim().length > 0 && !exactMatchExists && (
             <div className="border-t border-slate-100">
               <button
                 type="button"
