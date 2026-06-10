@@ -1500,6 +1500,26 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
     queryFn: inventoryApi.getWarehouses,
   });
 
+  // Auto-select the default (Main) warehouse once the list loads, unless one is
+  // already chosen (e.g. when editing an existing PO). Runs only on warehouses
+  // change so user selections are never overridden.
+  useEffect(() => {
+    if (!warehouses?.length) return;
+    if (warehouseId) return;
+
+    const defaultWh =
+      warehouses.find((w) => w.isDefault) ??
+      warehouses.find(
+        (w) => w.code === 'MAIN' || w.name?.toLowerCase().includes('main'),
+      ) ??
+      warehouses[0];
+
+    if (defaultWh?.id) {
+      setWarehouseId(defaultWh.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouses]);
+
   const { data: products = [] } = useQuery({
     queryKey: ['purchase-products'],
     queryFn: purchasesApi.listProducts,
