@@ -107,4 +107,33 @@ export const suppliersService = {
       data: { isActive: !existing.isActive },
     });
   },
+
+  // ─── Smart delete ─────────────────────────────────────────────────────────
+  // Client-facing "Delete" always succeeds; behaviour is decided here:
+  //   • Supplier with ANY purchase history → soft delete (isActive:false) so
+  //     the record (and its purchases) stays intact.
+  //   • Supplier with NO history → permanently removed from the DB.
+  // A product may reference this supplier as its default supplier
+  // (Product.defaultSupplierId, nullable) without any purchase existing, so we
+  // clear that link first before the delete to avoid a FK constraint.
+  // SupplierPayment and PurchaseReturn both require a purchaseId, so none can
+  // exist when purchaseCount === 0 — nothing else needs clearing.
+  smartDelete: async (id: string): Promise<void> => {
+    const existing = await prisma.supplier.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw new HttpError(404, 'Supplier not found');
+
+    const purchaseCount = await prisma.purchase.count({ where: { supplierId: id } });
+
+    if (purchaseCount > 0) {
+      // History exists — keep the record, just mark it inactive.
+      await prisma.supplier.update({ where: { id }, data: { isActive: false } });
+      return;
+    }
+
+    // No history — safe to remove permanently. Clear default-supplier links first.
+    await prisma.$transaction([
+      prisma.product.updateMany({ where: { defaultSupplierId: id }, data: { defaultSupplierId: null } }),
+      prisma.supplier.delete({ where: { id } }),
+    ]);
+  },
 };

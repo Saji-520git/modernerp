@@ -13,3 +13,7 @@ router.get('/:id', requirePermission('view_contacts'), h(ctrl.getOne));
 router.post('/', requirePermission('manage_contacts'), ctrl.create);
 router.put('/:id', requirePermission('manage_contacts'), ctrl.update);
 router.patch('/:id/toggle-active', requirePermission('manage_contacts'), ctrl.toggleActive);
+
+// Smart delete (hard-delete when no purchase history, else soft-delete).
+// Registered after the specific routes above so it never shadows them.
+router.delete('/:id', requirePermission('manage_contacts'), h(ctrl.remove));

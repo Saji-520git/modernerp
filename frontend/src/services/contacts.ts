@@ -88,6 +88,11 @@ export const suppliersApi = {
 
   toggleActive: (id: string): Promise<Supplier> =>
     api.patch(`/suppliers/${id}/toggle-active`).then((r) => r.data),
+
+  // Smart delete: hard-delete when the supplier has no purchase history,
+  // otherwise soft-delete (isActive:false). Always resolves on success.
+  remove: (id: string): Promise<{ success: boolean }> =>
+    api.delete(`/suppliers/${id}`).then((r) => r.data),
 };
 
 // ─── Customers API ────────────────────────────────────────────────────────────
@@ -107,4 +112,9 @@ export const customersApi = {
 
   toggleActive: (id: string): Promise<Customer> =>
     api.patch(`/customers/${id}/toggle-active`).then((r) => r.data),
+
+  // Smart delete: hard-delete when the customer has no sales history,
+  // otherwise soft-delete (isActive:false). Always resolves on success.
+  remove: (id: string): Promise<{ success: boolean }> =>
+    api.delete(`/customers/${id}`).then((r) => r.data),
 };

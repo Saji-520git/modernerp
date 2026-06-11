@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Pencil, ToggleLeft, ToggleRight, X,
-  ChevronLeft, ChevronRight, Building,
+  ChevronLeft, ChevronRight, Building, Trash2, Loader2,
 } from 'lucide-react';
 import {
   suppliersApi,
@@ -100,6 +100,8 @@ export default function SuppliersPage() {
   const [page, setPage]     = useState(1);
   const [modal, setModal]   = useState<{ mode: 'create' } | { mode: 'edit'; item: Supplier } | null>(null);
   const [modalError, setModalError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [listToast, setListToast]       = useState<string | null>(null);
 
   // ── Suppliers list ──────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
@@ -145,6 +147,21 @@ export default function SuppliersPage() {
   });
 
   const toggleMutation = useMutation({ mutationFn: suppliersApi.toggleActive, onSuccess: invalidate });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => suppliersApi.remove(id),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      invalidate();
+      setListToast('Supplier removed');
+      setTimeout(() => setListToast(null), 3000);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Delete failed';
+      setListToast(msg);
+      setTimeout(() => setListToast(null), 4000);
+    },
+  });
 
   const handleSave = (body: ContactBody) => {
     setModalError('');
@@ -272,6 +289,13 @@ export default function SuppliersPage() {
                           ? <ToggleRight size={18} className="text-green-500" />
                           : <ToggleLeft  size={18} className="text-slate-400" />}
                       </button>
+                      <button
+                        onClick={() => setDeleteTarget(item)}
+                        className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -319,6 +343,57 @@ export default function SuppliersPage() {
           loading={isSaving}
           error={modalError}
         />
+      )}
+
+      {/* ── Delete confirmation ─────────────────────────────────────────────── */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => { if (!deleteMutation.isPending) setDeleteTarget(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Delete Supplier</h3>
+                <p className="text-xs text-slate-500">{deleteTarget.name}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 mb-5">
+              This supplier will be permanently removed if they have no transaction
+              history. If they have past purchases, they will be hidden instead.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 py-2 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+              >
+                {deleteMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── List toast ──────────────────────────────────────────────────────── */}
+      {listToast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {listToast}
+        </div>
       )}
     </div>
   );

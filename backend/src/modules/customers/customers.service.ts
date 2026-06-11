@@ -115,4 +115,32 @@ export const customersService = {
       data: { isActive: !existing.isActive },
     });
   },
+
+  // ─── Smart delete ─────────────────────────────────────────────────────────
+  // Client-facing "Delete" always succeeds; behaviour is decided here:
+  //   • Customer with ANY sales history → soft delete (isActive:false) so the
+  //     record (and its sales) stays intact and just hides from active lists.
+  //   • Customer with NO history → permanently removed from the DB.
+  // Held POS drafts reference customerId (nullable) and can exist without any
+  // sale, so we unlink them first (set customerId:null) before the delete to
+  // avoid a FK constraint. CustomerPayment requires a saleId, so none can
+  // exist when saleCount === 0 — nothing else needs clearing.
+  smartDelete: async (id: string): Promise<void> => {
+    const existing = await prisma.customer.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw new HttpError(404, 'Customer not found');
+
+    const saleCount = await prisma.sale.count({ where: { customerId: id } });
+
+    if (saleCount > 0) {
+      // History exists — keep the record, just hide it.
+      await prisma.customer.update({ where: { id }, data: { isActive: false } });
+      return;
+    }
+
+    // No history — safe to remove permanently. Unlink any held drafts first.
+    await prisma.$transaction([
+      prisma.posDraft.updateMany({ where: { customerId: id }, data: { customerId: null } }),
+      prisma.customer.delete({ where: { id } }),
+    ]);
+  },
 };

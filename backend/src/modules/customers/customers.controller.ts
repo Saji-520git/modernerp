@@ -24,3 +24,8 @@ export const update: RequestHandler = async (req, res) => {
 export const toggleActive: RequestHandler = async (req, res) => {
   res.json(await customersService.toggleActive(req.params.id));
 };
+
+export const remove: RequestHandler = async (req, res) => {
+  await customersService.smartDelete(req.params.id);
+  res.json({ success: true });
+};
