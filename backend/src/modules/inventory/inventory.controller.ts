@@ -73,6 +73,11 @@ export const cleanupPhantomStock: RequestHandler = h(async (_req, res) => {
   res.status(200).json(result);
 });
 
+export const repairStockQty: RequestHandler = h(async (_req, res) => {
+  const result = await inventoryService.repairStockQty();
+  res.json(result);
+});
+
 export const writeOff: RequestHandler = h(async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = writeOffSchema.parse(req.body);

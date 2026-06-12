@@ -11,6 +11,11 @@ router.get('/low-stock', requirePermission('view_inventory'), ctrl.getLowStock);
 router.get('/warehouses', ctrl.getWarehouses);   // needed by many pages — open to all auth users
 router.get('/movements', requirePermission('view_inventory'), ctrl.listMovements);
 
+// One-shot maintenance — repair drifted/negative Stock.qty from batch sums.
+// ADMIN-only (manage_users is the project-wide ADMIN gate). Placed before any
+// /:id-style routes so there is no path collision.
+router.get('/repair-stock', requirePermission('manage_users'), ctrl.repairStockQty);
+
 router.post('/ensure-stock-records',   requirePermission('adjust_inventory'), ctrl.ensureStockRecords);
 router.post('/cleanup-phantom-stock',  requirePermission('adjust_inventory'), ctrl.cleanupPhantomStock);
 router.post('/adjustments', requirePermission('adjust_inventory'), ctrl.createAdjustment);

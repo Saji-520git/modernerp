@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertFromBaseUnit } from '../../utils/unit-converter.js';
 import { getBatchSummary, getBatchDetail } from '../../utils/batch-expiry.js';
+import { recomputeStockQty, repairNegativeStockQty } from '../../utils/stock-utils.js';
 import type {
   StockListInput,
   AdjustmentInput,
@@ -427,24 +428,29 @@ export const inventoryService = {
       where: { productId_warehouseId: { productId, warehouseId } },
     });
     const currentQty = current ? Number(current.qty) : 0;
-    const newQty = currentQty + qty;
-
-    // Reject negative stock
-    if (newQty < 0) {
-      throw new HttpError(
-        400,
-        `Adjustment would result in negative stock. Current: ${currentQty}, adjustment: ${qty}`,
-      );
-    }
+    // Note: negative adjustments are FLOORED at 0 inside the transaction below
+    // (Stock.qty can never go below 0). We no longer reject here — the pre-tx
+    // currentQty could itself be stale/drifted, so the authoritative clamp is
+    // computed from a fresh in-transaction read.
 
     logger.info({ productId, warehouseId, qty, reason }, 'Stock adjustment starting');
 
     const result = await prisma.$transaction(async (tx) => {
-      // Upsert stock
+      // ── FIX (v1.0.57): floor at 0 using a FRESH in-transaction read ─────────
+      // Stock.qty is Decimal(18,4); convert with Number() for the arithmetic.
+      const currentStockRow = await tx.stock.findUnique({
+        where:  { productId_warehouseId: { productId, warehouseId } },
+        select: { qty: true },
+      });
+      const freshCurrentQty = Number(currentStockRow?.qty ?? 0);
+      const adjustedQty = Math.max(0, freshCurrentQty + Number(qty));
+
+      // Upsert stock — set the floored absolute value (never increment, so a
+      // pre-existing drifted/negative qty cannot propagate).
       const stock = await tx.stock.upsert({
         where: { productId_warehouseId: { productId, warehouseId } },
-        update: { qty: { increment: qty } },
-        create: { productId, warehouseId, qty },
+        update: { qty: adjustedQty },
+        create: { productId, warehouseId, qty: Math.max(0, Number(qty)) },
       });
 
       // Record movement
@@ -509,7 +515,7 @@ export const inventoryService = {
       return { stock, movement };
     });
 
-    logger.info({ productId, newQty }, 'Stock adjustment completed');
+    logger.info({ productId, newQty: Number(result.stock.qty) }, 'Stock adjustment completed');
 
     return {
       message: 'Adjustment applied',
@@ -666,12 +672,9 @@ export const inventoryService = {
         data:  { qty: { decrement: qty } },
       });
 
-      // Decrement aggregate stock
-      await tx.stock.upsert({
-        where:  { productId_warehouseId: { productId: batch.productId, warehouseId } },
-        update: { qty: { decrement: qty } },
-        create: { productId: batch.productId, warehouseId, qty: 0 },
-      });
+      // Recompute aggregate stock from the (already-decremented) batch rows.
+      // The batch is the source of truth, so Stock.qty can never go negative.
+      await recomputeStockQty(tx, batch.productId, warehouseId);
 
       // Record movement with batchId link
       await tx.stockMovement.create({
@@ -714,6 +717,13 @@ export const inventoryService = {
       reason,
       expense: { id: expenseId!, amount: lossCents, reference: woReference },
     };
+  },
+
+  // ─── Repair drifted/negative Stock.qty ─────────────────────────────────────
+  // One-shot maintenance: recompute every negative Stock.qty from its positive
+  // StockBatch sum (floored at 0). Returns how many rows were repaired.
+  async repairStockQty() {
+    return repairNegativeStockQty();
   },
 
   async listMovements(input: MovementsListInput) {

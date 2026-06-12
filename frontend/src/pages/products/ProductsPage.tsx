@@ -5,7 +5,7 @@ import {
   Plus, Search, X, ChevronLeft, ChevronRight, Edit2,
   AlertTriangle, Clock, Package, ExternalLink, Tag,
   CheckCircle, XCircle, Barcode, Eye, RefreshCw,
-  Trash2, Loader2,
+  Trash2, Loader2, RotateCcw,
 } from 'lucide-react';
 import axios from 'axios';
 import {
@@ -171,6 +171,8 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [page, setPage] = useState(1);
+  // ── Recycle bin: show soft-deleted (inactive) products ──
+  const [showDeleted, setShowDeleted] = useState(false);
 
   // ── Delete confirmation + list-level toast ──
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
@@ -208,11 +210,11 @@ export default function ProductsPage() {
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: productsData, isLoading, refetch } = useQuery({
-    queryKey: ['products', search, categoryFilter, brandFilter, page],
+    queryKey: ['products', search, categoryFilter, brandFilter, page, showDeleted],
     queryFn: () =>
       productsApi.list({
         search: search || undefined,
-        isActive: 'true',
+        isActive: showDeleted ? 'false' : 'true',
         categoryId: categoryFilter || undefined,
         brandId: brandFilter || undefined,
         page,
@@ -336,6 +338,21 @@ export default function ProductsPage() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Delete failed';
+      setListToast(msg);
+      setTimeout(() => setListToast(null), 4000);
+    },
+  });
+
+  // Restore (reactivate) a soft-deleted product via the existing toggle-active endpoint.
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => productsApi.toggleActive(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setListToast('Product restored');
+      setTimeout(() => setListToast(null), 3000);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Restore failed';
       setListToast(msg);
       setTimeout(() => setListToast(null), 4000);
     },
@@ -603,6 +620,18 @@ export default function ProductsPage() {
             <Barcode size={14} /> Labels
           </button>
           <button
+            type="button"
+            onClick={() => { setShowDeleted((d) => !d); setPage(1); }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+              showDeleted
+                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+            }`}
+          >
+            <Trash2 size={14} />
+            {showDeleted ? 'Hide Deleted' : 'Recently Deleted'}
+          </button>
+          <button
             onClick={openNew}
             className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition shadow-sm"
           >
@@ -610,6 +639,14 @@ export default function ProductsPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Recycle-bin banner ──────────────────────────────────────────────── */}
+      {showDeleted && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-2 text-sm text-red-700 flex items-center gap-2 shrink-0">
+          <AlertTriangle size={15} />
+          Showing deleted products. These are hidden from POS and reports. Click Restore to reactivate.
+        </div>
+      )}
 
       {/* ── Filter bar ──────────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-slate-100 px-6 py-2.5 flex flex-wrap items-center gap-3 shrink-0">
@@ -822,36 +859,48 @@ export default function ProductsPage() {
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button
-                          onClick={() => setDrawer(p)}
-                          title="View stock"
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
-                        >
-                          <Eye size={14} />
-                        </button>
-                        <button
-                          onClick={() => openEdit(p)}
-                          title="Edit"
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => navigate(`/barcode-labels?sku=${encodeURIComponent(p.sku)}`)}
-                          title="Print labels"
-                          className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition"
-                        >
-                          <Tag size={14} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(p)}
-                          title="Delete"
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {showDeleted ? (
+                        <div className="flex items-center justify-center">
+                          <button
+                            onClick={() => restoreMutation.mutate(p.id)}
+                            disabled={restoreMutation.isPending}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition"
+                          >
+                            <RotateCcw size={13} /> Restore
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                          <button
+                            onClick={() => setDrawer(p)}
+                            title="View stock"
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            onClick={() => openEdit(p)}
+                            title="Edit"
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => navigate(`/barcode-labels?sku=${encodeURIComponent(p.sku)}`)}
+                            title="Print labels"
+                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition"
+                          >
+                            <Tag size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(p)}
+                            title="Delete"
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

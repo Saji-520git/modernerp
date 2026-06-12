@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, getUnitPrice } from '../../utils/unit-converter.js';
 import { getBatchSummary, deductBatchesFEFO } from '../../utils/batch-expiry.js';
+import { recomputeStockQty } from '../../utils/stock-utils.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
@@ -396,15 +397,33 @@ export const posService = {
         }
 
         // Deduct from StockBatch rows in FEFO order (earliest expiry first).
-        // If no batch rows exist (pre-batch-tracking stock), this is a no-op.
-        await deductBatchesFEFO(tx, item.productId, warehouseId, item.baseQty, expiredStockPolicy !== 'BLOCK');
+        // If no batch rows exist (pre-batch-tracking stock), this is a no-op and
+        // returns 0 units deducted.
+        const deductedFromBatches = await deductBatchesFEFO(
+          tx, item.productId, warehouseId, item.baseQty, expiredStockPolicy !== 'BLOCK',
+        );
 
-        // Decrement the Stock aggregate table
-        await tx.stock.upsert({
-          where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
-          update: { qty: { decrement: item.baseQty } },
-          create: { productId: item.productId, warehouseId, qty: -item.baseQty },
-        });
+        if (deductedFromBatches > 0) {
+          // Batch-tracked product: batches are the source of truth. Recompute the
+          // aggregate Stock.qty from the (already-decremented) batch sum so it can
+          // never go negative. (Replaces the old `decrement` upsert whose `create`
+          // branch wrote a negative qty — a bug.)
+          await recomputeStockQty(tx, item.productId, warehouseId);
+        } else {
+          // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
+          // so the batch sum is 0 and recompute would WIPE legitimate stock.
+          // Keep the legacy aggregate decrement, floored at 0.
+          const cur = await tx.stock.findUnique({
+            where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
+            select: { qty: true },
+          });
+          const newQty = Math.max(0, Number(cur?.qty ?? 0) - Number(item.baseQty));
+          await tx.stock.upsert({
+            where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
+            update: { qty: newQty },
+            create: { productId: item.productId, warehouseId, qty: 0 },
+          });
+        }
         await tx.stockMovement.create({
           data: {
             productId: item.productId,

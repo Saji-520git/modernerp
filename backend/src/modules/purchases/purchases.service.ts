@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
+import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 
@@ -299,22 +300,6 @@ export const purchaseService = {
           ? line.unitCostCents
           : Math.round(line.unitCostCents / factor.toNumber());
 
-        // Upsert stock (always in base units)
-        await tx.stock.upsert({
-          where: {
-            productId_warehouseId: {
-              productId: line.productId,
-              warehouseId: purchase.warehouseId,
-            },
-          },
-          create: {
-            productId: line.productId,
-            warehouseId: purchase.warehouseId,
-            qty: baseQty,
-          },
-          update: { qty: { increment: baseQty } },
-        });
-
         // Create PURCHASE_IN movement
         await tx.stockMovement.create({
           data: {
@@ -345,6 +330,13 @@ export const purchaseService = {
             expiryDate:     (line as any).expiryDate ?? null,
           },
         });
+
+        // Recompute aggregate Stock.qty from the batch rows. MUST run AFTER the
+        // StockBatch.create above so the new batch is included in the sum. This
+        // replaces the previous direct `increment` upsert and guarantees the
+        // aggregate stays in lock-step with the batch source of truth (never
+        // negative).
+        await recomputeStockQty(tx, line.productId, purchase.warehouseId);
 
         // Set receivedQty INSIDE the confirm transaction so a purchase return is
         // always possible even if the post-transaction GRN record (createFullReceiptRecord)
