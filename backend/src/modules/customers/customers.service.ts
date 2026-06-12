@@ -46,6 +46,7 @@ export const customersService = {
     });
 
     // Subtract returns against this customer's confirmed sales
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const returnsAgg = await (prisma as any).saleReturn.aggregate({
       where: { sale: { customerId: id, status: 'CONFIRMED' } },
       _sum: { totalCents: true },

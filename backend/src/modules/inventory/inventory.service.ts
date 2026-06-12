@@ -459,6 +459,53 @@ export const inventoryService = {
         },
       });
 
+      // ── FIX 1: offsetting P&L record (loss/gain) ───────────────────────────
+      // A stock adjustment changes inventory value, so it must hit P&L. A
+      // reduction (qty < 0) is a loss expense; an increase (qty > 0) is a gain.
+      const adjProduct = await (tx as any).product.findUnique({
+        where: { id: productId },
+        select: { costCents: true, name: true },
+      });
+
+      const valueCents = Math.abs(
+        Math.round(Number(qty) * (adjProduct?.costCents ?? 0)),
+      );
+
+      if (valueCents > 0) {
+        const categoryName = Number(qty) < 0
+          ? 'Stock Adjustment Loss'
+          : 'Stock Adjustment Gain';
+        const categoryColor = Number(qty) < 0 ? '#f97316' : '#22c55e';
+
+        // ExpenseCategory.name is unique, but findFirst + create keeps the
+        // soft-delete (deletedAt) filter explicit and matches the write-off path.
+        let adjCategory = await (tx as any).expenseCategory.findFirst({
+          where: { name: categoryName, deletedAt: null },
+          select: { id: true },
+        });
+        if (!adjCategory) {
+          adjCategory = await (tx as any).expenseCategory.create({
+            data: { name: categoryName, color: categoryColor, isActive: true },
+            select: { id: true },
+          });
+        }
+
+        const expenseData: any = {
+          categoryId:    adjCategory.id,
+          amount:        valueCents,
+          description:
+            `Stock ${Number(qty) < 0 ? 'loss' : 'gain'}: ` +
+            `${adjProduct?.name} × ${Math.abs(Number(qty))} — ${reason}`,
+          date:          new Date(),
+          paymentMethod: 'CASH',
+          reference:     `ADJ-${Date.now()}`,
+          isRecurring:   false,
+          createdById:   userId,
+        };
+
+        await (tx as any).expense.create({ data: expenseData });
+      }
+
       return { stock, movement };
     });
 

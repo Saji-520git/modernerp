@@ -96,8 +96,8 @@ export const expensesApi = {
   getRecurringDue: (): Promise<Expense[]> =>
     api.get('/expenses/recurring').then(r => r.data),
 
-  deleteRecurringTemplate: (id: string): Promise<void> =>
-    api.delete(`/expenses/recurring/${id}`).then(() => undefined),
+  deleteRecurringTemplate: (id: string): Promise<{ success: boolean; deletedOccurrences: number }> =>
+    api.delete(`/expenses/recurring/${id}`).then(r => r.data),
 
   createExpense: (payload: CreateExpensePayload): Promise<Expense> =>
     api.post('/expenses', payload).then(r => r.data),
@@ -105,7 +105,7 @@ export const expensesApi = {
   updateExpense: (id: string, payload: Partial<CreateExpensePayload>): Promise<Expense> =>
     api.patch(`/expenses/${id}`, payload).then(r => r.data),
 
-  deleteExpense: (id: string): Promise<{ success: boolean }> =>
+  deleteExpense: (id: string): Promise<{ success: boolean; warning: string | null }> =>
     api.delete(`/expenses/${id}`).then(r => r.data),
 
   getMonthlySummary: (params?: { year?: number; month?: number }): Promise<MonthlySummary> =>

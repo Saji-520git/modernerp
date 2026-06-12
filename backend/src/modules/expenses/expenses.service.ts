@@ -199,11 +199,22 @@ export const expensesService = {
   deleteExpense: async (id: string, userId: string) => {
     const existing = await (prisma as any).expense.findFirst({ where: { id, deletedAt: null } });
     if (!existing) throw new HttpError(404, 'Expense not found');
+
+    // Deleting a current-FY expense changes P&L for the live financial year.
+    const currentYear = new Date().getFullYear();
+    const yearStart   = new Date(`${currentYear}-01-01`);
+    const isCurrentYear = existing.date >= yearStart;
+
     await (prisma as any).expense.update({
       where: { id },
       data: { deletedAt: new Date(), deletedById: userId },
     });
-    return { success: true };
+    return {
+      success: true,
+      warning: isCurrentYear
+        ? 'This expense was in the current financial year. P&L reports have been updated.'
+        : null,
+    };
   },
 
   deleteRecurringTemplate: async (id: string, userId: string) => {
@@ -211,6 +222,12 @@ export const expensesService = {
       where: { id, isRecurring: true, deletedAt: null },
     });
     if (!template) throw new HttpError(404, 'Recurring expense not found');
+
+    // Count occurrences before the cascade so we can report how many P&L rows
+    // are being removed alongside the template.
+    const occurrenceCount = await (prisma as any).expense.count({
+      where: { recurringTemplateId: id, deletedAt: null },
+    });
 
     const now = new Date();
     await (prisma as any).expense.update({
@@ -225,7 +242,7 @@ export const expensesService = {
       data:  { deletedAt: now, deletedById: userId },
     });
 
-    return { success: true };
+    return { success: true, deletedOccurrences: occurrenceCount };
   },
 
   // ── Recurring expenses due ────────────────────────────────────────────────

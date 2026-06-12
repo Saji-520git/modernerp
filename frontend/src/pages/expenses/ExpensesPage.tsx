@@ -269,7 +269,13 @@ function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
   const [editItem,   setEditItem]   = useState<Expense | null>(null);
   const [deleteId,   setDeleteId]   = useState<string | null>(null);
   const [saveError,  setSaveError]  = useState('');
+  const [toast,      setToast]      = useState<string | null>(null);
   const PAGE_SIZE = 25;
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const { data: summary } = useQuery({
     queryKey: ['expense-summary'],
@@ -302,7 +308,11 @@ function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) => expensesApi.deleteExpense(id),
-    onSuccess: () => { invalidate(); setDeleteId(null); },
+    onSuccess: (data: any) => {
+      invalidate();
+      setDeleteId(null);
+      if (data?.warning) showToast(data.warning);
+    },
     onError:   (e: any) => setSaveError(e?.response?.data?.message ?? e?.message ?? 'Failed to delete'),
   });
 
@@ -458,6 +468,12 @@ function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
       {showAdd && <ExpenseModal categories={categories} onSave={p => createMutation.mutate(p)} onClose={() => { setShowAdd(false); setSaveError(''); }} saving={createMutation.isPending} error={saveError} />}
       {editItem && <ExpenseModal initial={editItem} categories={categories} onSave={p => updateMutation.mutate({ id: editItem.id, p })} onClose={() => { setEditItem(null); setSaveError(''); }} saving={updateMutation.isPending} error={saveError} />}
       {deleteId && <DeleteConfirm msg="Delete this expense? This cannot be undone." onConfirm={() => deleteMutation.mutate(deleteId!)} onClose={() => setDeleteId(null)} pending={deleteMutation.isPending} />}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-sm font-medium z-[9999] bg-amber-600 text-white max-w-sm">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -559,7 +575,13 @@ function RecurringTab({ categories }: { categories: ExpenseCategory[] }) {
   const qc = useQueryClient();
   const [recordItem, setRecordItem] = useState<Expense | null>(null);
   const [saveError,  setSaveError]  = useState('');
+  const [toast,      setToast]      = useState<string | null>(null);
   const today = new Date().getDate();
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const { data: recurring = [], isLoading } = useQuery<Expense[]>({
     queryKey: ['expense-recurring'],
@@ -580,10 +602,13 @@ function RecurringTab({ categories }: { categories: ExpenseCategory[] }) {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => expensesApi.deleteRecurringTemplate(id),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: ['expense-recurring'] });
       qc.invalidateQueries({ queryKey: ['expense-summary'] });
+      if (data?.deletedOccurrences > 0) {
+        showToast(`Deleted recurring template and ${data.deletedOccurrences} recorded expense(s). P&L history updated.`);
+      }
     },
     onError: (e: any) => setSaveError(e?.response?.data?.message ?? e?.message ?? 'Failed to delete recurring expense'),
   });
@@ -674,6 +699,12 @@ function RecurringTab({ categories }: { categories: ExpenseCategory[] }) {
           saving={createMutation.isPending}
           error={saveError}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-sm font-medium z-[9999] bg-amber-600 text-white max-w-sm">
+          {toast}
+        </div>
       )}
     </div>
   );

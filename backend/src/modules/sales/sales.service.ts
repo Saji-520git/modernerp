@@ -374,6 +374,7 @@ export const salesService = {
 
     // Sales returns reduce what the customer effectively owes (v1.0.54).
     // effectiveTotal = totalCents - sum(returns); cap payment at effectiveTotal - paidCents.
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const returnsAgg = await prisma.saleReturn.aggregate({
       where: { saleId: id },
       _sum: { totalCents: true },

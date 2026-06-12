@@ -55,6 +55,7 @@ export const customerPaymentService = {
     if (sale.status !== 'CONFIRMED') throw new HttpError(400, 'Sale must be CONFIRMED to record payment');
 
     // Net the invoice total against any returns before computing what is owed
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const returnsAgg = await (prisma as any).saleReturn.aggregate({
       where: { saleId },
       _sum: { totalCents: true },

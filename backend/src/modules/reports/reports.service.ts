@@ -97,14 +97,24 @@ export const reportsService = {
             GROUP BY 1 ORDER BY 1
           `;
 
-    const totalRevenue         = summary._sum.totalCents ?? 0;
+    let   totalRevenue         = summary._sum.totalCents ?? 0;
     const totalCogs            = Number(cogsRaw[0]?.cogs ?? 0);
     const count                = summary._count;
     const prevPeriodRevenue    = prevPeriodRaw._sum.totalCents ?? 0;
 
+    // ── FIX 2: net revenue of sales returns over the same period ─────────────
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
+    const salesReturnsAgg = await prisma.saleReturn.aggregate({
+      where: { createdAt: { gte: from, lte: to } },
+      _sum:  { totalCents: true },
+    });
+    const returnedRevenueCents = salesReturnsAgg._sum.totalCents ?? 0;
+    totalRevenue = Math.max(0, totalRevenue - returnedRevenueCents);
+
     return {
       summary: {
         totalRevenueCents:      totalRevenue,
+        returnedRevenueCents,
         totalTaxCents:          summary._sum.taxCents ?? 0,
         totalDiscountCents:     summary._sum.discountCents ?? 0,
         totalPaidCents:         summary._sum.paidCents ?? 0,
@@ -255,15 +265,36 @@ export const reportsService = {
       `,
     ]);
 
+    // ── FIX 4: net product revenue of returns over the same period ───────────
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
+    const productReturnLines = await prisma.saleReturnLine.groupBy({
+      by: ['productId'],
+      where: { saleReturn: { createdAt: { gte: from, lte: to } } },
+      _sum: { lineTotalCents: true, qty: true },
+    });
+
+    const returnMap = new Map(
+      productReturnLines.map((r) => [
+        r.productId,
+        {
+          returnedCents: r._sum.lineTotalCents ?? 0,
+          // qty is Decimal — convert with Number()
+          returnedQty: Number(r._sum.qty ?? 0),
+        },
+      ]),
+    );
+
     const mapRow = (r: ProductRow) => {
       const rev = Number(r.revenue);
       const cogs = Math.round(r.qty * r.costCents);
+      const ret = returnMap.get(r.productId);
       return {
         productId: r.productId,
         name: r.name,
         sku: r.sku,
-        revenueCents: rev,
+        revenueCents: Math.max(0, rev - (ret?.returnedCents ?? 0)),
         qtySold: r.qty,
+        qtyReturned: ret?.returnedQty ?? 0,
         cogsCents: cogs,
         grossProfitCents: rev - cogs,
         marginPct: rev > 0 ? Math.round(((rev - cogs) / rev) * 1000) / 10 : 0,
@@ -298,17 +329,36 @@ export const reportsService = {
       LIMIT 20
     `;
 
-    return rows.map((r) => ({
-      customerId: r.customerId,
-      name: r.name,
-      totalSpentCents: Number(r.totalSpent),
-      orderCount: Number(r.orderCount),
-      avgOrderCents:
-        Number(r.orderCount) > 0
-          ? Math.round(Number(r.totalSpent) / Number(r.orderCount))
-          : 0,
-      lastOrder: new Date(r.lastOrder).toISOString().slice(0, 10),
-    }));
+    // ── FIX 3: net each customer's spend of their returns over the period ────
+    // SaleReturn has no customerId; the relation is SaleReturn → Sale → customerId,
+    // which Prisma groupBy can't traverse, so we aggregate per customer here.
+    return Promise.all(
+      rows.map(async (r) => {
+        // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
+        const custReturn = await prisma.saleReturn.aggregate({
+          where: {
+            sale: { customerId: r.customerId, status: 'CONFIRMED' },
+            createdAt: { gte: from, lte: to },
+          },
+          _sum: { totalCents: true },
+        });
+        const netSpent = Math.max(
+          0,
+          Number(r.totalSpent) - (custReturn._sum.totalCents ?? 0),
+        );
+        return {
+          customerId: r.customerId,
+          name: r.name,
+          totalSpentCents: netSpent,
+          orderCount: Number(r.orderCount),
+          avgOrderCents:
+            Number(r.orderCount) > 0
+              ? Math.round(netSpent / Number(r.orderCount))
+              : 0,
+          lastOrder: new Date(r.lastOrder).toISOString().slice(0, 10),
+        };
+      }),
+    );
   },
 
   // ── 5. Inventory Valuation ────────────────────────────────────────────────────
@@ -431,7 +481,7 @@ export const reportsService = {
         FROM "SaleLine" sl
         JOIN "Product" p ON p.id = sl."productId"
         JOIN "Sale" s ON s.id = sl."saleId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL AND s.date >= ${from} AND s.date <= ${to}
       `,
       prisma.$queryRaw<{ period: Date; revenue: bigint; cogs: bigint }[]>`
         SELECT
@@ -454,6 +504,7 @@ export const reportsService = {
 
     // Sales returns reduce net revenue (v1.0.54). COGS is NOT adjusted — returned
     // goods go back to stock, so COGS was correctly charged at point of sale.
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const returnsAgg = await prisma.saleReturn.aggregate({
       where: { createdAt: { gte: from, lte: to } },
       _sum: { totalCents: true },
@@ -654,6 +705,7 @@ export const reportsService = {
 
     // Sales returns reduce net revenue / receivables (v1.0.54). SaleReturn has no
     // `date` field → filter on createdAt; all-time sum used for receivables approximation.
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const [todayReturnsAgg, allReturnsAgg, day7Returns] = await Promise.all([
       prisma.saleReturn.aggregate({ where: { createdAt: { gte: today, lt: todayEnd } }, _sum: { totalCents: true } }),
       prisma.saleReturn.aggregate({ _sum: { totalCents: true } }),

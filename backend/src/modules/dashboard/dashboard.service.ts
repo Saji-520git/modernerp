@@ -113,6 +113,7 @@ export const dashboardService = {
 
     // Sales returns reduce net revenue (v1.0.54). SaleReturn has no `date` field,
     // so filter on createdAt. Yesterday is also adjusted so the trend % stays net-vs-net.
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const [todayReturns, yesterdayReturns, monthReturns, lastMonthReturns] = await Promise.all([
       prisma.saleReturn.aggregate({ where: { createdAt: { gte: todayStart } }, _sum: { totalCents: true } }),
       prisma.saleReturn.aggregate({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } }, _sum: { totalCents: true } }),
@@ -140,6 +141,7 @@ export const dashboardService = {
     // Approximation (v1.0.54): subtract ALL sales returns from total outstanding.
     // A per-sale returns join would be exact but costly across all confirmed sales;
     // this may slightly under-state receivables when returns occurred on already-paid invoices.
+    // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const allReturnsAgg = await prisma.saleReturn.aggregate({ _sum: { totalCents: true } });
     const totalReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
     const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents - totalReturnedCents);
