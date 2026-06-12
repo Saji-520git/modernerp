@@ -134,10 +134,10 @@ export function generateReceiptHtml(
       <td colspan="4" style="text-align:left;font-weight:bold;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;font-size:16px;padding:4px 0 0;">${esc(displayName)}${skuLine}</td>
     </tr>
     <tr>
-      <td style="width:40%;text-align:left;font-size:14px;padding:0 0 2px;">${qtyNum}${unitLabel}</td>
-      <td style="width:20%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${num(line.unitPriceCents)}</td>
-      <td style="width:15%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${perUnitDiscCents > 0 ? num(perUnitDiscCents) : ''}</td>
-      <td style="width:25%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${num(netLineCents)}</td>
+      <td style="width:35%;text-align:left;font-size:14px;padding:0 0 2px;">${qtyNum}${unitLabel}</td>
+      <td style="width:22%;text-align:right;font-size:14px;padding:0 4px 2px 6px;">${num(line.unitPriceCents)}</td>
+      <td style="width:18%;text-align:right;font-size:14px;padding:0 4px 2px 8px;">${perUnitDiscCents > 0 ? num(perUnitDiscCents) : ''}</td>
+      <td style="width:25%;text-align:right;font-size:14px;padding:0 0 2px 8px;">${num(netLineCents)}</td>
     </tr>
     <tr>
       <td colspan="4" style="border-top:1px dashed #000000;padding:2px 0;"></td>
@@ -146,10 +146,10 @@ export function generateReceiptHtml(
 
   const itemsTable = `<table style="width:100%;table-layout:fixed;border-collapse:collapse;">
   <tr>
-    <td style="width:40%;font-size:14px;font-weight:bold;text-align:left;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
-    <td style="width:20%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.price)}</td>
-    <td style="width:15%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.discount)}</td>
-    <td style="width:25%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.amount)}</td>
+    <td style="width:35%;font-size:14px;font-weight:bold;text-align:left;text-transform:uppercase;padding:2px 0;border-bottom:1px solid #000;">${esc(L.product)}</td>
+    <td style="width:22%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 4px 2px 6px;border-bottom:1px solid #000;">${esc(L.price)}</td>
+    <td style="width:18%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 4px 2px 8px;border-bottom:1px solid #000;">${esc(L.discount)}</td>
+    <td style="width:25%;font-size:14px;font-weight:bold;text-align:right;text-transform:uppercase;padding:2px 0 2px 8px;border-bottom:1px solid #000;">${esc(L.amount)}</td>
   </tr>
   ${itemRowsHtml}
 </table>`;
