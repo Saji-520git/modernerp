@@ -899,6 +899,16 @@ function RecordPaymentModal({
   );
 }
 
+// ─── Date helpers ──────────────────────────────────────────────────────────────
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── Main Sales Page ───────────────────────────────────────────────────────────
 
 export default function SalesPage() {
@@ -923,12 +933,12 @@ export default function SalesPage() {
   }, []);
   const [status, setStatus]         = useState('');
   const [payMethod, setPayMethod]   = useState('');
-  const [fromDate, setFromDate]     = useState('');
-  const [toDate, setToDate]         = useState('');
+  const [fromDate, setFromDate]     = useState(thisMonthStart);
+  const [toDate, setToDate]         = useState(today);
   const [includePos, setIncludePos] = useState(false); // Invoice module never shows POS sales by default
   const [pageSize, setPageSize]     = useState(25);
   const [page, setPage]             = useState(1);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
 
   // ── Modal state ──
   const [detailId, setDetailId]           = useState<string | null>(null);
@@ -1122,6 +1132,12 @@ export default function SalesPage() {
               <label className="block text-xs font-medium text-slate-500 mb-1">To Date</label>
               <input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(1); }}
                 className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div className="flex items-center gap-3 pb-1.5">
+              <button type="button" onClick={() => { setFromDate(thisMonthStart()); setToDate(today()); setPage(1); }}
+                className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+              <button type="button" onClick={() => { setFromDate(''); setToDate(''); setPage(1); }}
+                className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="incPos" checked={includePos} onChange={e => { setIncludePos(e.target.checked); setPage(1); }}

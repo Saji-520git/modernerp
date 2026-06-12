@@ -63,12 +63,18 @@ export const purchaseService = {
   // ── List purchase orders ───────────────────────────────────────────────────
 
   listPurchases: async (input: ListPurchasesInput) => {
-    const { search, status, supplierId, page, pageSize } = input;
+    const { search, status, supplierId, from, to, page, pageSize } = input;
 
     const where = {
       deletedAt: null,
       ...(status && { status }),
       ...(supplierId && { supplierId }),
+      ...(from || to ? {
+        date: {
+          ...(from ? { gte: new Date(from) } : {}),
+          ...(to ? { lte: new Date(to + 'T23:59:59Z') } : {}),
+        },
+      } : {}),
       ...(search && {
         OR: [
           { number: { contains: search, mode: 'insensitive' as const } },

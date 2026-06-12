@@ -19,11 +19,17 @@ export const returnsService = {
   // ── List returns ───────────────────────────────────────────────────────────
 
   list: async (input: ListReturnsInput) => {
-    const { search, saleId, customerId, page, pageSize } = input;
+    const { search, saleId, customerId, from, to, page, pageSize } = input;
 
     const where = {
       ...(saleId     && { saleId }),
       ...(customerId && { sale: { customerId } }),
+      ...(from || to ? {
+        createdAt: {
+          ...(from ? { gte: new Date(from) } : {}),
+          ...(to ? { lte: new Date(to + 'T23:59:59Z') } : {}),
+        },
+      } : {}),
       ...(search && {
         OR: [
           { number: { contains: search, mode: 'insensitive' as const } },

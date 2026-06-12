@@ -285,14 +285,24 @@ function ShiftDetailDrawer({
   );
 }
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── ShiftsPage ───────────────────────────────────────────────────────────────
 
 export default function ShiftsPage() {
   const [page, setPage]               = useState(1);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL');
   const [warehouseFilter, setWarehouseFilter] = useState('');
-  const [fromDate, setFromDate]       = useState('');
-  const [toDate, setToDate]           = useState('');
+  const [fromDate, setFromDate]       = useState(thisMonthStart);
+  const [toDate, setToDate]           = useState(today);
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
   const [sortDir, setSortDir]         = useState<'desc' | 'asc'>('desc');
 
@@ -403,6 +413,11 @@ export default function ShiftsPage() {
           onChange={(e) => { setToDate(e.target.value); setPage(1); }}
           className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+
+        <button type="button" onClick={() => { setFromDate(thisMonthStart()); setToDate(today()); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+        <button type="button" onClick={() => { setFromDate(''); setToDate(''); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
 
         <button
           onClick={() => refetch()}

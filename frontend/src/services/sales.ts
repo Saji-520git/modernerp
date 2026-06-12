@@ -208,6 +208,8 @@ export const salesApi = {
     search?: string;
     saleId?: string;
     customerId?: string;
+    from?: string;
+    to?: string;
     page?: number;
     pageSize?: number;
   }): Promise<ReturnListResponse> =>

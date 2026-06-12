@@ -178,6 +178,8 @@ export const purchasesApi = {
     search?: string;
     status?: PurchaseStatus;
     supplierId?: string;
+    from?: string;
+    to?: string;
     page?: number;
     pageSize?: number;
   }): Promise<PurchaseListResponse> =>

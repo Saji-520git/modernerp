@@ -280,6 +280,16 @@ function ReturnDetailModal({ ret, onClose }: { ret: PurchaseReturn; onClose: () 
   );
 }
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PurchaseReturnsPage() {
@@ -287,6 +297,8 @@ export default function PurchaseReturnsPage() {
   const [showNew, setShowNew]         = useState(false);
   const [selected, setSelected]       = useState<PurchaseReturn | null>(null);
   const [search, setSearch]           = useState('');
+  const [fromDate, setFromDate]       = useState(thisMonthStart);
+  const [toDate, setToDate]           = useState(today);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -318,7 +330,9 @@ export default function PurchaseReturnsPage() {
       || r.number.toLowerCase().includes(search.toLowerCase())
       || r.supplier.name.toLowerCase().includes(search.toLowerCase())
       || r.purchase.number.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+    const day = r.createdAt.split('T')[0];
+    const matchDate = (!fromDate || day >= fromDate) && (!toDate || day <= toDate);
+    return matchStatus && matchSearch && matchDate;
   });
 
   return (
@@ -360,6 +374,18 @@ export default function PurchaseReturnsPage() {
               {s === 'ALL' ? 'All' : RETURN_STATUS_LABELS[s]}
             </button>
           ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-500">From</label>
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+            className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          <label className="text-xs text-slate-500">To</label>
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+            className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          <button type="button" onClick={() => { setFromDate(thisMonthStart()); setToDate(today()); }}
+            className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+          <button type="button" onClick={() => { setFromDate(''); setToDate(''); }}
+            className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
         </div>
       </div>
 

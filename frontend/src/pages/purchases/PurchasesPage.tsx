@@ -1093,6 +1093,16 @@ function PurchaseDetailModal({
   );
 }
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── Orders Tab ───────────────────────────────────────────────────────────────
 
 function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po: Purchase) => void }) {
@@ -1112,17 +1122,21 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
     return () => window.removeEventListener('keydown', handler);
   }, []);
   const [statusFilter, setStatusFilter] = useState<PurchaseStatus | ''>('');
+  const [fromDate, setFromDate]       = useState(thisMonthStart);
+  const [toDate, setToDate]           = useState(today);
   const [page, setPage] = useState(1);
   const [detailId, setDetailId]       = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const PAGE_SIZE = 15;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['purchases', search, statusFilter, page],
+    queryKey: ['purchases', search, statusFilter, fromDate, toDate, page],
     queryFn: () =>
       purchasesApi.listPurchases({
         search: search || undefined,
         status: statusFilter || undefined,
+        from: fromDate || undefined,
+        to: toDate || undefined,
         page,
         pageSize: PAGE_SIZE,
       }),
@@ -1203,6 +1217,28 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
             {t.label}
           </button>
         ))}
+      </div>
+
+      {/* Date filter */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <label className="text-xs text-slate-500">From</label>
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+          className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        <label className="text-xs text-slate-500">To</label>
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => { setToDate(e.target.value); setPage(1); }}
+          className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        <button type="button" onClick={() => { setFromDate(thisMonthStart()); setToDate(today()); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+        <button type="button" onClick={() => { setFromDate(''); setToDate(''); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
       </div>
 
       {/* Table */}

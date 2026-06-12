@@ -15,9 +15,12 @@ function cls(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(' ');
 }
 
-function startOfMonth() {
+function thisMonthStart(): string {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
 }
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
@@ -448,14 +451,16 @@ export default function ReturnsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  const [fromDate, setFromDate]     = useState(thisMonthStart);
+  const [toDate, setToDate]         = useState(today);
   const [page, setPage]             = useState(1);
   const [detailId, setDetailId]     = useState<string | null>(null);
   const [showNew, setShowNew]       = useState(false);
   const PAGE_SIZE = 15;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['returns', search, page],
-    queryFn: () => salesApi.listReturns({ search: search || undefined, page, pageSize: PAGE_SIZE }),
+    queryKey: ['returns', search, fromDate, toDate, page],
+    queryFn: () => salesApi.listReturns({ search: search || undefined, from: fromDate || undefined, to: toDate || undefined, page, pageSize: PAGE_SIZE }),
     staleTime: 0,
     placeholderData: prev => prev,
   });
@@ -463,7 +468,7 @@ export default function ReturnsPage() {
   // Stats
   const { data: monthData } = useQuery({
     queryKey: ['returns-month'],
-    queryFn: () => salesApi.listReturns({ from: startOfMonth(), pageSize: 200 } as any),
+    queryFn: () => salesApi.listReturns({ from: thisMonthStart(), pageSize: 100 }),
     staleTime: 60_000,
   });
 
@@ -511,19 +516,31 @@ export default function ReturnsPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          ref={searchRef}
-          autoFocus
-          type="text"
-          placeholder="Search by return # or invoice #…"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
-          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-        />
+      {/* Search + date filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-xs flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            ref={searchRef}
+            autoFocus
+            type="text"
+            placeholder="Search by return # or invoice #…"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          />
+        </div>
+        <label className="text-xs text-slate-500">From</label>
+        <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(1); }}
+          className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        <label className="text-xs text-slate-500">To</label>
+        <input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(1); }}
+          className="border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        <button type="button" onClick={() => { setFromDate(thisMonthStart()); setToDate(today()); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+        <button type="button" onClick={() => { setFromDate(''); setToDate(''); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
       </div>
 
       {/* Table */}

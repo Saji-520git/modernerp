@@ -246,14 +246,24 @@ function DeleteConfirm({ msg, onConfirm, onClose, pending }: {
   );
 }
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function thisMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── Expenses Tab ─────────────────────────────────────────────────────────────
 
 function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
   const qc = useQueryClient();
   const [search,     setSearch]     = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [from,       setFrom]       = useState('');
-  const [to,         setTo]         = useState('');
+  const [from,       setFrom]       = useState(thisMonthStart);
+  const [to,         setTo]         = useState(today);
   const [page,       setPage]       = useState(1);
   const [showAdd,    setShowAdd]    = useState(false);
   const [editItem,   setEditItem]   = useState<Expense | null>(null);
@@ -366,6 +376,10 @@ function ExpensesTab({ categories }: { categories: ExpenseCategory[] }) {
         <span className="text-slate-400 text-xs">to</span>
         <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1); }}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        <button type="button" onClick={() => { setFrom(thisMonthStart()); setTo(today()); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">This month</button>
+        <button type="button" onClick={() => { setFrom(''); setTo(''); setPage(1); }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline">All time</button>
         <div className="ml-auto flex gap-2">
           <button onClick={exportCsv} disabled={expenses.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 disabled:opacity-40 transition">
