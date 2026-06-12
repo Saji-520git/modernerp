@@ -45,9 +45,16 @@ export const customersService = {
       _max: { date: true },
     });
 
+    // Subtract returns against this customer's confirmed sales
+    const returnsAgg = await (prisma as any).saleReturn.aggregate({
+      where: { sale: { customerId: id, status: 'CONFIRMED' } },
+      _sum: { totalCents: true },
+    });
+
     const totalSalesAmount   = salesAgg._sum.totalCents  ?? 0;
     const totalPaid          = salesAgg._sum.paidCents   ?? 0;
-    const outstandingBalance = totalSalesAmount - totalPaid;
+    const totalReturned      = returnsAgg._sum.totalCents ?? 0;
+    const outstandingBalance = Math.max(0, totalSalesAmount - totalReturned - totalPaid);
     const lastPurchaseDate   = salesAgg._max.date        ?? null;
 
     // Credit used = outstanding balance on unpaid/partial confirmed sales

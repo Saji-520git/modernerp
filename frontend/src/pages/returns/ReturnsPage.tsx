@@ -156,6 +156,8 @@ function NewReturnModal({ onClose, prefillSaleId }: NewReturnModalProps) {
   const [qtys, setQtys]             = useState<Record<string, string>>({});
   const [reason, setReason]         = useState('');
   const [error, setError]           = useState('');
+  const [refundMethod, setRefundMethod]   = useState<'NONE' | 'CASH' | 'CARD' | 'BANK'>('NONE');
+  const [refundedCents, setRefundedCents] = useState(0);
 
   // Step A: search confirmed sales
   const { data: salesData, isFetching: searchFetching } = useQuery({
@@ -191,6 +193,8 @@ function NewReturnModal({ onClose, prefillSaleId }: NewReturnModalProps) {
     mutationFn: () => salesApi.createReturn({
       saleId: selectedSaleId,
       reason: reason || undefined,
+      refundMethod,
+      refundedCents: refundMethod === 'NONE' ? 0 : refundedCents,
       lines: returnableLines
         .filter(l => parseInt(qtys[l.productId] || '0') > 0)
         .map(l => ({
@@ -372,6 +376,30 @@ function NewReturnModal({ onClose, prefillSaleId }: NewReturnModalProps) {
                   placeholder="e.g. Damaged, Wrong item, Customer changed mind…"
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                 />
+              </div>
+
+              <div className="border-t pt-4">
+                <label className="block text-xs font-semibold text-slate-600 mb-2">Refund to Customer</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['NONE', 'CASH', 'CARD', 'BANK'] as const).map(m => (
+                    <button key={m} type="button"
+                      onClick={() => { setRefundMethod(m); if (m === 'NONE') setRefundedCents(0); else if (refundedCents === 0) setRefundedCents(refundTotal); }}
+                      className={`py-2 rounded-xl text-xs font-semibold border transition ${refundMethod === m ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-600 border-slate-200 hover:border-green-400'}`}>
+                      {m === 'NONE' ? 'No Refund' : m === 'BANK' ? 'Bank' : m.charAt(0) + m.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+                {refundMethod !== 'NONE' ? (
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Refund Amount (Rs.)</label>
+                    <input type="number" min="0" step="0.01" value={(refundedCents / 100).toFixed(2)}
+                      onChange={e => setRefundedCents(Math.round(parseFloat(e.target.value) * 100) || 0)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                    <p className="text-xs text-slate-400 mt-1">Amount of cash/card refund given to customer.</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 mt-2">No cash refund — return will be recorded as store credit against this invoice.</p>
+                )}
               </div>
             </div>
           )}

@@ -54,7 +54,15 @@ export const customerPaymentService = {
     if (!sale)           throw new HttpError(404, 'Sale not found');
     if (sale.status !== 'CONFIRMED') throw new HttpError(400, 'Sale must be CONFIRMED to record payment');
 
-    const outstanding = (sale.totalCents as number) - (sale.paidCents as number);
+    // Net the invoice total against any returns before computing what is owed
+    const returnsAgg = await (prisma as any).saleReturn.aggregate({
+      where: { saleId },
+      _sum: { totalCents: true },
+    });
+    const returnedCents  = returnsAgg._sum.totalCents ?? 0;
+    const effectiveTotal = Math.max(0, (sale.totalCents as number) - returnedCents);
+
+    const outstanding = effectiveTotal - (sale.paidCents as number);
     if (amountCents > outstanding) {
       throw new HttpError(
         400,
@@ -63,7 +71,7 @@ export const customerPaymentService = {
     }
 
     const newPaid  = (sale.paidCents as number) + amountCents;
-    const newStatus = computePaymentStatus(sale.totalCents as number, newPaid);
+    const newStatus = computePaymentStatus(effectiveTotal, newPaid);
     const number    = await nextPaymentNumber();
 
     const [payment] = await prisma.$transaction([

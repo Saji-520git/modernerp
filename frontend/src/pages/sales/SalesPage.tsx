@@ -373,7 +373,10 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   if (!sale) return null;
 
   const ps = paymentStatusLabel(sale);
-  const balance = sale.totalCents - sale.paidCents;
+  const totalReturnedCents  = linkedReturns.reduce((sum, r) => sum + r.totalCents, 0);
+  const totalRefundedCents  = linkedReturns.reduce((sum, r) => sum + (r.refundedCents ?? 0), 0);
+  const effectiveTotalCents = Math.max(0, sale.totalCents - totalReturnedCents);
+  const balance = Math.max(0, effectiveTotalCents - sale.paidCents);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -454,7 +457,10 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
             {/* Tax row hidden */}
             {sale.discountCents > 0 && <div className="flex justify-between text-slate-500"><span>Discount</span><span>− {formatCents(sale.discountCents)}</span></div>}
             <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800"><span>Total</span><span>{formatCents(sale.totalCents)}</span></div>
+            {totalReturnedCents > 0 && <div className="flex justify-between text-orange-600 font-medium"><span>Returns</span><span>− {formatCents(totalReturnedCents)}</span></div>}
+            {totalReturnedCents > 0 && <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800"><span>Net Total</span><span>{formatCents(effectiveTotalCents)}</span></div>}
             <div className="flex justify-between text-green-600 font-medium"><span>Paid</span><span>{formatCents(sale.paidCents)}</span></div>
+            {totalRefundedCents > 0 && <div className="flex justify-between text-orange-600 font-medium"><span>Refunded</span><span>− {formatCents(totalRefundedCents)}</span></div>}
             {balance > 0 && <div className="flex justify-between text-red-600 font-bold"><span>Balance Due</span><span>{formatCents(balance)}</span></div>}
           </div>
 
@@ -462,7 +468,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
           {sale.status === 'CONFIRMED' && (
             <CustomerPaymentSection
               saleId={sale.id}
-              totalCents={sale.totalCents}
+              totalCents={effectiveTotalCents}
               paidCents={sale.paidCents}
             />
           )}
@@ -481,6 +487,11 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
+                      {(ret.refundedCents ?? 0) > 0 && (
+                        <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                          Refunded: {formatCents(ret.refundedCents ?? 0)} ({ret.refundMethod})
+                        </span>
+                      )}
                       <span className="font-semibold text-red-600">−{formatCents(ret.totalCents)}</span>
                       <button
                         onClick={() => { onClose(); navigate('/returns'); }}
@@ -536,7 +547,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
         )}
 
         {showPayment && (
-          <PaymentModal saleId={sale.id} totalCents={sale.totalCents} currentPaid={sale.paidCents}
+          <PaymentModal saleId={sale.id} totalCents={effectiveTotalCents} currentPaid={sale.paidCents}
             onClose={() => setShowPayment(false)} />
         )}
       </div>
@@ -715,11 +726,19 @@ function ReturnModal({ saleId, onClose }: { saleId: string; onClose: () => void 
   const [reason, setReason] = useState('');
   const [qtys, setQtys]     = useState<Record<string, string>>({});
   const [error, setError]   = useState('');
+  const [refundMethod, setRefundMethod]   = useState<'NONE' | 'CASH' | 'CARD' | 'BANK'>('NONE');
+  const [refundedCents, setRefundedCents] = useState(0);
+
+  const returnTotalCents = (sale?.lines ?? [])
+    .filter(l => parseInt(qtys[l.productId] || '0') > 0)
+    .reduce((s, l) => s + Math.round(l.unitPriceCents * parseInt(qtys[l.productId])), 0);
 
   const mutation = useMutation({
     mutationFn: () => salesApi.createReturn({
       saleId,
       reason: reason || undefined,
+      refundMethod,
+      refundedCents: refundMethod === 'NONE' ? 0 : refundedCents,
       lines: (sale?.lines ?? []).filter(l => parseInt(qtys[l.productId] || '0') > 0).map(l => ({
         productId: l.productId,
         qty: parseInt(qtys[l.productId]),
@@ -763,6 +782,29 @@ function ReturnModal({ saleId, onClose }: { saleId: string; onClose: () => void 
             <label className="block text-xs font-semibold text-slate-600 mb-1">Reason (optional)</label>
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Return reason…"
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+          <div className="border-t pt-4 mt-1">
+            <label className="block text-xs font-semibold text-slate-600 mb-2">Refund to Customer</label>
+            <div className="grid grid-cols-4 gap-2">
+              {(['NONE', 'CASH', 'CARD', 'BANK'] as const).map(m => (
+                <button key={m} type="button"
+                  onClick={() => { setRefundMethod(m); if (m === 'NONE') setRefundedCents(0); else if (refundedCents === 0) setRefundedCents(returnTotalCents); }}
+                  className={`py-2 rounded-lg text-xs font-semibold border transition ${refundMethod === m ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-600 border-slate-200 hover:border-green-400'}`}>
+                  {m === 'NONE' ? 'No Refund' : m === 'BANK' ? 'Bank' : m.charAt(0) + m.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+            {refundMethod !== 'NONE' ? (
+              <div className="mt-3">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Refund Amount (Rs.)</label>
+                <input type="number" min="0" step="0.01" value={(refundedCents / 100).toFixed(2)}
+                  onChange={e => setRefundedCents(Math.round(parseFloat(e.target.value) * 100) || 0)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                <p className="text-xs text-slate-400 mt-1">Amount of cash/card refund given to customer.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 mt-2">No cash refund — return will be recorded as store credit against this invoice.</p>
+            )}
           </div>
         </div>
         <div className="px-6 pb-5 flex gap-3">

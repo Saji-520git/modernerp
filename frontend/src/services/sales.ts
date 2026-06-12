@@ -122,6 +122,8 @@ export interface SaleReturn {
   warehouse: { id: string; name: string; code: string };
   reason: string | null;
   totalCents: number;
+  refundMethod?: string;
+  refundedCents?: number;
   createdBy: { id: string; fullName: string };
   lines?: SaleReturnLine[];
   _count?: { lines: number };
@@ -145,6 +147,8 @@ export interface SaleForReturn extends Sale {
 export interface CreateReturnPayload {
   saleId: string;
   reason?: string;
+  refundMethod?: 'NONE' | 'CASH' | 'CARD' | 'BANK';
+  refundedCents?: number;
   lines: {
     productId: string;
     qty: number;
