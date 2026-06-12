@@ -47,8 +47,8 @@ export function generateReceiptHtml(
   const symPos  = settings.currencyPosition ?? 'before';
   const fmt     = (c: number) => esc(money(c, sym, symPos));
   const fontFam = lang === 'si'
-    ? "'Noto Sans Sinhala', 'Courier New', monospace"
-    : "'Courier New', monospace";
+    ? "'Noto Sans Sinhala', Arial, sans-serif"
+    : "Arial, sans-serif";
 
   const sinhalaFont = lang === 'si'
     ? `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -135,9 +135,9 @@ export function generateReceiptHtml(
     </tr>
     <tr>
       <td style="width:40%;text-align:left;font-size:14px;padding:0 0 2px;">${qtyNum}${unitLabel}</td>
-      <td style="width:20%;text-align:right;font-size:14px;padding:0 0 2px;">${num(line.unitPriceCents)}</td>
-      <td style="width:15%;text-align:right;font-size:14px;padding:0 0 2px;">${num(perUnitDiscCents)}</td>
-      <td style="width:25%;text-align:right;font-size:14px;padding:0 0 2px;">${num(netLineCents)}</td>
+      <td style="width:20%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${num(line.unitPriceCents)}</td>
+      <td style="width:15%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${perUnitDiscCents > 0 ? num(perUnitDiscCents) : ''}</td>
+      <td style="width:25%;text-align:right;font-size:14px;padding:0 0 2px 6px;">${num(netLineCents)}</td>
     </tr>
     <tr>
       <td colspan="4" style="border-top:1px dashed #000000;padding:2px 0;"></td>

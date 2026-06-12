@@ -1772,23 +1772,33 @@ export default function POSPage() {
 
       if (canAugment) {
         try {
-          const augLines = data.receipt.lines.flatMap(line => {
+          const productLines: typeof data.receipt.lines = [];
+          const svcLines: typeof data.receipt.lines = [];
+
+          data.receipt.lines.forEach(line => {
             const svc = svcItems.find(sc => sc.linkedProductId === line.product?.id);
-            if (!svc) return [line];
+            if (!svc) {
+              productLines.push(line);
+              return;
+            }
             const svcCents = svc.unitPriceCents;
             const mainUnit = line.unitPriceCents - svcCents;
-            return [
-              { ...line, unitPriceCents: mainUnit, lineTotalCents: mainUnit * line.qty },
-              {
-                product:        { id: svc.product.id, name: svc.product.name, sku: svc.product.sku, receiptName: svc.product.receiptName },
-                qty:            line.qty,
-                unitPriceCents: svcCents,
-                taxPercent:     0,
-                discountCents:  0,
-                lineTotalCents: svcCents * line.qty,
-              },
-            ];
+            // Product line with service charge removed from unit price
+            productLines.push({ ...line, unitPriceCents: mainUnit, lineTotalCents: mainUnit * line.qty });
+            // Service charge line: qty=1 for clean display, unit price = actual
+            // total svc amount (svcCents × qty), so receipt shows qty=1/price=amount.
+            const actualSvcAmount = svcCents * Number(line.qty);
+            svcLines.push({
+              product:        { id: svc.product.id, name: svc.product.name, sku: svc.product.sku, receiptName: svc.product.receiptName },
+              qty:            1,
+              unitPriceCents: actualSvcAmount,
+              taxPercent:     0,
+              discountCents:  0,
+              lineTotalCents: actualSvcAmount,
+            });
           });
+
+          const augLines = [...productLines, ...svcLines];
           setLastReceipt({ ...data.receipt, lines: augLines });
         } catch {
           // Augmentation failed — use receipt as-is, never block the popup
