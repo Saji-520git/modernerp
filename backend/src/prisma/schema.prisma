@@ -441,13 +441,15 @@ model SaleReturn {
   sale        Sale             @relation(fields: [saleId], references: [id])
   warehouseId String
   warehouse   Warehouse        @relation(fields: [warehouseId], references: [id])
-  reason      String?
-  totalCents  Int              @default(0)
-  createdById String
-  createdBy   User             @relation(fields: [createdById], references: [id])
-  lines       SaleReturnLine[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  reason        String?
+  totalCents    Int              @default(0)
+  refundMethod  String           @default("NONE") // NONE | CASH | CARD | BANK (NONE = store credit only)
+  refundedCents Int              @default(0)       // actual amount refunded to customer
+  createdById   String
+  createdBy     User             @relation(fields: [createdById], references: [id])
+  lines         SaleReturnLine[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([createdAt])
 }

@@ -111,10 +111,19 @@ export const dashboardService = {
     `;
     const actualLowStock = Number(lowStockResult[0]?.count ?? 0);
 
-    const todayRevenue = todaySales._sum.totalCents ?? 0;
-    const yesterdayRevenue = yesterdaySales._sum.totalCents ?? 0;
-    const monthRevenue = monthSales._sum.totalCents ?? 0;
-    const lastMonthRevenue = lastMonthSales._sum.totalCents ?? 0;
+    // Sales returns reduce net revenue (v1.0.54). SaleReturn has no `date` field,
+    // so filter on createdAt. Yesterday is also adjusted so the trend % stays net-vs-net.
+    const [todayReturns, yesterdayReturns, monthReturns, lastMonthReturns] = await Promise.all([
+      prisma.saleReturn.aggregate({ where: { createdAt: { gte: todayStart } }, _sum: { totalCents: true } }),
+      prisma.saleReturn.aggregate({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } }, _sum: { totalCents: true } }),
+      prisma.saleReturn.aggregate({ where: { createdAt: { gte: monthStart } }, _sum: { totalCents: true } }),
+      prisma.saleReturn.aggregate({ where: { createdAt: { gte: lastMonthStart, lt: lastMonthEnd } }, _sum: { totalCents: true } }),
+    ]);
+
+    const todayRevenue = Math.max(0, (todaySales._sum.totalCents ?? 0) - (todayReturns._sum.totalCents ?? 0));
+    const yesterdayRevenue = Math.max(0, (yesterdaySales._sum.totalCents ?? 0) - (yesterdayReturns._sum.totalCents ?? 0));
+    const monthRevenue = Math.max(0, (monthSales._sum.totalCents ?? 0) - (monthReturns._sum.totalCents ?? 0));
+    const lastMonthRevenue = Math.max(0, (lastMonthSales._sum.totalCents ?? 0) - (lastMonthReturns._sum.totalCents ?? 0));
 
     const pctChange = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
@@ -128,7 +137,12 @@ export const dashboardService = {
     });
     const totalSaleCents = receivablesResult._sum.totalCents ?? 0;
     const totalPaidCents = receivablesResult._sum.paidCents ?? 0;
-    const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents);
+    // Approximation (v1.0.54): subtract ALL sales returns from total outstanding.
+    // A per-sale returns join would be exact but costly across all confirmed sales;
+    // this may slightly under-state receivables when returns occurred on already-paid invoices.
+    const allReturnsAgg = await prisma.saleReturn.aggregate({ _sum: { totalCents: true } });
+    const totalReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
+    const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents - totalReturnedCents);
 
     // Month purchases (confirmed POs)
     const monthPurchasesResult = await prisma.purchase.aggregate({

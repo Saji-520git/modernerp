@@ -452,7 +452,16 @@ export const reportsService = {
       }),
     ]);
 
-    const revenueCents = salesAgg._sum.totalCents ?? 0;
+    // Sales returns reduce net revenue (v1.0.54). COGS is NOT adjusted — returned
+    // goods go back to stock, so COGS was correctly charged at point of sale.
+    const returnsAgg = await prisma.saleReturn.aggregate({
+      where: { createdAt: { gte: from, lte: to } },
+      _sum: { totalCents: true },
+    });
+    const returnedRevenueCents = returnsAgg._sum.totalCents ?? 0;
+
+    const grossRevenueCents = salesAgg._sum.totalCents ?? 0;
+    const revenueCents = Math.max(0, grossRevenueCents - returnedRevenueCents);
     const taxCents = salesAgg._sum.taxCents ?? 0;
     const discountCents = salesAgg._sum.discountCents ?? 0;
     const cogsCents = Number(cogsRaw[0]?.cogs ?? 0);
@@ -475,6 +484,9 @@ export const reportsService = {
     return {
       summary: {
         revenueCents,
+        grossRevenueCents,
+        returnedRevenueCents,
+        netRevenueCents: revenueCents,
         taxCents,
         discountCents,
         cogsCents,
@@ -640,8 +652,26 @@ export const reportsService = {
       (s) => Number(s.qty) <= (s.product.reorderLevel ?? 0),
     ).length;
 
-    const outstandingReceivablesCents =
-      (receivablesAgg._sum.totalCents ?? 0) - (receivablesAgg._sum.paidCents ?? 0);
+    // Sales returns reduce net revenue / receivables (v1.0.54). SaleReturn has no
+    // `date` field → filter on createdAt; all-time sum used for receivables approximation.
+    const [todayReturnsAgg, allReturnsAgg, day7Returns] = await Promise.all([
+      prisma.saleReturn.aggregate({ where: { createdAt: { gte: today, lt: todayEnd } }, _sum: { totalCents: true } }),
+      prisma.saleReturn.aggregate({ _sum: { totalCents: true } }),
+      Promise.all(days.map((day) => {
+        const nextDay = new Date(day);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return prisma.saleReturn.aggregate({ where: { createdAt: { gte: day, lt: nextDay } }, _sum: { totalCents: true } });
+      })),
+    ]);
+    const todayReturnedCents = todayReturnsAgg._sum.totalCents ?? 0;
+    const allReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
+
+    const outstandingReceivablesCents = Math.max(
+      0,
+      (receivablesAgg._sum.totalCents ?? 0)
+      - (receivablesAgg._sum.paidCents ?? 0)
+      - allReturnedCents,
+    );
 
     // Option B — confirmed purchase returns reduce what is still owed on a PO.
     // Prisma aggregate() cannot filter on a nested relation, so use a two-step query:
@@ -678,7 +708,7 @@ export const reportsService = {
 
     const last7Days = days.map((day, i) => ({
       date:       day.toISOString().split('T')[0],
-      salesCents: day7Results[i]._sum.totalCents ?? 0,
+      salesCents: Math.max(0, (day7Results[i]._sum.totalCents ?? 0) - (day7Returns[i]._sum.totalCents ?? 0)),
       salesCount: day7Results[i]._count.id ?? 0,
     }));
 
@@ -723,7 +753,7 @@ export const reportsService = {
       .slice(0, 10);
 
     return {
-      todaySalesCents:             todaySalesAgg._sum.totalCents ?? 0,
+      todaySalesCents:             Math.max(0, (todaySalesAgg._sum.totalCents ?? 0) - todayReturnedCents),
       todaySalesCount:             todaySalesAgg._count.id ?? 0,
       outstandingReceivablesCents,
       outstandingPayablesCents,

@@ -190,6 +190,8 @@ export const returnsService = {
           warehouseId: sale.warehouseId,
           reason: input.reason,
           totalCents,
+          refundMethod: input.refundMethod,
+          refundedCents: input.refundedCents,
           createdById: userId,
           lines: {
             create: input.lines.map((l) => ({
@@ -236,6 +238,33 @@ export const returnsService = {
             refType: 'SaleReturn',
             refId: ret.id,
             note: `Return ${ret.number} (from ${ret.sale.number})`,
+          },
+        });
+      }
+
+      // 3. Handle cash/card/bank refund (NONE = store credit only — no payment movement)
+      if (input.refundMethod !== 'NONE' && input.refundedCents > 0) {
+        // Reduce paidCents on original sale (customer was refunded). Cannot go below 0.
+        const currentSale = await tx.sale.findUnique({
+          where: { id: input.saleId },
+          select: { paidCents: true },
+        });
+        const newPaidCents = Math.max(0, (currentSale?.paidCents ?? 0) - input.refundedCents);
+        await tx.sale.update({
+          where: { id: input.saleId },
+          data: { paidCents: newPaidCents },
+        });
+
+        // Negative-amount Payment row documents cash going back to the customer.
+        // Payment.method is the PaymentMethod enum (no "BANK" member) → map BANK→BANK_TRANSFER.
+        const refundPaymentMethod = input.refundMethod === 'BANK' ? 'BANK_TRANSFER' : input.refundMethod;
+        await tx.payment.create({
+          data: {
+            saleId: input.saleId,
+            amountCents: -input.refundedCents,
+            method: refundPaymentMethod as any,
+            createdById: userId,
+            note: `Refund for return ${ret.number}`,
           },
         });
       }

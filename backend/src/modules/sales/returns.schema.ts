@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const createReturnSchema = z.object({
   saleId: z.string().min(1, 'Invoice is required'),
   reason: z.string().max(500).optional(),
+  refundMethod: z.enum(['NONE', 'CASH', 'CARD', 'BANK']).default('NONE'),
+  refundedCents: z.number().int().min(0).default(0),
   lines: z
     .array(
       z.object({

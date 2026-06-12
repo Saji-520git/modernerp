@@ -371,8 +371,22 @@ export const salesService = {
     if (!sale) throw new HttpError(404, 'Sale not found');
     if (sale.status !== 'CONFIRMED') throw new HttpError(400, 'Can only record payment on confirmed invoices');
     if (input.paidCents <= 0) throw new HttpError(400, 'Payment amount must be greater than 0');
-    const outstanding = sale.totalCents - sale.paidCents;
-    if (input.paidCents > outstanding) throw new HttpError(400, 'Payment exceeds outstanding balance');
+
+    // Sales returns reduce what the customer effectively owes (v1.0.54).
+    // effectiveTotal = totalCents - sum(returns); cap payment at effectiveTotal - paidCents.
+    const returnsAgg = await prisma.saleReturn.aggregate({
+      where: { saleId: id },
+      _sum: { totalCents: true },
+    });
+    const returnedCents = returnsAgg._sum.totalCents ?? 0;
+    const effectiveTotal = Math.max(0, sale.totalCents - returnedCents);
+    const outstanding = effectiveTotal - sale.paidCents;
+    if (outstanding <= 0) {
+      throw new HttpError(400, 'This invoice has been fully paid or refunded. No payment due.');
+    }
+    if (input.paidCents > outstanding) {
+      throw new HttpError(400, `Payment exceeds outstanding balance of Rs.${(outstanding / 100).toFixed(2)}`);
+    }
 
     return prisma.$transaction(async (tx) => {
       await tx.payment.create({
