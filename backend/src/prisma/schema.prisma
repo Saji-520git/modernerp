@@ -448,6 +448,8 @@ model SaleReturn {
   lines       SaleReturnLine[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([createdAt])
 }
 
 model SaleReturnLine {
@@ -555,6 +557,9 @@ model PosShift {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([openedAt])
+  @@index([closedAt])
+  @@index([createdAt])
   @@map("pos_shifts")
 }
 
@@ -639,6 +644,8 @@ model Expense {
 
   // One occurrence per template per calendar month
   @@unique([recurringTemplateId, monthYear])
+  @@index([date])
+  @@index([createdAt])
   @@map("expenses")
 }
 
@@ -763,6 +770,7 @@ model PurchaseReturn {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  @@index([createdAt])
   @@map("purchase_returns")
 }
 
