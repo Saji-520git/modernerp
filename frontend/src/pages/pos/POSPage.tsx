@@ -193,7 +193,7 @@ function saveHoldsToStorage(holds: HoldBill[]) {
 
 // ─── ProductCard ──────────────────────────────────────────────────────────────
 
-function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => void }) {
+function ProductCard({ product, onAdd, isSelected = false }: { product: PosProduct; onAdd: () => void; isSelected?: boolean }) {
   const { settings } = useAppSettings();
   const policy = (settings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
 
@@ -253,7 +253,12 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
         type="button"
         disabled={isDisabled}
         onClick={handleClick}
-        className="relative flex flex-col rounded-xl border text-left transition-all active:scale-95 bg-white border-slate-200 hover:border-indigo-400 hover:shadow-md"
+        className={cls(
+          'relative flex flex-col rounded-xl border text-left transition-all active:scale-95 bg-white hover:border-indigo-400 hover:shadow-md',
+          isSelected
+            ? 'border-indigo-500 ring-2 ring-indigo-400 shadow-md'
+            : 'border-slate-200',
+        )}
         style={{
           padding: '16px 16px 12px',
           minHeight: 120,
@@ -1343,6 +1348,8 @@ export default function POSPage() {
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const barcodeRef      = useRef<HTMLInputElement>(null);
   const whDropdownRef   = useRef<HTMLDivElement>(null);
+  // Grid container for keyboard navigation of no-barcode products (v1.0.60)
+  const gridRef         = useRef<HTMLDivElement>(null);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -1355,6 +1362,8 @@ export default function POSPage() {
   const [search, setSearch]                     = useState('');
   const [debouncedSearch, setDebouncedSearch]   = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // Highlighted product card index for keyboard grid navigation (v1.0.60; -1 = none)
+  const [gridSelectedIndex, setGridSelectedIndex] = useState<number>(-1);
   const CART_KEY = 'pos_cart_draft';
   const [cart, setCart]                         = useState<CartItem[]>(() => {
     try {
@@ -1447,6 +1456,11 @@ export default function POSPage() {
     const t = setTimeout(() => setDebouncedSearch(search), 280);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Reset grid keyboard selection whenever the product result set changes (v1.0.60)
+  useEffect(() => {
+    setGridSelectedIndex(-1);
+  }, [debouncedSearch, selectedCategory, warehouseId]);
 
   // ── Queries ───────────────────────────────────────────────────────────────────
   const { data: warehouses = [] } = useQuery({
@@ -1737,6 +1751,14 @@ export default function POSPage() {
   }, [refocusBarcode]);
 
   // ── Barcode lookup ────────────────────────────────────────────────────────────
+  // Focus the qty input of a (possibly just-added) cart item once state settles.
+  // Component-scope (v1.0.60) so both the barcode flow and the grid can call it.
+  const focusNewItemQty = useCallback((productId: string) => {
+    setTimeout(() => {
+      cartLineRefs.current[productId]?.focusQty();
+    }, 120);
+  }, []);
+
   const handleBarcodeEnter = useCallback(async () => {
     const code = barcodeInput.trim();
     if (!code) {
@@ -1755,13 +1777,6 @@ export default function POSPage() {
     lastScanTime.current = now;
 
     setBarcodeInput('');
-
-    // Helper: focus the qty input of the newly added item after cart state settles
-    const focusNewItemQty = (productId: string) => {
-      setTimeout(() => {
-        cartLineRefs.current[productId]?.focusQty();
-      }, 120);
-    };
 
     // 1. Fast: search locally in the already-loaded products grid
     const localMatch = products.find(p => p.barcode === code || p.sku === code);
@@ -1805,7 +1820,57 @@ export default function POSPage() {
       setBarcodeLoading(false);
       // Only refocus barcode if we didn't focus qty (i.e. 404 path or error)
     }
-  }, [barcodeInput, cart.length, products, addToCart, refocusBarcode, appSettings, hasOversoldItem]);
+  }, [barcodeInput, cart.length, products, addToCart, refocusBarcode, appSettings, hasOversoldItem, focusNewItemQty]);
+
+  // ── Grid keyboard navigation (v1.0.60) ─────────────────────────────────────────
+  // Count of columns currently rendered in the auto-fill product grid, so Up/Down
+  // arrows move by a full row. Falls back to 1 if the grid isn't measurable yet.
+  const getGridColumns = useCallback((): number => {
+    const el = gridRef.current;
+    if (!el) return 1;
+    const cols = window.getComputedStyle(el).gridTemplateColumns;
+    const n = cols.split(' ').filter(Boolean).length;
+    return n > 0 ? n : 1;
+  }, []);
+
+  const handleGridKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (products.length === 0) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setGridSelectedIndex(-1);
+      barcodeRef.current?.focus();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = gridSelectedIndex;
+      if (idx >= 0 && idx < products.length) {
+        const p = products[idx];
+        sound.beep();
+        addToCart(p);
+        focusNewItemQty(p.id);
+      }
+      return;
+    }
+
+    let next = gridSelectedIndex;
+    const cols = getGridColumns();
+    const last = products.length - 1;
+
+    if (e.key === 'ArrowRight')      { e.preventDefault(); next = next < 0 ? 0 : Math.min(next + 1, last); }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault(); next = next < 0 ? 0 : Math.max(next - 1, 0); }
+    else if (e.key === 'ArrowDown')  { e.preventDefault(); next = next < 0 ? 0 : Math.min(next + cols, last); }
+    else if (e.key === 'ArrowUp')    {
+      e.preventDefault();
+      if (next - cols < 0) { setGridSelectedIndex(-1); barcodeRef.current?.focus(); return; }
+      next = next - cols;
+    }
+    else return;
+
+    setGridSelectedIndex(next);
+  }, [products, gridSelectedIndex, getGridColumns, addToCart, focusNewItemQty]);
 
   // ── Hold helpers ──────────────────────────────────────────────────────────────
   const holdBill = useCallback((label: string) => {
@@ -2421,6 +2486,17 @@ export default function POSPage() {
                 value={barcodeInput}
                 onChange={e => setBarcodeInput(e.target.value)}
                 onKeyDown={e => {
+                  // v1.0.60: Down arrow → move into the product grid for keyboard
+                  // selection of products that have no barcode. Carry whatever was
+                  // typed into the name-search box so the grid filters to it.
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (barcodeInput.trim()) setSearch(barcodeInput.trim());
+                    setBarcodeInput('');
+                    setGridSelectedIndex(0);
+                    setTimeout(() => gridRef.current?.focus(), 50);
+                    return;
+                  }
                   if (e.key === 'Enter' && e.shiftKey) {
                     e.preventDefault();
                     totalDiscountRef.current?.focus();
@@ -2496,11 +2572,19 @@ export default function POSPage() {
             )}
             {products.length > 0 && (
               <div
-                className="grid gap-3"
+                ref={gridRef}
+                tabIndex={-1}
+                onKeyDown={handleGridKeyDown}
+                className="grid gap-3 outline-none"
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}
               >
-                {products.map(p => (
-                  <ProductCard key={p.id} product={p} onAdd={() => addToCart(p)} />
+                {products.map((p, idx) => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    isSelected={idx === gridSelectedIndex}
+                    onAdd={() => { addToCart(p); focusNewItemQty(p.id); }}
+                  />
                 ))}
               </div>
             )}
