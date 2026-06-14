@@ -96,6 +96,7 @@ function InlineReorderEdit({
       productsApi.update(productId, { reorderLevel }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inv-stock-full'] });
+      qc.invalidateQueries({ queryKey: ['pos-products'] });
       setEditing(false);
       setErrMsg(null);
       setFlash(true);
@@ -182,6 +183,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
       qc.invalidateQueries({ queryKey: ['inv-stock'] });
       qc.invalidateQueries({ queryKey: ['inv-low-stock'] });
       qc.invalidateQueries({ queryKey: ['inv-expiring'] });
+      qc.invalidateQueries({ queryKey: ['pos-products'] });
       setWriteOffBatchId(null); setWoQty(''); setWoReason(''); setWoError(null);
       const loss = `Rs. ${(data.lossCents / 100).toFixed(2)}`;
       setWoToast(`${data.qty} unit(s) written off. Loss ${loss} recorded as expense (${data.expense.reference}).`);
@@ -638,6 +640,7 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
       setQty('');
       setReason('');
       qc.invalidateQueries({ queryKey: ['inv-stock'] });
+      qc.invalidateQueries({ queryKey: ['pos-products'] });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Adjustment failed';
@@ -798,6 +801,7 @@ function TransferTab() {
       setQty('');
       setNote('');
       qc.invalidateQueries({ queryKey: ['inv-stock'] });
+      qc.invalidateQueries({ queryKey: ['pos-products'] });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Transfer failed';

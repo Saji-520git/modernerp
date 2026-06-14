@@ -62,6 +62,8 @@ interface CartItem {
   linkedProductId?:   string;  // product ID this service charge belongs to
   costCents?:         number;  // product cost price — used for staff sale repricing
   originalPriceCents?:number;  // selling price before staff sale toggle
+  unitId?:            string;  // selected sales unit (defaults to base unit); sent in checkout payload
+  unitShortCode?:     string;  // short code of the selected unit (display only)
 }
 
 interface CustomerOption {
@@ -101,6 +103,83 @@ function totalStock(p: PosProduct): number {
 /** Display qty: whole numbers as integers, decimals to 3 places (e.g. 0.500 kg) */
 function fmtQty(qty: number): string {
   return Number.isInteger(qty) ? qty.toString() : qty.toFixed(3);
+}
+
+/**
+ * Build the list of sellable unit options for a product: the base unit plus
+ * any conversion whose toUnit IS the base unit (directly sellable to base).
+ * Price = explicit conversion override if set, else basePrice × conversion factor.
+ * If the product has no conversions, only the base unit option is returned.
+ */
+interface UnitOption {
+  unitId:     string;
+  label:      string;
+  priceCents: number;
+  isBase:     boolean;
+}
+function getUnitOptions(product: PosProduct): UnitOption[] {
+  const baseUnitId = product.baseUnitId ?? product.unitId;
+  const baseUnit   = product.baseUnit ?? product.unit;
+  const basePrice  = product.priceCents;
+
+  const options: UnitOption[] = [{
+    unitId:     baseUnitId,
+    label:      baseUnit?.shortCode ?? baseUnit?.name ?? 'unit',
+    priceCents: basePrice,
+    isBase:     true,
+  }];
+
+  for (const conv of (product.unitConversions ?? [])) {
+    // Only units that convert directly TO the base unit are sellable
+    if (conv.toUnitId !== baseUnitId) continue;
+
+    const factor = Number(conv.conversionQty);
+    const unitPrice = conv.priceCents != null
+      ? conv.priceCents
+      : Math.round(basePrice * factor);
+
+    options.push({
+      unitId:     conv.fromUnitId,
+      label:      conv.fromUnit?.shortCode ?? conv.fromUnit?.name ?? 'unit',
+      priceCents: unitPrice,
+      isBase:     false,
+    });
+  }
+
+  return options;
+}
+
+/**
+ * Format a base-unit stock quantity for the product grid: shows the base count
+ * with its unit label, plus a pack breakdown using the largest pack conversion
+ * (e.g. "45 pcs (2 box + 5)").
+ */
+function formatStockDisplay(product: PosProduct, baseQty: number): string {
+  const baseUnit  = product.baseUnit ?? product.unit;
+  const baseLabel = baseUnit?.shortCode ?? 'unit';
+
+  const baseUnitId = product.baseUnitId ?? product.unitId;
+  const packs = (product.unitConversions ?? [])
+    .filter(c => c.toUnitId === baseUnitId)
+    .map(c => ({
+      label:  c.fromUnit?.shortCode ?? 'pack',
+      factor: Number(c.conversionQty),
+    }))
+    .filter(p => p.factor > 1)
+    .sort((a, b) => b.factor - a.factor);
+
+  let display = `${baseQty} ${baseLabel}`;
+
+  if (packs.length > 0) {
+    const pack  = packs[0];
+    const whole = Math.floor(baseQty / pack.factor);
+    const rem   = baseQty % pack.factor;
+    if (whole > 0) {
+      display += ` (${whole} ${pack.label}${rem > 0 ? ` + ${rem}` : ''})`;
+    }
+  }
+
+  return display;
 }
 
 const HOLDS_KEY = 'pos_holds_v2';
@@ -222,9 +301,9 @@ function ProductCard({ product, onAdd }: { product: PosProduct; onAdd: () => voi
           <span style={{ fontSize: 14, fontWeight: 700, color: '#2563eb' }}>
             {formatCents(product.priceCents)}
           </span>
-          <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
-            background: badgeBg, color: badgeColor, flexShrink: 0 }}>
-            {trueOut ? 'OUT' : displayQty}
+          <span style={{ fontSize: 9, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
+            background: badgeBg, color: badgeColor, flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {trueOut ? 'OUT' : formatStockDisplay(product, displayQty)}
           </span>
         </div>
 
@@ -290,8 +369,9 @@ const CartLine = forwardRef<CartLineHandle, {
   onBatchCap?: (msg: string) => void;
   onUpdateDiscount: (type: 'percent' | 'amount', value: number) => void;
   onNavigateToBarcode: () => void;
+  onChangeUnit: (unitId: string) => void;
 }>(function CartLine({
-  item, onChange, onRemove, onBatchCap, onUpdateDiscount, onNavigateToBarcode,
+  item, onChange, onRemove, onBatchCap, onUpdateDiscount, onNavigateToBarcode, onChangeUnit,
 }, cartLineRef) {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
@@ -307,6 +387,8 @@ const CartLine = forwardRef<CartLineHandle, {
   const lineSubtotal            = item.qty * item.unitPriceCents;
   const lineAfterDisc           = lineSubtotal - item.itemDiscountCents;
   const lineTotal               = lineAfterDisc;
+  // Sellable unit options — dropdown only shows when more than one exists
+  const unitOpts                = item.isServiceCharge ? [] : getUnitOptions(item.product);
 
   useImperativeHandle(cartLineRef, () => ({
     focusQty:      () => startEdit(),
@@ -366,10 +448,10 @@ const CartLine = forwardRef<CartLineHandle, {
 
   return (
     <div className="mb-1.5">
-      {/* Fix 4: single grid row — name | qty | unit-price | line-total | trash */}
+      {/* Fix 4: single grid row — name | qty | unit | unit-price | line-total | trash */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto auto',
+        gridTemplateColumns: '1fr auto auto auto auto auto',
         gap: 8,
         alignItems: 'center',
         padding: '8px 14px',
@@ -421,6 +503,22 @@ const CartLine = forwardRef<CartLineHandle, {
           <button type="button" onClick={startEdit} style={{ ...qtyBoxStyle, cursor: 'pointer' }}>
             {fmtQty(item.qty)}
           </button>
+        )}
+
+        {/* Unit selector — only when the product has more than one sellable unit */}
+        {unitOpts.length > 1 ? (
+          <select
+            value={item.unitId}
+            onChange={e => onChangeUnit(e.target.value)}
+            className="text-xs border rounded px-1 py-0.5 bg-white"
+            style={{ color: '#475569', borderColor: '#cbd5e1', maxWidth: 90 }}
+          >
+            {unitOpts.map(opt => (
+              <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
+            ))}
+          </select>
+        ) : (
+          <span />
         )}
 
         {/* Unit price — muted, 12px */}
@@ -1535,9 +1633,12 @@ export default function POSPage() {
       // Pre-fill default discount set on the product (cashier can override)
       const defDisc      = product.defaultDiscountCents ?? 0;
       const defDiscCents = Math.min(defDisc, product.priceCents);
+      // Default the line to the base/legacy unit
+      const unitOpts     = getUnitOptions(product);
+      const baseOpt      = unitOpts.find(o => o.isBase) ?? unitOpts[0];
       const priceToUse   = isStaffSale
         ? (product.costCents ?? product.priceCents)
-        : product.priceCents;
+        : baseOpt.priceCents;
       const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: priceToUse,
         originalPriceCents: product.priceCents,
@@ -1545,6 +1646,8 @@ export default function POSPage() {
         itemDiscountType:  'amount' as 'amount' | 'percent',
         itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
         itemDiscountCents: defDiscCents,
+        unitId:        baseOpt.unitId,
+        unitShortCode: baseOpt.label,
       }];
       // Auto-add service charge item if configured
       const svcCents = product.serviceChargeCents ?? 0;
@@ -1876,6 +1979,29 @@ export default function POSPage() {
     }));
   }, []);
 
+  // Change the sales unit for a cart line. Updates unitId + label and (unless
+  // in staff-sale mode, which prices at cost) the unit price, then re-derives
+  // the line discount against the new subtotal.
+  const changeCartUnit = useCallback((productId: string, unitId: string) => {
+    setCart(prev => prev.map(i => {
+      if (i.product.id !== productId || i.isServiceCharge) return i;
+      const opt = getUnitOptions(i.product).find(o => o.unitId === unitId);
+      if (!opt) return i;
+      const newUnitPrice   = isStaffSale ? i.unitPriceCents : opt.priceCents;
+      const newLineSubtotal = i.qty * newUnitPrice;
+      const newDiscountCents = i.itemDiscountType === 'percent'
+        ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
+        : Math.min(Math.round(i.itemDiscountValue * 100), newLineSubtotal);
+      return {
+        ...i,
+        unitId:            opt.unitId,
+        unitShortCode:     opt.label,
+        unitPriceCents:    newUnitPrice,
+        itemDiscountCents: newDiscountCents,
+      };
+    }));
+  }, [isStaffSale]);
+
   const handleCheckout = useCallback((method: AllPaymentMethods, receivedCents = 0, cashAmountCents?: number) => {
     if (!warehouseId || cart.length === 0) return;
     setPendingReceivedCents(receivedCents);
@@ -1902,6 +2028,7 @@ export default function POSPage() {
           return {
             productId:      i.product.id,
             qty:            i.qty,
+            unitId:         i.unitId,
             unitPriceCents: i.unitPriceCents + (i.qty > 0 ? svcTotal / i.qty : 0),
             discountCents:  i.itemDiscountCents,
           };
@@ -2438,6 +2565,7 @@ export default function POSPage() {
                   onBatchCap={msg => setBatchCapToast(msg)}
                   onUpdateDiscount={(type, value) => updateItemDiscount(item.product.id, type, value)}
                   onNavigateToBarcode={refocusBarcode}
+                  onChangeUnit={unitId => changeCartUnit(item.product.id, unitId)}
                 />
               ))
             )}
