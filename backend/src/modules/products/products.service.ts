@@ -219,6 +219,22 @@ export const productsService = {
     const product = await prisma.product.findUnique({ where: { id }, select: { id: true } });
     if (!product) throw new HttpError(404, 'Product not found');
 
+    // Check remaining stock — block delete if any stock on hand (must write off
+    // first to record the loss properly). Applies to BOTH soft and hard delete
+    // paths since it runs before the transaction-history branching below.
+    const stockAgg = await prisma.stock.aggregate({
+      where: { productId: id },
+      _sum: { qty: true },
+    });
+    const totalStock = Number(stockAgg._sum.qty ?? 0);
+    if (totalStock > 0) {
+      throw new HttpError(
+        400,
+        `Cannot delete: ${totalStock} units still in stock. ` +
+          `Write off the stock first to record the loss, then delete.`,
+      );
+    }
+
     const [saleCount, purchaseCount, movementCount, batchCount] = await Promise.all([
       prisma.saleLine.count({ where: { productId: id } }),
       prisma.purchaseLine.count({ where: { productId: id } }),
