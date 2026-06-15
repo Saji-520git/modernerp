@@ -150,6 +150,26 @@ function getUnitOptions(product: PosProduct): UnitOption[] {
 }
 
 /**
+ * v1.0.61 — How many BASE units one of `unitId` represents for this product.
+ * Base unit (or undefined unitId) → 1. A selected sales unit returns the
+ * conversionQty of the conversion that maps it directly to the base unit.
+ * Mirrors getUnitOptions' "toUnitId === baseUnitId" sellable-unit rule.
+ */
+function getBaseFactor(product: PosProduct, unitId: string | undefined): number {
+  const baseUnitId = product.baseUnitId ?? product.unitId;
+  if (!unitId || unitId === baseUnitId) return 1;
+  const conv = (product.unitConversions ?? []).find(
+    c => c.fromUnitId === unitId && c.toUnitId === baseUnitId,
+  );
+  return conv ? Number(conv.conversionQty) : 1;
+}
+
+/** v1.0.61 — Base-unit quantity a cart line consumes from stock. */
+function lineBaseQty(item: CartItem): number {
+  return item.qty * getBaseFactor(item.product, item.unitId);
+}
+
+/**
  * Format a base-unit stock quantity for the product grid: shows the base count
  * with its unit label, plus a pack breakdown using the largest pack conversion
  * (e.g. "45 pcs (2 box + 5)").
@@ -1584,13 +1604,25 @@ export default function POSPage() {
   // ── v1.0.46 — oversell guard ──────────────────────────────────────────────────
   // True if any non-service cart line exceeds live available stock. Drives the
   // PAY NOW disabled state + warning. Backend remains the final authority.
-  const hasOversoldItem = cart
-    .filter(i => !i.isServiceCharge)
-    .some(i => {
-      const posProduct = products.find(p => p.id === i.product.id);
-      if (!posProduct) return false; // not in live list (filtered/svc) — let backend guard
-      return i.qty > availableStockFor(posProduct);
-    });
+  // v1.0.61 — Aggregate BASE-unit demand per product across ALL its cart lines
+  // (a product may appear under different sales units), then compare the summed
+  // base qty to live base-unit stock. Backend remains the final authority.
+  const hasOversoldItem = (() => {
+    const baseByProduct = new Map<string, number>();
+    for (const i of cart) {
+      if (i.isServiceCharge) continue;
+      baseByProduct.set(
+        i.product.id,
+        (baseByProduct.get(i.product.id) ?? 0) + lineBaseQty(i),
+      );
+    }
+    for (const [pid, baseQty] of baseByProduct) {
+      const posProduct = products.find(p => p.id === pid);
+      if (!posProduct) continue; // not in live list (filtered/svc) — let backend guard
+      if (baseQty > availableStockFor(posProduct)) return true;
+    }
+    return false;
+  })();
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: PosProduct) => {
@@ -1702,40 +1734,54 @@ export default function POSPage() {
   const updateQty = useCallback((productId: string, qty: number) => {
     if (qty <= 0) { removeFromCart(productId); return; }
 
-    // v1.0.46 — cap requested qty at available stock. The +/- steppers call this
+    // v1.0.61 — cap requested qty at available stock. The +/- steppers call this
     // directly and bypass CartLine's typed-input cap, so enforce it here too.
-    // Uses live product data; service-charge lines (svc_*) aren't in `products`
-    // and fall through unchanged.
+    // availableStockFor returns BASE units, but `qty` is in the line's SELECTED
+    // unit (e.g. boxes). Convert: maxUnits = floor(baseAvailable / baseFactor).
+    // The line's unit lives on the cart line, so resolve it from the FRESH `prev`
+    // state inside the updater (updateQty's closure has no `cart` dep → stale).
     const posProduct = products.find(p => p.id === productId);
-    if (posProduct) {
-      const available = availableStockFor(posProduct);
-      if (available <= 0) {
-        setBatchCapToast('No stock available');
-        return;
-      }
-      if (qty > available) {
-        qty = available;
-        setBatchCapToast(`Only ${available} available`);
-      }
-    }
 
-    setCart(prev => prev.map(i => {
-      // Service-charge line follows its parent product's qty for all modes
-      // except per_transaction (flat — stays at qty=1, falls through unchanged).
-      if (
-        i.isServiceCharge &&
-        i.linkedProductId === productId &&
-        i.product.serviceChargeMode !== 'per_transaction'
-      ) {
-        return { ...i, qty };
+    setCart(prev => {
+      let cappedQty = qty;
+      if (posProduct) {
+        const available = availableStockFor(posProduct); // BASE units
+        if (available <= 0) {
+          setBatchCapToast('No stock available');
+          return prev; // no change
+        }
+        const targetLine = prev.find(
+          i => i.product.id === productId && !i.isServiceCharge,
+        );
+        const factor   = getBaseFactor(posProduct, targetLine?.unitId);
+        const maxUnits = Math.floor(available / factor);
+        if (cappedQty > maxUnits) {
+          cappedQty = maxUnits;
+          setBatchCapToast(
+            maxUnits > 0 ? `Only ${maxUnits} available` : 'Not enough stock',
+          );
+        }
+        if (cappedQty <= 0) return prev; // can't fit even one whole unit
       }
-      if (i.product.id !== productId) return i;
-      const newLineSubtotal = qty * i.unitPriceCents;
-      const newDiscountCents = i.itemDiscountType === 'percent'
-        ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
-        : Math.min(Math.round(i.itemDiscountValue * 100), newLineSubtotal);
-      return { ...i, qty, itemDiscountCents: newDiscountCents };
-    }));
+
+      return prev.map(i => {
+        // Service-charge line follows its parent product's qty for all modes
+        // except per_transaction (flat — stays at qty=1, falls through unchanged).
+        if (
+          i.isServiceCharge &&
+          i.linkedProductId === productId &&
+          i.product.serviceChargeMode !== 'per_transaction'
+        ) {
+          return { ...i, qty: cappedQty };
+        }
+        if (i.product.id !== productId) return i;
+        const newLineSubtotal = cappedQty * i.unitPriceCents;
+        const newDiscountCents = i.itemDiscountType === 'percent'
+          ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
+          : Math.min(Math.round(i.itemDiscountValue * 100), newLineSubtotal);
+        return { ...i, qty: cappedQty, itemDiscountCents: newDiscountCents };
+      });
+    });
     refocusBarcode();
   }, [removeFromCart, refocusBarcode, products, availableStockFor]);
 
