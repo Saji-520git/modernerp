@@ -76,6 +76,15 @@ export default function App() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [countdown, setCountdown] = useState(5);
 
+  // v1.0.64 — belt-and-suspenders: any auth-state change (logout clears the
+  // token, re-login sets it) clears a lingering expiry banner so it can never
+  // persist across the login redirect.
+  const accessToken = useAuthStore((s) => s.accessToken);
+  useEffect(() => {
+    setSessionExpired(false);
+    setCountdown(5);
+  }, [accessToken]);
+
   useEffect(() => {
     let cancelled = false;
     const token = useAuthStore.getState().accessToken;
@@ -96,6 +105,10 @@ export default function App() {
         setCountdown((c) => {
           if (c <= 1) {
             if (interval) clearInterval(interval);
+            // Hide the banner — logout itself is handled by the api
+            // interceptor's 5s setTimeout. Defer the state update out of
+            // this updater to avoid a nested-setState warning.
+            setTimeout(() => setSessionExpired(false), 0);
             return 0;
           }
           return c - 1;
