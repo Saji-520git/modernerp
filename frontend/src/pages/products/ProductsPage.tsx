@@ -1784,48 +1784,83 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* ── Delete confirmation ─────────────────────────────────────────────── */}
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={() => { if (!deleteMutation.isPending) setDeleteTarget(null); }}
-        >
+      {/* ── Delete confirmation (stock-aware — v1.0.62a) ────────────────────── */}
+      {deleteTarget && (() => {
+        const stockQty   = totalStock(deleteTarget);
+        const unitLabel  = deleteTarget.unit?.shortCode ?? 'units';
+        const hasStock   = stockQty > 0;
+        const stockLabel = Number.isInteger(stockQty)
+          ? stockQty.toLocaleString()
+          : stockQty.toFixed(2);
+
+        return (
           <div
-            className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+            onClick={() => { if (!deleteMutation.isPending) setDeleteTarget(null); }}
           >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                <Trash2 size={18} />
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  hasStock ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                }`}>
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800">
+                    {hasStock ? 'Cannot Delete' : 'Delete Product'}
+                  </h3>
+                  <p className="text-xs text-slate-500">{deleteTarget.name}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-800">Delete Product</h3>
-                <p className="text-xs text-slate-500">{deleteTarget.name}</p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600 mb-5">
-              This product will be permanently removed. This cannot be undone.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleteMutation.isPending}
-                className="flex-1 py-2 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate(deleteTarget.id)}
-                disabled={deleteMutation.isPending}
-                className="flex-1 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
-              >
-                {deleteMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                Delete
-              </button>
+
+              {hasStock ? (
+                <>
+                  <p className="text-sm text-slate-600 mb-5">
+                    This product has <strong>{stockLabel} {unitLabel}</strong> still in
+                    stock. Write off the stock first to record the loss, then delete.
+                  </p>
+                  <div className="flex">
+                    <button
+                      onClick={() => setDeleteTarget(null)}
+                      className="flex-1 py-2 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 mb-5">
+                    <strong>{deleteTarget.name}</strong> will be removed. If it has sales or
+                    purchase history it will be moved to Recently Deleted and can be restored;
+                    otherwise it will be permanently deleted.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteTarget(null)}
+                      disabled={deleteMutation.isPending}
+                      className="flex-1 py-2 text-sm font-medium border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                      disabled={deleteMutation.isPending}
+                      className="flex-1 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+                    >
+                      {deleteMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      Delete
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── List toast ──────────────────────────────────────────────────────── */}
       {listToast && (
