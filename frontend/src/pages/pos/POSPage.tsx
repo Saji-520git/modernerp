@@ -1845,12 +1845,16 @@ export default function POSPage() {
 
     if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation(); // prevent window keydown handler from opening payment
       const idx = gridSelectedIndex;
       if (idx >= 0 && idx < products.length) {
         const p = products[idx];
         sound.beep();
         addToCart(p);
         focusNewItemQty(p.id);
+        // Return to a clean state: clear the name filter + grid highlight
+        setSearch('');
+        setGridSelectedIndex(-1);
       }
       return;
     }
@@ -2583,7 +2587,7 @@ export default function POSPage() {
                     key={p.id}
                     product={p}
                     isSelected={idx === gridSelectedIndex}
-                    onAdd={() => { addToCart(p); focusNewItemQty(p.id); }}
+                    onAdd={() => { addToCart(p); focusNewItemQty(p.id); setSearch(''); setGridSelectedIndex(-1); }}
                   />
                 ))}
               </div>
