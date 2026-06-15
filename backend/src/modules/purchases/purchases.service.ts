@@ -43,6 +43,7 @@ export const purchaseService = {
         sku: true,
         costCents: true,
         taxPercent: true,
+        defaultSupplierId: true,
         unitId: true,
         baseUnitId: true,
         purchaseUnitId: true,

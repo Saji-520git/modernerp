@@ -1568,6 +1568,13 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
     [products],
   );
 
+  // v1.0.63 — products whose default supplier matches the selected supplier.
+  // Drives the "Load supplier's products" button on the PO form.
+  const supplierProducts = useMemo<PurchaseProduct[]>(
+    () => (supplierId ? products.filter((p) => p.defaultSupplierId === supplierId) : []),
+    [products, supplierId],
+  );
+
   // Units list — only fetched while the quick-add product modal is open
   const { data: unitsList } = useQuery<Array<{ id: string; name: string; shortCode: string }>>({
     queryKey: ['units-for-quick-add'],
@@ -1704,6 +1711,30 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
       ...prev,
       { key: Date.now(), productId: '', qty: '1', unitCost: '', taxPercent: '0', expiryDate: '' },
     ]);
+  };
+
+  // v1.0.63 — append the selected supplier's default products as lines.
+  // Skips products already on the PO; qty defaults to '1' because handleSubmit
+  // rejects lines with qty <= 0 (empty qty would block the whole save), so the
+  // cashier adjusts each quantity rather than starting from an invalid line.
+  const loadSupplierProducts = () => {
+    setLines((prev) => {
+      const existing = new Set(prev.filter((l) => l.productId).map((l) => l.productId));
+      const newLines: LineForm[] = supplierProducts
+        .filter((p) => !existing.has(p.id))
+        .map((p, idx) => ({
+          key:        Date.now() + idx,
+          productId:  p.id,
+          qty:        '1',
+          unitCost:   (p.costCents / 100).toFixed(2),
+          taxPercent: String(p.taxPercent),
+          unitId:     p.baseUnitId ?? p.unitId ?? undefined,
+          expiryDate: '',
+        }));
+      // Drop a lone blank placeholder line when loading real products.
+      const cleanedPrev = prev.length === 1 && !prev[0].productId ? [] : prev;
+      return [...cleanedPrev, ...newLines];
+    });
   };
 
   const removeLine = (key: number) => {
@@ -1845,12 +1876,24 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
           <span className="text-sm font-semibold text-slate-700">Line Items</span>
-          <button
-            onClick={addLine}
-            className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 font-medium"
-          >
-            <Plus className="w-4 h-4" /> Add Line
-          </button>
+          <div className="flex items-center gap-4">
+            {supplierId && supplierProducts.length > 0 && (
+              <button
+                type="button"
+                onClick={loadSupplierProducts}
+                className="flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+              >
+                <Plus className="w-4 h-4" /> Load {supplierProducts.length} product
+                {supplierProducts.length > 1 ? 's' : ''} from this supplier
+              </button>
+            )}
+            <button
+              onClick={addLine}
+              className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 font-medium"
+            >
+              <Plus className="w-4 h-4" /> Add Line
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

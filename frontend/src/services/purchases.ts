@@ -15,6 +15,7 @@ export interface PurchaseProduct {
   sku: string;
   costCents: number;
   taxPercent: number;
+  defaultSupplierId?: string | null;
   unitId:        string;
   baseUnitId:    string | null;
   purchaseUnitId:string | null;
