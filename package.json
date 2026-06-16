@@ -7,6 +7,7 @@
   "scripts": {
     "electron": "electron .",
     "build": "electron-builder",
+    "prebuild:win": "npm --prefix backend run build && npm --prefix frontend run build",
     "build:win": "electron-builder --win --x64",
     "postinstall": "electron-builder install-app-deps"
   },
