@@ -279,10 +279,7 @@ export default function UnitsPage() {
               </tr>
             )}
             {data?.data.map((unit) => {
-              const productCount =
-                (unit._count?.productsAsBase ?? 0) +
-                (unit._count?.productsAsPurchase ?? 0) +
-                (unit._count?.productsAsSales ?? 0);
+              const productCount = unit.productCount ?? 0;
               return (
                 <tr key={unit.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-4 py-3">

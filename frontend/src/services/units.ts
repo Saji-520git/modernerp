@@ -11,11 +11,9 @@ export interface Unit {
   isActive:     boolean;
   createdAt:    string;
   updatedAt:    string;
-  _count?: {
-    productsAsBase:     number;
-    productsAsPurchase: number;
-    productsAsSales:    number;
-  };
+  // Distinct active products using this unit in any role (base/purchase/sales).
+  // Provided by list + getById; absent on create/update responses.
+  productCount?: number;
 }
 
 export interface UnitBody {

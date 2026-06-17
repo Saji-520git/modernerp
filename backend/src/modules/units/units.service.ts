@@ -18,43 +18,55 @@ export const unitsService = {
       ];
     }
 
-    const [total, data] = await prisma.$transaction([
+    const [total, units, roleRows] = await prisma.$transaction([
       prisma.unit.count({ where }),
       prisma.unit.findMany({
         where,
         skip,
         take: pageSize,
         orderBy: { name: 'asc' },
-        include: {
-          _count: {
-            select: {
-              productsAsBase:     true,
-              productsAsPurchase: true,
-              productsAsSales:    true,
-            },
-          },
-        },
+      }),
+      // Distinct active-product count per unit: pull every active product's three
+      // unit-role ids in ONE query, then tally below. (Replaces the old _count
+      // role-sum, which double-counted multi-role products and counted inactive
+      // recycle-bin products.)
+      prisma.product.findMany({
+        where: { isActive: true },
+        select: { baseUnitId: true, purchaseUnitId: true, salesUnitId: true },
       }),
     ]);
+
+    // Count each active product ONCE per distinct unit it references in any role
+    // (base/purchase/sales). A product using Piece as base AND sales adds 1 to
+    // Piece, not 2.
+    const countMap = new Map<string, number>();
+    for (const p of roleRows) {
+      const unitIds = new Set(
+        [p.baseUnitId, p.purchaseUnitId, p.salesUnitId].filter(
+          (id): id is string => id != null,
+        ),
+      );
+      for (const id of unitIds) {
+        countMap.set(id, (countMap.get(id) ?? 0) + 1);
+      }
+    }
+
+    const data = units.map(u => ({ ...u, productCount: countMap.get(u.id) ?? 0 }));
 
     return { total, page, pageSize, data };
   },
 
   async getById(id: string) {
-    const unit = await prisma.unit.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: {
-            productsAsBase:     true,
-            productsAsPurchase: true,
-            productsAsSales:    true,
-          },
-        },
+    const unit = await prisma.unit.findUnique({ where: { id } });
+    if (!unit) throw new HttpError(404, 'Unit not found');
+    // Distinct active products using this unit in any role (base/purchase/sales).
+    const productCount = await prisma.product.count({
+      where: {
+        isActive: true,
+        OR: [{ baseUnitId: id }, { purchaseUnitId: id }, { salesUnitId: id }],
       },
     });
-    if (!unit) throw new HttpError(404, 'Unit not found');
-    return unit;
+    return { ...unit, productCount };
   },
 
   async create(input: CreateUnitInput) {
@@ -90,12 +102,14 @@ export const unitsService = {
       include: {
         _count: {
           select: {
-            products:           true,  // legacy unitId
-            productsAsBase:     true,
-            productsAsPurchase: true,
-            productsAsSales:    true,
-            conversionsFrom:    true,
-            conversionsTo:      true,
+            // Only ACTIVE products/conversions should block deactivation —
+            // recycle-bin (isActive:false) rows must not keep a unit locked.
+            products:           { where: { isActive: true } },  // legacy unitId
+            productsAsBase:     { where: { isActive: true } },
+            productsAsPurchase: { where: { isActive: true } },
+            productsAsSales:    { where: { isActive: true } },
+            conversionsFrom:    { where: { isActive: true } },
+            conversionsTo:      { where: { isActive: true } },
           },
         },
       },
