@@ -1488,7 +1488,16 @@ export default function POSPage() {
 
   // ── Barcode refocus ───────────────────────────────────────────────────────────
   const refocusBarcode = useCallback(() => {
-    setTimeout(() => barcodeRef.current?.focus(), 100);
+    setTimeout(() => {
+      // Don't steal focus if, during the 100ms window, the cashier moved into
+      // another field (e.g. clicked a line discount input to override it).
+      const a = document.activeElement;
+      if (a && a !== barcodeRef.current &&
+          (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement)) {
+        return;
+      }
+      barcodeRef.current?.focus();
+    }, 100);
   }, []);
 
   // ── Batch cap toast auto-dismiss ─────────────────────────────────────────────
