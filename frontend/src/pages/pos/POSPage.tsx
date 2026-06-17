@@ -197,6 +197,26 @@ function lineBaseQty(item: CartItem): number {
 }
 
 /**
+ * Does the line's SELECTED unit allow decimal quantities? Resolves allowDecimal
+ * for whichever unit `unitId` points to — base unit (or undefined → base) reads
+ * the base unit object; a conversion unit (e.g. Box) reads its fromUnit. COUNT
+ * units (Piece, Box) are false → whole numbers only. Mirrors getBaseFactor's
+ * base-vs-conversion lookup. Defaults to false (safer: whole numbers) if the
+ * unit object is missing.
+ */
+function getUnitAllowDecimal(product: PosProduct, unitId: string | undefined): boolean {
+  const baseUnitId = product.baseUnitId ?? product.unitId;
+  if (!unitId || unitId === baseUnitId) {
+    const baseUnit = product.baseUnit ?? product.unit;
+    return baseUnit?.allowDecimal ?? false;
+  }
+  const conv = (product.unitConversions ?? []).find(
+    c => c.fromUnitId === unitId && c.toUnitId === baseUnitId,
+  );
+  return conv?.fromUnit?.allowDecimal ?? false;
+}
+
+/**
  * Format a base-unit stock quantity for the product grid: shows the base count
  * with its unit label, plus a pack breakdown using the largest pack conversion
  * (e.g. "45 pcs (2 box + 5)").
@@ -441,6 +461,8 @@ const CartLine = forwardRef<CartLineHandle, {
   const lineTotal               = lineAfterDisc;
   // Sellable unit options — dropdown only shows when more than one exists
   const unitOpts                = item.isServiceCharge ? [] : getUnitOptions(item.product);
+  // Does the line's SELECTED unit allow decimal qty? COUNT units → whole only.
+  const unitAllowDecimal        = getUnitAllowDecimal(item.product, item.unitId);
 
   useImperativeHandle(cartLineRef, () => ({
     focusQty:      () => startEdit(),
@@ -462,6 +484,13 @@ const CartLine = forwardRef<CartLineHandle, {
   const commitEdit = () => {
     const raw = parseFloat(draft);
     let qty   = isNaN(raw) || raw <= 0 ? 1 : raw;
+
+    // Whole-number enforcement: COUNT units (allowDecimal=false) cannot be sold
+    // in fractions. Round to nearest whole, min 1. Done BEFORE caps so the
+    // rounded value is what gets capped against stock.
+    if (!unitAllowDecimal) {
+      qty = Math.max(1, Math.round(qty));
+    }
 
     // Batch-aware cap: respect expiredStockPolicy
     const bs = item.product.batchSummary;
@@ -524,8 +553,8 @@ const CartLine = forwardRef<CartLineHandle, {
           <input
             ref={inputRef}
             type="number"
-            min="0.001"
-            step="0.001"
+            min={unitAllowDecimal ? '0.001' : '1'}
+            step={unitAllowDecimal ? '0.001' : '1'}
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onBlur={commitEdit}
@@ -1315,9 +1344,12 @@ function productToPosProduct(p: Product): PosProduct {
     baseUnitId:      p.baseUnitId ?? null,
     purchaseUnitId:  p.purchaseUnitId ?? null,
     salesUnitId:     p.salesUnitId ?? null,
-    unit:            p.unit,
-    baseUnit:        p.baseUnit ?? null,
-    salesUnit:       p.salesUnit ?? null,
+    // Quick-add products carry no allowDecimal on their unit type → default
+    // false (whole numbers, the safe choice for an unknown unit); preserve a
+    // real value if the API ever provides one.
+    unit:            { ...p.unit,     allowDecimal: (p.unit     as { allowDecimal?: boolean }).allowDecimal ?? false },
+    baseUnit:        p.baseUnit  ? { ...p.baseUnit,  allowDecimal: (p.baseUnit  as { allowDecimal?: boolean }).allowDecimal ?? false } : null,
+    salesUnit:       p.salesUnit ? { ...p.salesUnit, allowDecimal: (p.salesUnit as { allowDecimal?: boolean }).allowDecimal ?? false } : null,
     unitConversions: [],
     stock:           p.stock.map(s => ({ qty: String(s.qty) })),
     batchSummary:    null,

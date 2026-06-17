@@ -16,7 +16,7 @@ export interface PosUnitConversion {
   priceCents:    number | null;
   discountType:  string | null;
   discountValue: number | null;
-  fromUnit:      { id: string; name: string; shortCode: string };
+  fromUnit:      { id: string; name: string; shortCode: string; allowDecimal: boolean };
   toUnit:        { id: string; name: string; shortCode: string };
 }
 
@@ -41,9 +41,9 @@ export interface PosProduct {
   baseUnitId:    string | null;
   purchaseUnitId:string | null;
   salesUnitId:   string | null;
-  unit:       { id: string; shortCode: string; name: string };
-  baseUnit:   { id: string; shortCode: string; name: string } | null;
-  salesUnit:  { id: string; shortCode: string; name: string } | null;
+  unit:       { id: string; shortCode: string; name: string; allowDecimal: boolean };
+  baseUnit:   { id: string; shortCode: string; name: string; allowDecimal: boolean } | null;
+  salesUnit:  { id: string; shortCode: string; name: string; allowDecimal: boolean } | null;
   unitConversions: PosUnitConversion[];
   stock: Array<{ qty: string }>;
   batchSummary: {

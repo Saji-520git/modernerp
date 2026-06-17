@@ -76,9 +76,9 @@ export const posService = {
           baseUnitId: true,
           purchaseUnitId: true,
           salesUnitId: true,
-          unit:         { select: { id: true, shortCode: true, name: true } },
-          baseUnit:     { select: { id: true, shortCode: true, name: true } },
-          salesUnit:    { select: { id: true, shortCode: true, name: true } },
+          unit:         { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
+          baseUnit:     { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
+          salesUnit:    { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
           unitConversions: {
             where: { isActive: true },
             select: {
@@ -89,7 +89,7 @@ export const posService = {
               priceCents: true,
               discountType: true,
               discountValue: true,
-              fromUnit: { select: { id: true, name: true, shortCode: true } },
+              fromUnit: { select: { id: true, name: true, shortCode: true, allowDecimal: true } },
               toUnit:   { select: { id: true, name: true, shortCode: true } },
             },
           },
