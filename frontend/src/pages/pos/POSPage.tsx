@@ -631,7 +631,7 @@ const CartLine = forwardRef<CartLineHandle, {
             ref={discountRef}
             mode={item.itemDiscountType}
             value={item.itemDiscountValue}
-            maxAmount={lineSubtotal}
+            maxAmount={item.unitPriceCents}
             onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
             onEnter={onNavigateToBarcode}
           />
@@ -1724,7 +1724,7 @@ export default function POSPage() {
       const lineSubtotal = 1 * priceToUse;
       const seedDiscountCents = seed.itemDiscountType === 'percent'
         ? Math.floor(lineSubtotal * seed.itemDiscountValue / 100)
-        : Math.min(Math.round(seed.itemDiscountValue * 100), lineSubtotal);
+        : Math.min(Math.round(seed.itemDiscountValue * 100) * 1, lineSubtotal);
       const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: priceToUse,
         originalPriceCents: product.priceCents,
@@ -1818,7 +1818,7 @@ export default function POSPage() {
         const newLineSubtotal = cappedQty * i.unitPriceCents;
         const newDiscountCents = i.itemDiscountType === 'percent'
           ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
-          : Math.min(Math.round(i.itemDiscountValue * 100), newLineSubtotal);
+          : Math.min(Math.round(i.itemDiscountValue * 100) * cappedQty, newLineSubtotal);
         return { ...i, qty: cappedQty, itemDiscountCents: newDiscountCents };
       });
     });
@@ -2129,7 +2129,7 @@ export default function POSPage() {
       const lineSubtotal   = i.qty * i.unitPriceCents;
       const discountCents  = type === 'percent'
         ? Math.floor(lineSubtotal * value / 100)
-        : Math.min(Math.round(value * 100), lineSubtotal);
+        : Math.min(Math.round(value * 100) * i.qty, lineSubtotal);
       return { ...i, itemDiscountType: type, itemDiscountValue: value, itemDiscountCents: discountCents };
     }));
   }, []);
@@ -2148,7 +2148,7 @@ export default function POSPage() {
       const newLineSubtotal = i.qty * newUnitPrice;
       const newDiscountCents = seed.itemDiscountType === 'percent'
         ? Math.floor(newLineSubtotal * seed.itemDiscountValue / 100)
-        : Math.min(Math.round(seed.itemDiscountValue * 100), newLineSubtotal);
+        : Math.min(Math.round(seed.itemDiscountValue * 100) * i.qty, newLineSubtotal);
       return {
         ...i,
         unitId:            opt.unitId,
