@@ -7,8 +7,13 @@ export const conversionLineSchema = z.object({
   toUnitId:      z.string().min(1),
   conversionQty: z.number().positive('Conversion quantity must be greater than 0'),
   priceCents:    z.number().int().min(0).optional().nullable(),
+  discountType:  z.enum(['amount', 'percent']).optional().nullable(),
+  discountValue: z.number().min(0).optional().nullable(),
   barcode:       z.string().optional().nullable(),
-});
+}).refine(
+  (c) => !(c.discountType === 'percent' && c.discountValue != null && c.discountValue > 100),
+  { message: 'Percent discount cannot exceed 100', path: ['discountValue'] },
+);
 
 export type ConversionLineInput = z.infer<typeof conversionLineSchema>;
 
@@ -66,6 +71,8 @@ export const productConversionsService = {
           toUnitId:      c.toUnitId,
           conversionQty: c.conversionQty,
           priceCents:    c.priceCents ?? null,
+          discountType:  c.discountType ?? null,
+          discountValue: c.discountValue ?? null,
           barcode:       c.barcode || null,
           isActive:      true,
         })),
