@@ -3,7 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertFromBaseUnit } from '../../utils/unit-converter.js';
-import { getBatchSummary, getBatchDetail } from '../../utils/batch-expiry.js';
+import { getBatchSummary, getBatchDetail, deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty, repairNegativeStockQty } from '../../utils/stock-utils.js';
 import type {
   StockListInput,
@@ -443,15 +443,47 @@ export const inventoryService = {
         select: { qty: true },
       });
       const freshCurrentQty = Number(currentStockRow?.qty ?? 0);
-      const adjustedQty = Math.max(0, freshCurrentQty + Number(qty));
+      const baseQty = Math.abs(Number(qty));   // adjustment qty is base by construction (no unit selector)
 
-      // Upsert stock — set the floored absolute value (never increment, so a
-      // pre-existing drifted/negative qty cannot propagate).
-      const stock = await tx.stock.upsert({
-        where: { productId_warehouseId: { productId, warehouseId } },
-        update: { qty: adjustedQty },
-        create: { productId, warehouseId, qty: Math.max(0, Number(qty)) },
-      });
+      // SIGN-ROUTER — keep stock batch-consistent without wiping legacy (no-batch)
+      // stock. Negative = decrease → FEFO-deduct (mirror POS/write-off) with a
+      // legacy floored fork. Positive = increase → create a lot (mirror sale-return)
+      // and set ADDITIVELY (never recompute — a blind recompute would zero a legacy
+      // product's pre-existing unbacked aggregate).
+      let stock;
+      if (Number(qty) < 0) {
+        // DECREASE — FEFO-deduct, mirror POS/write-off. Legacy fork protects no-batch stock.
+        const deducted = await deductBatchesFEFO(tx, productId, warehouseId, baseQty, false);
+        if (deducted > 0) {
+          await recomputeStockQty(tx, productId, warehouseId);
+        } else {
+          const newQty = Math.max(0, freshCurrentQty - baseQty);
+          await tx.stock.upsert({
+            where:  { productId_warehouseId: { productId, warehouseId } },
+            update: { qty: newQty },
+            create: { productId, warehouseId, qty: 0 },
+          });
+        }
+        // Row is guaranteed to exist: both sub-branches above (recompute upsert
+        // / legacy floored upsert) create or update it. Assert non-null for TS.
+        stock = (await tx.stock.findUnique({
+          where: { productId_warehouseId: { productId, warehouseId } },
+        }))!;
+      } else {
+        // INCREASE — create a lot (mirror sale-return), then set ADDITIVELY.
+        // NOT recompute: a blind recompute would wipe a legacy product's
+        // pre-existing unbacked aggregate. Additive is correct for BOTH batched
+        // (fresh already == batch sum) and legacy (preserves the aggregate).
+        await tx.stockBatch.create({
+          data: { productId, warehouseId, purchaseLineId: null, qty: baseQty, expiryDate: null },
+        });
+        const newQty = Math.max(0, freshCurrentQty + baseQty);
+        stock = await tx.stock.upsert({
+          where:  { productId_warehouseId: { productId, warehouseId } },
+          update: { qty: newQty },
+          create: { productId, warehouseId, qty: newQty },
+        });
+      }
 
       // Record movement
       const movement = await tx.stockMovement.create({
