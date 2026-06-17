@@ -2233,11 +2233,16 @@ export default function POSPage() {
   }, [lastReceipt, appSettings, lastChangeCents]);
 
   // ── Auto-focus barcode when shift becomes active ──────────────────────────────
+  // Depend on the shift IDENTITY (currentShift?.id), not the whole object, so the
+  // 30s refetch (which returns a fresh reference for live sale counts) does not
+  // re-fire this. Also skip when another input/select is focused so we never steal
+  // focus from a cashier mid-edit (e.g. typing a per-line discount override).
   useEffect(() => {
-    if (currentShift && barcodeRef.current) {
-      barcodeRef.current.focus();
-    }
-  }, [currentShift]);
+    if (!currentShift || !barcodeRef.current) return;
+    const a = document.activeElement;
+    if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement) return;
+    barcodeRef.current.focus();
+  }, [currentShift?.id]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
   useEffect(() => {
