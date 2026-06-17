@@ -48,6 +48,8 @@ export interface ProductUnitConversion {
   toUnitId:      string;
   conversionQty: number;
   priceCents:    number | null;
+  discountType:  string | null;
+  discountValue: number | null;
   barcode:       string | null;
   isActive:      boolean;
   fromUnit:      { id: string; name: string; shortCode: string };
@@ -59,6 +61,8 @@ export interface ConversionLinePayload {
   toUnitId:      string;
   conversionQty: number;
   priceCents?:   number | null;
+  discountType?: string | null;
+  discountValue?: number | null;
   barcode?:      string | null;
 }
 

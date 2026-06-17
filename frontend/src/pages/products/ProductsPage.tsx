@@ -73,6 +73,8 @@ interface ConversionLine {
   toUnitId: string;
   conversionQty: string;
   priceCents: string;
+  discountType: string;   // '' | 'amount' | 'percent'
+  discountValue: string;
   barcode: string;
 }
 
@@ -269,6 +271,10 @@ export default function ProductsPage() {
             toUnitId: r.toUnitId,
             conversionQty: String(r.conversionQty),
             priceCents: r.priceCents != null ? (r.priceCents / 100).toFixed(2) : '',
+            discountType: r.discountType ?? '',
+            discountValue: r.discountValue != null
+              ? (r.discountType === 'amount' ? (r.discountValue / 100).toFixed(2) : String(r.discountValue))
+              : '',
             barcode: r.barcode ?? '',
           }))
         );
@@ -522,6 +528,13 @@ export default function ProductsPage() {
         toUnitId:      c.toUnitId,
         conversionQty: parseFloat(c.conversionQty),
         priceCents:    c.priceCents ? Math.round(parseFloat(c.priceCents) * 100) : null,
+        // Guard: a value without a type is meaningless → send both null.
+        discountType:  (c.discountType && c.discountValue) ? c.discountType : null,
+        discountValue: (c.discountType && c.discountValue)
+          ? (c.discountType === 'amount'
+              ? Math.round(parseFloat(c.discountValue) * 100)
+              : parseFloat(c.discountValue))
+          : null,
         barcode:       c.barcode.trim() || null,
       }));
 
@@ -574,7 +587,7 @@ export default function ProductsPage() {
   function addConversionRow() {
     setConversions((prev) => [
       ...prev,
-      { key: ++convKeyRef.current, fromUnitId: '', toUnitId: '', conversionQty: '', priceCents: '', barcode: '' },
+      { key: ++convKeyRef.current, fromUnitId: '', toUnitId: '', conversionQty: '', priceCents: '', discountType: '', discountValue: '', barcode: '' },
     ]);
   }
 
@@ -1653,6 +1666,34 @@ export default function ProductsPage() {
                             >
                               <X size={13} />
                             </button>
+                          </div>
+                          {/* Per-unit default discount (overrides the product-level default for this unit) */}
+                          <div className="flex items-center gap-2 mt-1 pl-1">
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Discount:</span>
+                            <select
+                              value={row.discountType}
+                              onChange={(e) => updateConvRow(row.key, { discountType: e.target.value })}
+                              className="px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                            >
+                              <option value="">—</option>
+                              <option value="amount">Rs</option>
+                              <option value="percent">%</option>
+                            </select>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.discountValue}
+                              onChange={(e) => updateConvRow(row.key, { discountValue: e.target.value })}
+                              placeholder="opt."
+                              className="w-20 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                            />
+                            {row.discountType === 'percent' && (
+                              <span className="text-[10px] text-slate-400">% (max 100)</span>
+                            )}
+                            {row.discountType === 'amount' && (
+                              <span className="text-[10px] text-slate-400">Rs. off per unit</span>
+                            )}
                           </div>
                           {preview && (
                             <p className="text-[10px] text-indigo-500 mt-0.5 pl-1">{preview}</p>
