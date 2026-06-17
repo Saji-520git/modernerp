@@ -1,5 +1,8 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { convertToBaseUnit } from '../../utils/unit-converter.js';
+import { recomputeStockQty } from '../../utils/stock-utils.js';
 import type { CreateReturnInput, ListReturnsInput } from './returns.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,29 +215,42 @@ export const returnsService = {
 
       // 2. Add stock back (RETURN_IN) for each line
       for (const line of input.lines) {
-        // Upsert stock
-        await tx.stock.upsert({
-          where: {
-            productId_warehouseId: {
-              productId: line.productId,
-              warehouseId: sale.warehouseId,
-            },
-          },
-          create: {
-            productId: line.productId,
-            warehouseId: sale.warehouseId,
-            qty: line.qty,
-          },
-          update: { qty: { increment: line.qty } },
-        });
+        // Sale-return qty is stored in SALE units (validated against SaleLine.qty).
+        // Stock / StockBatch are held in BASE units, so convert the RETURNED qty —
+        // NOT saleLine.baseQty, which is the full sold amount — so partial returns
+        // scale correctly. A null unitId on the original sale line means it was
+        // already in base units. saleLine is guaranteed non-null here: the
+        // validation loop above threw if the product was not on the invoice.
+        const saleLine = sale.lines.find((l) => l.productId === line.productId);
+        const rawQty  = new Decimal(line.qty.toString());      // sale units
+        const baseQty = saleLine?.unitId
+          ? (await convertToBaseUnit(line.productId, saleLine.unitId, rawQty, tx as any)).baseQty
+          : rawQty;                                            // null unitId → already base
+        const baseQtyNum = Number(baseQty);
 
-        // Stock movement
+        // Create a StockBatch lot for the returned goods in BASE units so the
+        // aggregate has batch backing and survives recomputeStockQty. Returned
+        // goods have no purchase origin (purchaseLineId null) and unknown expiry
+        // (null → FEFO sorts it last). Replaces the bare stock.upsert(increment),
+        // which left the returned qty with no batch row behind it.
+        await tx.stockBatch.create({
+          data: {
+            productId:      line.productId,
+            warehouseId:    sale.warehouseId,
+            purchaseLineId: null,
+            qty:            baseQty,
+            expiryDate:     null,
+          },
+        });
+        await recomputeStockQty(tx, line.productId, sale.warehouseId);
+
+        // Stock movement (BASE units, consistent with PURCHASE_IN / sale deduction)
         await tx.stockMovement.create({
           data: {
             productId: line.productId,
             warehouseId: sale.warehouseId,
             type: 'RETURN_IN',
-            qty: line.qty,
+            qty: baseQtyNum,
             refType: 'SaleReturn',
             refId: ret.id,
             note: `Return ${ret.number} (from ${ret.sale.number})`,
