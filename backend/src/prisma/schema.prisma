@@ -503,6 +503,8 @@ model ProductUnitConversion {
   toUnitId      String
   conversionQty Decimal @db.Decimal(18, 6)  // how many toUnits in 1 fromUnit (e.g. 20.000000 for Box→Piece)
   priceCents    Int?    // optional price override for this unit (in cents)
+  discountType  String?    // 'amount' | 'percent'  (null = no per-unit default)
+  discountValue Decimal? @db.Decimal(18, 4)   // amount → cents; percent → 0–100
   barcode       String? @unique              // optional barcode for this specific unit pack
   isActive      Boolean @default(true)
   createdAt     DateTime @default(now())
