@@ -112,10 +112,12 @@ function fmtQty(qty: number): string {
  * If the product has no conversions, only the base unit option is returned.
  */
 interface UnitOption {
-  unitId:     string;
-  label:      string;
-  priceCents: number;
-  isBase:     boolean;
+  unitId:        string;
+  label:         string;
+  priceCents:    number;
+  isBase:        boolean;
+  discountType:  string | null;
+  discountValue: number | null;
 }
 function getUnitOptions(product: PosProduct): UnitOption[] {
   const baseUnitId = product.baseUnitId ?? product.unitId;
@@ -123,10 +125,12 @@ function getUnitOptions(product: PosProduct): UnitOption[] {
   const basePrice  = product.priceCents;
 
   const options: UnitOption[] = [{
-    unitId:     baseUnitId,
-    label:      baseUnit?.shortCode ?? baseUnit?.name ?? 'unit',
-    priceCents: basePrice,
-    isBase:     true,
+    unitId:        baseUnitId,
+    label:         baseUnit?.shortCode ?? baseUnit?.name ?? 'unit',
+    priceCents:    basePrice,
+    isBase:        true,
+    discountType:  null,   // base unit has no conversion row → product default applies
+    discountValue: null,
   }];
 
   for (const conv of (product.unitConversions ?? [])) {
@@ -139,14 +143,37 @@ function getUnitOptions(product: PosProduct): UnitOption[] {
       : Math.round(basePrice * factor);
 
     options.push({
-      unitId:     conv.fromUnitId,
-      label:      conv.fromUnit?.shortCode ?? conv.fromUnit?.name ?? 'unit',
-      priceCents: unitPrice,
-      isBase:     false,
+      unitId:        conv.fromUnitId,
+      label:         conv.fromUnit?.shortCode ?? conv.fromUnit?.name ?? 'unit',
+      priceCents:    unitPrice,
+      isBase:        false,
+      discountType:  conv.discountType ?? null,
+      discountValue: conv.discountValue ?? null,
     });
   }
 
   return options;
+}
+
+/**
+ * Seed a cart line's discount from a unit option: per-unit override if the unit
+ * defines one, else fall back to the product-level defaultDiscountCents (amount,
+ * in cents). Single source of truth for both add and changeCartUnit.
+ * Value-unit asymmetry: unit amount is stored in CENTS (÷100 → rupees);
+ * unit percent is 0–100 (use as-is). itemDiscountValue convention: rupees for
+ * amount, 0–100 for percent.
+ */
+function discountSeedFromOption(
+  opt: UnitOption,
+  product: PosProduct,
+): { itemDiscountType: 'amount' | 'percent'; itemDiscountValue: number } {
+  if (opt.discountType && opt.discountValue != null && opt.discountValue > 0) {
+    const type  = opt.discountType as 'amount' | 'percent';
+    const value = type === 'amount' ? opt.discountValue / 100 : opt.discountValue;
+    return { itemDiscountType: type, itemDiscountValue: value };
+  }
+  const defCents = Math.min(product.defaultDiscountCents ?? 0, product.priceCents);
+  return { itemDiscountType: 'amount', itemDiscountValue: defCents > 0 ? defCents / 100 : 0 };
 }
 
 /**
@@ -1676,22 +1703,26 @@ export default function POSPage() {
         setBatchCapToast('No stock available');
         return prev;
       }
-      // Pre-fill default discount set on the product (cashier can override)
-      const defDisc      = product.defaultDiscountCents ?? 0;
-      const defDiscCents = Math.min(defDisc, product.priceCents);
       // Default the line to the base/legacy unit
       const unitOpts     = getUnitOptions(product);
       const baseOpt      = unitOpts.find(o => o.isBase) ?? unitOpts[0];
       const priceToUse   = isStaffSale
         ? (product.costCents ?? product.priceCents)
         : baseOpt.priceCents;
+      // Seed the line discount from the selected unit (per-unit override) or the
+      // product-level default. Cashier can override afterward.
+      const seed         = discountSeedFromOption(baseOpt, product);
+      const lineSubtotal = 1 * priceToUse;
+      const seedDiscountCents = seed.itemDiscountType === 'percent'
+        ? Math.floor(lineSubtotal * seed.itemDiscountValue / 100)
+        : Math.min(Math.round(seed.itemDiscountValue * 100), lineSubtotal);
       const newItems: CartItem[] = [{
         product, qty: 1, unitPriceCents: priceToUse,
         originalPriceCents: product.priceCents,
         costCents: product.costCents ?? 0,
-        itemDiscountType:  'amount' as 'amount' | 'percent',
-        itemDiscountValue: defDiscCents > 0 ? defDiscCents / 100 : 0,
-        itemDiscountCents: defDiscCents,
+        itemDiscountType:  seed.itemDiscountType,
+        itemDiscountValue: seed.itemDiscountValue,
+        itemDiscountCents: seedDiscountCents,
         unitId:        baseOpt.unitId,
         unitShortCode: baseOpt.label,
       }];
@@ -2095,23 +2126,27 @@ export default function POSPage() {
   }, []);
 
   // Change the sales unit for a cart line. Updates unitId + label and (unless
-  // in staff-sale mode, which prices at cost) the unit price, then re-derives
-  // the line discount against the new subtotal.
+  // in staff-sale mode, which prices at cost) the unit price, then ALWAYS
+  // re-seeds the line discount from the target unit (per-unit override wins;
+  // else product default) and recomputes against the new subtotal.
   const changeCartUnit = useCallback((productId: string, unitId: string) => {
     setCart(prev => prev.map(i => {
       if (i.product.id !== productId || i.isServiceCharge) return i;
       const opt = getUnitOptions(i.product).find(o => o.unitId === unitId);
       if (!opt) return i;
       const newUnitPrice   = isStaffSale ? i.unitPriceCents : opt.priceCents;
+      const seed           = discountSeedFromOption(opt, i.product);
       const newLineSubtotal = i.qty * newUnitPrice;
-      const newDiscountCents = i.itemDiscountType === 'percent'
-        ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
-        : Math.min(Math.round(i.itemDiscountValue * 100), newLineSubtotal);
+      const newDiscountCents = seed.itemDiscountType === 'percent'
+        ? Math.floor(newLineSubtotal * seed.itemDiscountValue / 100)
+        : Math.min(Math.round(seed.itemDiscountValue * 100), newLineSubtotal);
       return {
         ...i,
         unitId:            opt.unitId,
         unitShortCode:     opt.label,
         unitPriceCents:    newUnitPrice,
+        itemDiscountType:  seed.itemDiscountType,
+        itemDiscountValue: seed.itemDiscountValue,
         itemDiscountCents: newDiscountCents,
       };
     }));

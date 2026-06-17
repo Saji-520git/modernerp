@@ -87,6 +87,8 @@ export const posService = {
               toUnitId: true,
               conversionQty: true,
               priceCents: true,
+              discountType: true,
+              discountValue: true,
               fromUnit: { select: { id: true, name: true, shortCode: true } },
               toUnit:   { select: { id: true, name: true, shortCode: true } },
             },

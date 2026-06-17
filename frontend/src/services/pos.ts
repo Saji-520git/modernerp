@@ -14,6 +14,8 @@ export interface PosUnitConversion {
   toUnitId:      string;
   conversionQty: number;
   priceCents:    number | null;
+  discountType:  string | null;
+  discountValue: number | null;
   fromUnit:      { id: string; name: string; shortCode: string };
   toUnit:        { id: string; name: string; shortCode: string };
 }
