@@ -1,5 +1,8 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { convertToBaseUnit } from '../../utils/unit-converter.js';
+import { recomputeStockQty } from '../../utils/stock-utils.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,43 +138,61 @@ export const purchaseReturnService = {
 
     return prisma.$transaction(async (tx) => {
       for (const line of ret.lines) {
-        const qty = Number(line.qty);
+        // Return qty is stored in PURCHASE units (validated against receivedQty,
+        // which is recorded in purchase units). Stock.qty and StockBatch.qty are
+        // held in BASE units, so convert before touching stock. A null unitId on
+        // the origin purchase line means the line was already in base units.
+        const rawQty  = new Decimal(line.qty.toString());          // purchase units
+        const baseQty = line.purchaseLine.unitId
+          ? (await convertToBaseUnit(line.productId, line.purchaseLine.unitId, rawQty, tx as any)).baseQty
+          : rawQty;                                                // null unitId → already base
+        const baseQtyNum = Number(baseQty);
 
-        // 1. Create RETURN_OUT stock movement
+        // 1. Create RETURN_OUT stock movement (BASE units, consistent with PURCHASE_IN)
         await tx.stockMovement.create({
           data: {
             productId:   line.productId,
             warehouseId: ret.warehouseId,
             type:        'RETURN_OUT',
-            qty:         qty,
+            qty:         baseQtyNum,
             refType:     'PurchaseReturn',
             refId:       ret.id,
             note:        `PRET ${ret.number}`,
           },
         });
 
-        // 2. Decrease Stock.qty — upsert so a missing row is created (negative) rather than silently skipped
-        await tx.stock.upsert({
-          where: {
-            productId_warehouseId: {
-              productId:   line.productId,
-              warehouseId: ret.warehouseId,
-            },
-          },
-          create: {
-            productId:   line.productId,
-            warehouseId: ret.warehouseId,
-            qty:         -qty,
-          },
-          update: {
-            qty: { decrement: qty },
-          },
+        // 2. Decrement the ORIGIN StockBatch row(s) — those created from this
+        //    purchase line — by the base qty, oldest received first. Never write a
+        //    negative batch row. Shortfall case: if the surviving batches sum to
+        //    less than baseQty (e.g. the received stock was already sold or written
+        //    off), decrement only what remains and leave the shortfall — the
+        //    recompute below re-derives the aggregate from whatever rows survive.
+        let remaining = baseQtyNum;
+        const originBatches = await tx.stockBatch.findMany({
+          where:   { purchaseLineId: line.purchaseLineId, qty: { gt: 0 } },
+          orderBy: { receivedAt: 'asc' },
         });
+        for (const batch of originBatches) {
+          if (remaining <= 0) break;
+          const deduct = Math.min(Number(batch.qty), remaining);
+          await tx.stockBatch.update({
+            where: { id: batch.id },
+            data:  { qty: { decrement: deduct } },
+          });
+          remaining -= deduct;
+        }
 
-        // 3. Update purchaseLine.returnedQty
+        // 3. Re-derive aggregate Stock.qty from the surviving positive batch rows
+        //    (BASE units, floored at >= 0). Replaces the old direct decrement
+        //    upsert, which could seed a negative Stock row and mixed purchase/base
+        //    units.
+        await recomputeStockQty(tx, line.productId, ret.warehouseId);
+
+        // 4. Update purchaseLine.returnedQty — kept in PURCHASE units to stay
+        //    consistent with receivedQty (used by createReturn's maxReturnable).
         await tx.purchaseLine.update({
           where: { id: line.purchaseLineId },
-          data:  { returnedQty: { increment: qty } },
+          data:  { returnedQty: { increment: rawQty } },
         });
       }
 
