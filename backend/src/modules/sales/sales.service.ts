@@ -1,6 +1,8 @@
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { deductBatchesFEFO } from '../../utils/batch-expiry.js';
+import { recomputeStockQty } from '../../utils/stock-utils.js';
 import type { CreateSaleInput, ListSalesInput, RecordPaymentInput } from './sales.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -261,10 +263,33 @@ export const salesService = {
 
       // Deduct stock + write SALE_OUT movements (row is still locked for this transaction)
       for (const line of sale.lines) {
-        await tx.stock.update({
-          where: { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
-          data: { qty: { decrement: line.qty } },
-        });
+        // Mirror POS checkout exactly: deduct from StockBatch rows in FEFO order,
+        // then reconcile the aggregate Stock.qty. A non-POS invoice line has no
+        // unit selector, so unitId/baseQty are always null and line.qty IS the
+        // base qty (null baseQty → qty is base). includeExpired = false (BLOCK
+        // default — confirmSale has no expiredStockPolicy in scope).
+        const baseQty = Number(line.baseQty ?? line.qty);
+        const deducted = await deductBatchesFEFO(tx, line.productId, sale.warehouseId, baseQty, false);
+        if (deducted > 0) {
+          // Batch-tracked product: batches are the source of truth. Recompute the
+          // aggregate from the (already-decremented) batch sum so it can never go
+          // negative. Replaces the old raw `decrement: line.qty` upsert.
+          await recomputeStockQty(tx, line.productId, sale.warehouseId);
+        } else {
+          // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
+          // so the batch sum is 0 and recompute would WIPE legitimate stock.
+          // Keep the legacy aggregate decrement, floored at 0.
+          const cur = await tx.stock.findUnique({
+            where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
+            select: { qty: true },
+          });
+          const newQty = Math.max(0, Number(cur?.qty ?? 0) - baseQty);
+          await tx.stock.upsert({
+            where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
+            update: { qty: newQty },
+            create: { productId: line.productId, warehouseId: sale.warehouseId, qty: 0 },
+          });
+        }
         await tx.stockMovement.create({
           data: {
             productId:   line.productId,
