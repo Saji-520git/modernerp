@@ -503,6 +503,7 @@ export default function ProductsPage() {
   // ── Open modal helpers ────────────────────────────────────────────────────────
 
   function openNew() {
+    initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
     setEditingProduct(null);
     setForm(emptyForm());
     setConversions([]);
@@ -513,6 +514,7 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
+    initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
     setEditingProduct(p);
     setForm(formFromProduct(p));
     setConversions([]);
