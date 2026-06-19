@@ -144,6 +144,7 @@ model Unit {
   productsAsBase        Product[]                @relation("BaseUnit")
   productsAsPurchase    Product[]                @relation("PurchaseUnit")
   productsAsSales       Product[]                @relation("SalesUnit")
+  productsAsCostEntry   Product[]                @relation("CostEntryUnit")
   conversionsFrom       ProductUnitConversion[]  @relation("FromUnit")
   conversionsTo         ProductUnitConversion[]  @relation("ToUnit")
   purchaseLines         PurchaseLine[]
@@ -203,6 +204,10 @@ model Product {
   baseUnit       Unit?   @relation("BaseUnit",    fields: [baseUnitId],    references: [id])
   purchaseUnit   Unit?   @relation("PurchaseUnit", fields: [purchaseUnitId], references: [id])
   salesUnit      Unit?   @relation("SalesUnit",   fields: [salesUnitId],   references: [id])
+
+  // Unit the cost was entered in (round-trip display only; costCents stays per-base-unit)
+  costEntryUnitId String?
+  costEntryUnit   Unit?  @relation("CostEntryUnit", fields: [costEntryUnitId], references: [id], onDelete: SetNull)
 
   // Default supplier for auto-generated purchase orders
   defaultSupplierId String?
