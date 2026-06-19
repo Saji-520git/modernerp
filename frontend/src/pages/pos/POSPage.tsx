@@ -521,24 +521,25 @@ const CartLine = forwardRef<CartLineHandle, {
   };
 
   const qtyBoxStyle: React.CSSProperties = {
-    background: '#f1f5f9', border: '.5px solid #cbd5e1',
-    borderRadius: 6, padding: '3px 10px',
-    fontSize: 13, fontWeight: 600,
-    width: 80, textAlign: 'center', color: '#1e1b4b',
+    background: '#f8fafc', border: '1px solid #e2e8f0',
+    borderRadius: 7, padding: '4px 8px',
+    fontSize: 13, fontWeight: 700,
+    width: 64, textAlign: 'center', color: '#1e1b4b',
   };
 
   return (
-    <div className="mb-1.5">
+    <div className="mb-1">
       {/* Fix 4: single grid row — name | qty | unit | unit-price | line-total | trash */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr auto auto auto auto auto',
-        gap: 8,
+        gap: 10,
         alignItems: 'center',
-        padding: '8px 14px',
+        padding: '7px 12px',
         background: 'white',
-        borderRadius: 8,
-        border: '1px solid #f1f5f9',
+        borderRadius: 10,
+        border: '1px solid #eef2f7',
+        boxShadow: '0 1px 2px rgba(15,23,42,0.05)',
       }}>
         {/* Product name — service charge gets amber styling */}
         <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
@@ -578,7 +579,7 @@ const CartLine = forwardRef<CartLineHandle, {
                 onNavigateToBarcode();
               }
             }}
-            style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text' }}
+            style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text', background: '#fff', borderColor: '#818cf8', boxShadow: '0 0 0 2px rgba(129,140,248,0.2)' }}
           />
         ) : (
           <button type="button" onClick={startEdit} style={{ ...qtyBoxStyle, cursor: 'pointer' }}>
@@ -602,13 +603,13 @@ const CartLine = forwardRef<CartLineHandle, {
           <span />
         )}
 
-        {/* Unit price — muted, 12px */}
-        <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        {/* Unit price — muted, 11.5px */}
+        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
           {formatCents(item.unitPriceCents)}
         </span>
 
         {/* Line total — bold, full price before discount */}
-        <span style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', minWidth: 60, textAlign: 'right' }}>
+        <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a', whiteSpace: 'nowrap', minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
           {formatCents(lineSubtotal)}
         </span>
 
@@ -631,10 +632,11 @@ const CartLine = forwardRef<CartLineHandle, {
       {/* Per-item discount row — hidden for service charge items; shown when discount exists or being edited */}
       {!item.isServiceCharge && (showDiscount || editing) && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '2px 14px 4px',
+          display: 'flex', alignItems: 'center', gap: 5,
+          padding: '4px 12px 5px',
+          margin: '2px 0 0',
         }}>
-          <span style={{ fontSize: 10, color: '#94a3b8', marginRight: 2 }}>Item disc.</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', marginRight: 2, textTransform: 'uppercase', letterSpacing: 0.3 }}>Item disc.</span>
           {/* Type toggle: % / Rs. */}
           <button
             type="button"
@@ -673,11 +675,11 @@ const CartLine = forwardRef<CartLineHandle, {
       )}
       {/* For items without active discount, show a small "D" hint when in qty-edit mode */}
       {!item.isServiceCharge && !showDiscount && !editing && item.itemDiscountCents === 0 && (
-        <div style={{ padding: '0 14px 2px' }}>
+        <div style={{ padding: '2px 12px 2px' }}>
           <button
             type="button"
             onClick={() => setShowDiscount(true)}
-            style={{ fontSize: 9, color: '#cbd5e1', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+            style={{ fontSize: 9, fontWeight: 600, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 9999, padding: '1px 8px', letterSpacing: 0.2 }}
           >
             + disc
           </button>
@@ -2787,7 +2789,7 @@ export default function POSPage() {
           </div>
 
           {/* Totals + PAY NOW */}
-          <div className="border-t-2 border-slate-100 px-4 py-4 space-y-2.5 shrink-0">
+          <div className="border-t border-slate-200 px-4 py-3 space-y-2 shrink-0 bg-slate-50/60">
             {/* Gross subtotal — full prices before any discounts */}
             <div className="flex justify-between text-sm text-slate-500">
               <span>Subtotal</span>
@@ -2853,10 +2855,10 @@ export default function POSPage() {
             )}
 
             {/* TOTAL */}
-            <div className="pt-1 border-t border-slate-200">
+            <div className="pt-2 mt-1 border-t border-slate-200">
               <div className="flex justify-between items-baseline">
-                <span className="text-base font-bold text-slate-700">TOTAL</span>
-                <span className="text-3xl font-black text-slate-800">{formatCents(grandTotal)}</span>
+                <span className="text-base font-bold text-slate-600 tracking-wide">TOTAL</span>
+                <span className="text-3xl font-black text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCents(grandTotal)}</span>
               </div>
             </div>
 
@@ -2896,7 +2898,7 @@ export default function POSPage() {
               }}
               disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
               className={cls(
-                'w-full py-4 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
+                'w-full py-3.5 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
                 'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
                 cart.length === 0 || !warehouseId
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
