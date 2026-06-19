@@ -2602,7 +2602,7 @@ export default function POSPage() {
       ═══════════════════════════════════════════════════════════════ */}
       <div
         className="overflow-hidden"
-        style={{ display: 'grid', gridTemplateColumns: '60fr 40fr' }}
+        style={{ display: 'grid', gridTemplateColumns: '55fr 45fr' }}
       >
 
         {/* ─── LEFT PANEL: products ─────────────────────────────────── */}
@@ -2709,7 +2709,7 @@ export default function POSPage() {
                 tabIndex={-1}
                 onKeyDown={handleGridKeyDown}
                 className="grid gap-3 outline-none"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}
               >
                 {products.map((p, idx) => (
                   <ProductCard
@@ -2789,7 +2789,7 @@ export default function POSPage() {
           </div>
 
           {/* Totals + PAY NOW */}
-          <div className="border-t border-slate-200 px-4 py-3 space-y-2 shrink-0 bg-slate-50/60">
+          <div className="border-t border-slate-200 px-4 py-2 space-y-1 shrink-0 bg-slate-50/60">
             {/* Gross subtotal — full prices before any discounts */}
             <div className="flex justify-between text-sm text-slate-500">
               <span>Subtotal</span>
@@ -2855,7 +2855,7 @@ export default function POSPage() {
             )}
 
             {/* TOTAL */}
-            <div className="pt-2 mt-1 border-t border-slate-200">
+            <div className="pt-1.5 mt-0.5 border-t border-slate-200">
               <div className="flex justify-between items-baseline">
                 <span className="text-base font-bold text-slate-600 tracking-wide">TOTAL</span>
                 <span className="text-3xl font-black text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCents(grandTotal)}</span>
@@ -2898,7 +2898,7 @@ export default function POSPage() {
               }}
               disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
               className={cls(
-                'w-full py-3.5 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
+                'w-full py-3 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
                 'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
                 cart.length === 0 || !warehouseId
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
