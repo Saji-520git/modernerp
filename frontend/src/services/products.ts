@@ -77,6 +77,7 @@ export interface CreateProductPayload {
   baseUnitId?:     string | null;
   purchaseUnitId?: string | null;
   salesUnitId?:    string | null;
+  costEntryUnitId?: string | null;
   costCents: number;
   priceCents: number;
   defaultDiscountCents?: number;

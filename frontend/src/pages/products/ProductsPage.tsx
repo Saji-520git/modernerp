@@ -50,6 +50,7 @@ interface FormState {
   baseUnitId: string;
   purchaseUnitId: string;
   salesUnitId: string;
+  costEntryUnitId: string;
   receiptName: string;
   cost: string;
   price: string;
@@ -85,6 +86,7 @@ function emptyForm(): FormState {
     name: '', sku: '', barcode: '', description: '',
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
+    costEntryUnitId: '',
     receiptName: '',
     cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', serviceChargeMode: 'per_unit', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
@@ -107,6 +109,7 @@ function formFromProduct(p: Product): FormState {
     baseUnitId: p.baseUnitId ?? '',
     purchaseUnitId: p.purchaseUnitId ?? '',
     salesUnitId: p.salesUnitId ?? '',
+    costEntryUnitId: p.costEntryUnitId ?? '',
     receiptName: p.receiptName ?? '',
     cost: (p.costCents / 100).toFixed(2),
     price: (p.priceCents / 100).toFixed(2),
@@ -201,6 +204,10 @@ export default function ProductsPage() {
   // ── Unit conversions in modal ──
   const [conversions, setConversions] = useState<ConversionLine[]>([]);
   const convKeyRef = useRef(0);
+  // v1.0.69: tracks which editing-session has had its initial cost-derive done,
+  // so subsequent conversion edits in the same session don't clobber the user's
+  // typed cost field.
+  const initialCostDeriveDoneRef = useRef<string | null>(null);
 
   // ── Write-off (drawer) ──
   const [writeOffBatch, setWriteOffBatch] = useState<BatchDetail | null>(null);
@@ -281,6 +288,54 @@ export default function ProductsPage() {
       })
       .catch(() => {/* no conversions yet */});
   }, [editingProduct]);
+
+  // v1.0.69: Re-derive cost display in entry unit ONCE per editing session,
+  // after conversions have loaded. formFromProduct (sync, runs on openEdit)
+  // sets cost to base-unit display. This effect fires when both editingProduct
+  // is set AND conversions have arrived, shifts the displayed cost to the
+  // entry unit, then marks the session as derived so subsequent conversion
+  // edits in the sub-modal do NOT clobber the user's typed cost field.
+  useEffect(() => {
+    if (!editingProduct) {
+      initialCostDeriveDoneRef.current = null;
+      return;
+    }
+    if (initialCostDeriveDoneRef.current === editingProduct.id) return;
+
+    const entryUnitId = editingProduct.costEntryUnitId;
+    const baseUnitId = editingProduct.baseUnitId ?? editingProduct.unitId;
+
+    // Nothing to derive — mark done so future conversion edits don't trigger.
+    if (!entryUnitId || entryUnitId === baseUnitId) {
+      initialCostDeriveDoneRef.current = editingProduct.id;
+      return;
+    }
+
+    // Need a valid active conversion to derive. If not loaded yet, wait
+    // (don't mark done — let a future conversions update re-trigger).
+    const conv = conversions.find(
+      (c) =>
+        c.fromUnitId === entryUnitId &&
+        c.toUnitId === baseUnitId &&
+        c.fromUnitId &&
+        c.toUnitId,
+    );
+    if (!conv) return;
+
+    const factor = parseFloat(conv.conversionQty);
+    if (!(factor > 0)) {
+      // Conversion present but factor invalid — mark done (no derive possible).
+      initialCostDeriveDoneRef.current = editingProduct.id;
+      return;
+    }
+
+    setForm((f) => ({
+      ...f,
+      cost: ((editingProduct.costCents * factor) / 100).toFixed(2),
+      costEntryUnitId: entryUnitId,
+    }));
+    initialCostDeriveDoneRef.current = editingProduct.id;
+  }, [editingProduct, conversions]);
 
   // v1.0.44 — auto-save the in-progress form to localStorage (debounced 1s).
   // Only while the modal is open and a name has been entered.
@@ -483,7 +538,23 @@ export default function ProductsPage() {
     if (!form.name.trim()) { setFormErr('Product name is required'); return; }
     if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); return; }
 
-    const costCents            = Math.round(parseFloat(form.cost  || '0') * 100);
+    // v1.0.69: Convert display cost (in entry unit) to per-base-unit cents.
+    // Uses CURRENT (new) conversion factor from form state — backend Chunk 2
+    // recalc handles factor changes when triggered via setConversions.
+    const parsedCost = parseFloat(form.cost || '0');
+    const entryUnitId = form.costEntryUnitId || null;
+    const baseUnitIdForCost = form.baseUnitId || form.unitId;
+    let costFactor = 1;
+    if (entryUnitId && entryUnitId !== baseUnitIdForCost) {
+      const conv = conversions.find(
+        (c) => c.fromUnitId === entryUnitId && c.toUnitId === baseUnitIdForCost,
+      );
+      if (conv) {
+        const f = parseFloat(conv.conversionQty);
+        if (f > 0) costFactor = f;
+      }
+    }
+    const costCents            = Math.round((parsedCost * 100) / costFactor);
     const priceCents           = Math.round(parseFloat(form.price || '0') * 100);
     const defaultDiscountCents = Math.round(parseFloat(form.defaultDiscount || '0') * 100);
     const serviceChargeCents   = Math.round(parseFloat(form.serviceCharge || '0') * 100);
@@ -503,6 +574,7 @@ export default function ProductsPage() {
       baseUnitId:     form.baseUnitId || null,
       purchaseUnitId: form.purchaseUnitId || null,
       salesUnitId:    form.salesUnitId || null,
+      costEntryUnitId: form.costEntryUnitId || null,
       receiptName:   form.receiptName.trim() || null,
       costCents,
       priceCents,
@@ -607,6 +679,60 @@ export default function ProductsPage() {
     if (!p) return null;
     return Math.round(((p - c) / p) * 1000) / 10;
   })();
+
+  // v1.0.69: Options for cost-entry-unit dropdown.
+  // Lists base unit + every active conversion's fromUnit where toUnit = base.
+  // Returns at least 1 option (the base unit) so the dropdown always shows something.
+  const getCostEntryUnitOptions = (): Array<{ id: string; shortCode: string; name: string }> => {
+    const baseUnitId = form.baseUnitId || form.unitId;
+    const baseUnit = allUnits.find((u) => u.id === baseUnitId);
+    const opts: Array<{ id: string; shortCode: string; name: string }> = [];
+    if (baseUnit) {
+      opts.push({ id: baseUnit.id, shortCode: baseUnit.shortCode, name: baseUnit.name });
+    }
+    for (const c of conversions) {
+      if (c.toUnitId !== baseUnitId) continue;
+      if (!c.fromUnitId) continue;
+      // Skip if fromUnit equals base (would duplicate)
+      if (c.fromUnitId === baseUnitId) continue;
+      // Skip if already added
+      if (opts.some((o) => o.id === c.fromUnitId)) continue;
+      const u = allUnits.find((u) => u.id === c.fromUnitId);
+      if (!u) continue;
+      opts.push({ id: u.id, shortCode: u.shortCode, name: u.name });
+    }
+    return opts;
+  };
+
+  // v1.0.69: When user picks a different entry unit, convert the displayed
+  // Rupee amount so it's the equivalent in the new unit. (Storage costCents
+  // stays per-base; this is pure display math.)
+  const handleCostEntryUnitChange = (newUnitId: string) => {
+    const baseUnitId = form.baseUnitId || form.unitId;
+    const currentRs = parseFloat(form.cost || '0');
+    const oldUnitId = form.costEntryUnitId || baseUnitId;
+
+    const getFactor = (unitId: string): number => {
+      if (!unitId || unitId === baseUnitId) return 1;
+      const conv = conversions.find(
+        (c) => c.fromUnitId === unitId && c.toUnitId === baseUnitId,
+      );
+      if (!conv) return 1;
+      const f = parseFloat(conv.conversionQty);
+      return f > 0 ? f : 1;
+    };
+
+    const oldFactor = getFactor(oldUnitId);
+    const newFactor = getFactor(newUnitId);
+    // currentRs is in old-unit; baseRs = currentRs / oldFactor; newRs = baseRs * newFactor
+    const newRs = (currentRs / oldFactor) * newFactor;
+
+    setForm((f) => ({
+      ...f,
+      cost: newRs.toFixed(2),
+      costEntryUnitId: newUnitId === baseUnitId ? '' : newUnitId,
+    }));
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -1383,15 +1509,29 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Cost (Rs.)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.cost}
-                      onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))}
-                      placeholder="0.00"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.cost}
+                        onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ flex: 1 }}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <select
+                        value={form.costEntryUnitId || (form.baseUnitId || form.unitId)}
+                        disabled={getCostEntryUnitOptions().length <= 1}
+                        onChange={(e) => handleCostEntryUnitChange(e.target.value)}
+                        style={{ minWidth: 90 }}
+                        className="px-2 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        {getCostEntryUnitOptions().map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.shortCode}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Price (Rs.)</label>
