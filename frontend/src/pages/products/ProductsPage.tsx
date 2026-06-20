@@ -208,6 +208,13 @@ export default function ProductsPage() {
   // so subsequent conversion edits in the same session don't clobber the user's
   // typed cost field.
   const initialCostDeriveDoneRef = useRef<string | null>(null);
+  // v1.0.69 fix #3: factor in effect at the moment the user picked
+  // the current entry unit (load-time for existing products, or last
+  // dropdown switch for new ones). Used by handleSubmit's edit branch
+  // to avoid double-applying the factor delta when the backend Chunk 2
+  // recalc fires on conversion-factor edits. Distinct from the live
+  // conversions array (which the user may have just edited).
+  const loadedFactorRef = useRef<number>(1);
 
   // ── Write-off (drawer) ──
   const [writeOffBatch, setWriteOffBatch] = useState<BatchDetail | null>(null);
@@ -329,6 +336,7 @@ export default function ProductsPage() {
       return;
     }
 
+    loadedFactorRef.current = factor;  // v1.0.69 fix #3: snapshot load-time factor
     setForm((f) => ({
       ...f,
       cost: ((editingProduct.costCents * factor) / 100).toFixed(2),
@@ -504,6 +512,7 @@ export default function ProductsPage() {
 
   function openNew() {
     initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
+    loadedFactorRef.current = 1;              // v1.0.69 fix #3: reset
     setEditingProduct(null);
     setForm(emptyForm());
     setConversions([]);
@@ -515,6 +524,7 @@ export default function ProductsPage() {
 
   function openEdit(p: Product) {
     initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
+    loadedFactorRef.current = 1;              // v1.0.69 fix #3: reset; cost-derive effect repopulates
     setEditingProduct(p);
     setForm(formFromProduct(p));
     setConversions([]);
@@ -541,20 +551,29 @@ export default function ProductsPage() {
     if (!form.name.trim()) { setFormErr('Product name is required'); return; }
     if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); return; }
 
-    // v1.0.69: Convert display cost (in entry unit) to per-base-unit cents.
-    // Uses CURRENT (new) conversion factor from form state — backend Chunk 2
-    // recalc handles factor changes when triggered via setConversions.
+    // v1.0.69 fix #3: Convert display cost (entry unit) to per-base cents.
+    // EDIT branch: use the LOAD-TIME factor (loadedFactorRef) — backend
+    // Chunk 2 recalc inside setConversions then applies any factor delta
+    // exactly once. CREATE branch: no prior DB conversion exists, so the
+    // backend recalc has nothing to compare against — must use the CURRENT
+    // factor from the conversions array.
     const parsedCost = parseFloat(form.cost || '0');
     const entryUnitId = form.costEntryUnitId || null;
     const baseUnitIdForCost = form.baseUnitId || form.unitId;
     let costFactor = 1;
     if (entryUnitId && entryUnitId !== baseUnitIdForCost) {
-      const conv = conversions.find(
-        (c) => c.fromUnitId === entryUnitId && c.toUnitId === baseUnitIdForCost,
-      );
-      if (conv) {
-        const f = parseFloat(conv.conversionQty);
-        if (f > 0) costFactor = f;
+      if (editingProduct) {
+        // EDIT: snapshot of factor at form-load (or last dropdown switch)
+        if (loadedFactorRef.current > 0) costFactor = loadedFactorRef.current;
+      } else {
+        // CREATE: take from the just-edited conversions array
+        const conv = conversions.find(
+          (c) => c.fromUnitId === entryUnitId && c.toUnitId === baseUnitIdForCost,
+        );
+        if (conv) {
+          const f = parseFloat(conv.conversionQty);
+          if (f > 0) costFactor = f;
+        }
       }
     }
     const costCents            = Math.round((parsedCost * 100) / costFactor);
@@ -638,11 +657,16 @@ export default function ProductsPage() {
         await updateMutation.mutateAsync({ id: editingProduct.id, payload });
         if (convPayload.length > 0 || conversions.length === 0) {
           await unitsApi.setConversions(editingProduct.id, convPayload);
+          // v1.0.69 fix #3: backend recalc may have mutated costCents after
+          // updateMutation's onSuccess already invalidated; refresh now.
+          await qc.invalidateQueries({ queryKey: ['products'] });
         }
       } else {
         const created = await createMutation.mutateAsync(payload);
         if (convPayload.length > 0) {
           await unitsApi.setConversions(created.id, convPayload);
+          // v1.0.69 fix #3: same reason as above (create branch parity).
+          await qc.invalidateQueries({ queryKey: ['products'] });
         }
       }
       localStorage.removeItem(PRODUCT_DRAFT_KEY); // v1.0.44 — saved successfully, drop draft
@@ -727,6 +751,7 @@ export default function ProductsPage() {
 
     const oldFactor = getFactor(oldUnitId);
     const newFactor = getFactor(newUnitId);
+    loadedFactorRef.current = newFactor;  // v1.0.69 fix #3: user changed entry unit; ref tracks new intent
     // currentRs is in old-unit; baseRs = currentRs / oldFactor; newRs = baseRs * newFactor
     const newRs = (currentRs / oldFactor) * newFactor;
 
