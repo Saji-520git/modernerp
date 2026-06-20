@@ -529,6 +529,7 @@ export default function ProductsPage() {
     setModalOpen(false);
     checkIdRef.current++; // cancel any in-flight barcode check
     setBarcodeCheck(null);
+    setEditingProduct(null);  // v1.0.69: force effect re-fire on reopen of same product
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────────
