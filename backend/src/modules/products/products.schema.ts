@@ -22,6 +22,7 @@ export const createProductSchema = z.object({
   purchaseUnitId: z.string().optional().nullable(),
   salesUnitId:    z.string().optional().nullable(),
   costEntryUnitId: z.string().optional().nullable(),
+  priceEntryUnitId: z.string().optional().nullable(),
   costCents:             z.number().int().min(0).default(0),
   priceCents:            z.number().int().min(0).default(0),
   defaultDiscountCents:  z.number().int().min(0).default(0),

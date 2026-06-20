@@ -29,6 +29,7 @@ export interface Product {
   purchaseUnitId: string | null;
   salesUnitId:    string | null;
   costEntryUnitId: string | null;
+  priceEntryUnitId: string | null;
   baseUnit:     ProductUnit | null;
   purchaseUnit: ProductUnit | null;
   salesUnit:    ProductUnit | null;
