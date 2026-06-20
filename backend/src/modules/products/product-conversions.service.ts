@@ -71,28 +71,30 @@ export const productConversionsService = {
       const productForRecalc = await tx.product.findUnique({
         where: { id: productId },
         select: {
-          id:              true,
-          costCents:       true,
-          costEntryUnitId: true,
-          baseUnitId:      true,
-          unitId:          true,
+          id:               true,
+          costCents:        true,
+          costEntryUnitId:  true,
+          priceCents:       true,
+          priceEntryUnitId: true,
+          baseUnitId:       true,
+          unitId:           true,
         },
       });
 
       if (productForRecalc) {
         const effectiveBaseUnitId = productForRecalc.baseUnitId ?? productForRecalc.unitId;
-        const entryUnitId = productForRecalc.costEntryUnitId;
+        const costEntryUnitId = productForRecalc.costEntryUnitId;
 
-        const needsRecalcCheck =
-          entryUnitId != null &&
-          entryUnitId !== effectiveBaseUnitId &&
+        const costNeedsRecalcCheck =
+          costEntryUnitId != null &&
+          costEntryUnitId !== effectiveBaseUnitId &&
           productForRecalc.costCents > 0;
 
-        if (needsRecalcCheck) {
+        if (costNeedsRecalcCheck) {
           const oldConv = await tx.productUnitConversion.findFirst({
             where: {
               productId,
-              fromUnitId: entryUnitId,
+              fromUnitId: costEntryUnitId,
               toUnitId:   effectiveBaseUnitId,
               isActive:   true,
             },
@@ -101,7 +103,7 @@ export const productConversionsService = {
 
           if (oldConv) {
             const newConvLine = conversions.find(
-              (c) => c.fromUnitId === entryUnitId && c.toUnitId === effectiveBaseUnitId,
+              (c) => c.fromUnitId === costEntryUnitId && c.toUnitId === effectiveBaseUnitId,
             );
 
             if (!newConvLine) {
@@ -110,7 +112,7 @@ export const productConversionsService = {
               logger.info(
                 {
                   productId,
-                  costEntryUnitId: entryUnitId,
+                  costEntryUnitId: costEntryUnitId,
                   baseUnitId:      effectiveBaseUnitId,
                   costCents:       productForRecalc.costCents,
                 },
@@ -124,7 +126,7 @@ export const productConversionsService = {
                 logger.warn(
                   {
                     productId,
-                    costEntryUnitId: entryUnitId,
+                    costEntryUnitId: costEntryUnitId,
                     oldFactor,
                     newFactor,
                   },
@@ -139,7 +141,7 @@ export const productConversionsService = {
                   logger.error(
                     {
                       productId,
-                      costEntryUnitId: entryUnitId,
+                      costEntryUnitId: costEntryUnitId,
                       oldFactor,
                       newFactor,
                       oldCostCents:  productForRecalc.costCents,
@@ -155,7 +157,7 @@ export const productConversionsService = {
                   logger.info(
                     {
                       productId,
-                      costEntryUnitId: entryUnitId,
+                      costEntryUnitId: costEntryUnitId,
                       baseUnitId:      effectiveBaseUnitId,
                       oldFactor,
                       newFactor,
@@ -163,6 +165,105 @@ export const productConversionsService = {
                       newCostCents,
                     },
                     '[v1.0.69 cost-recalc] entry-unit factor changed — costCents recalculated to preserve cost-per-entry-unit',
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // v1.0.70 price-entry-unit recalc
+        // Mirror of the cost recalc above for priceCents. If this edit
+        // changes the conversion factor for the unit the user originally
+        // entered the price in, recompute priceCents to preserve the
+        // displayed price-per-entry-unit (same D6 policy as cost).
+        // Shares productForRecalc + effectiveBaseUnitId with the cost
+        // block — semantically independent (different columns); only
+        // the snapshot fetch is shared.
+        // ─────────────────────────────────────────────────────────────
+        const priceEntryUnitId = productForRecalc.priceEntryUnitId;
+
+        const priceNeedsRecalcCheck =
+          priceEntryUnitId != null &&
+          priceEntryUnitId !== effectiveBaseUnitId &&
+          productForRecalc.priceCents > 0;
+
+        if (priceNeedsRecalcCheck) {
+          const oldConv = await tx.productUnitConversion.findFirst({
+            where: {
+              productId,
+              fromUnitId: priceEntryUnitId,
+              toUnitId:   effectiveBaseUnitId,
+              isActive:   true,
+            },
+            select: { conversionQty: true },
+          });
+
+          if (oldConv) {
+            const newConvLine = conversions.find(
+              (c) => c.fromUnitId === priceEntryUnitId && c.toUnitId === effectiveBaseUnitId,
+            );
+
+            if (!newConvLine) {
+              // User is removing the entry-unit's conversion.
+              // priceCents stays put. Chunk 3 load-side falls back to base display.
+              logger.info(
+                {
+                  productId,
+                  priceEntryUnitId: priceEntryUnitId,
+                  baseUnitId:       effectiveBaseUnitId,
+                  priceCents:       productForRecalc.priceCents,
+                },
+                '[v1.0.70 price-recalc] entry-unit conversion removed — priceCents unchanged',
+              );
+            } else {
+              const oldFactor = oldConv.conversionQty.toNumber();
+              const newFactor = newConvLine.conversionQty;
+
+              if (oldFactor <= 0 || newFactor <= 0) {
+                logger.warn(
+                  {
+                    productId,
+                    priceEntryUnitId: priceEntryUnitId,
+                    oldFactor,
+                    newFactor,
+                  },
+                  '[v1.0.70 price-recalc] invalid factor (<=0) — recalc skipped',
+                );
+              } else if (oldFactor !== newFactor) {
+                const newPriceCents = Math.round(
+                  (productForRecalc.priceCents * oldFactor) / newFactor,
+                );
+
+                if (newPriceCents < 0 || newPriceCents > 200_000_000_000) {
+                  logger.error(
+                    {
+                      productId,
+                      priceEntryUnitId: priceEntryUnitId,
+                      oldFactor,
+                      newFactor,
+                      oldPriceCents: productForRecalc.priceCents,
+                      newPriceCents,
+                    },
+                    '[v1.0.70 price-recalc] computed price outside sane range — recalc skipped',
+                  );
+                } else if (newPriceCents !== productForRecalc.priceCents) {
+                  await tx.product.update({
+                    where: { id: productId },
+                    data:  { priceCents: newPriceCents },
+                  });
+                  logger.info(
+                    {
+                      productId,
+                      priceEntryUnitId: priceEntryUnitId,
+                      baseUnitId:       effectiveBaseUnitId,
+                      oldFactor,
+                      newFactor,
+                      oldPriceCents:    productForRecalc.priceCents,
+                      newPriceCents,
+                    },
+                    '[v1.0.70 price-recalc] entry-unit factor changed — priceCents recalculated to preserve price-per-entry-unit',
                   );
                 }
               }
