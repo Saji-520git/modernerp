@@ -79,6 +79,7 @@ export interface CreateProductPayload {
   purchaseUnitId?: string | null;
   salesUnitId?:    string | null;
   costEntryUnitId?: string | null;
+  priceEntryUnitId?: string | null;
   costCents: number;
   priceCents: number;
   defaultDiscountCents?: number;

@@ -51,6 +51,7 @@ interface FormState {
   purchaseUnitId: string;
   salesUnitId: string;
   costEntryUnitId: string;
+  priceEntryUnitId: string;
   receiptName: string;
   cost: string;
   price: string;
@@ -87,6 +88,7 @@ function emptyForm(): FormState {
     categoryId: '', brandId: '',
     unitId: '', baseUnitId: '', purchaseUnitId: '', salesUnitId: '',
     costEntryUnitId: '',
+    priceEntryUnitId: '',
     receiptName: '',
     cost: '', price: '', defaultDiscount: '', serviceCharge: '', serviceChargeLabel: '', serviceChargeMode: 'per_unit', taxPercent: '0',
     reorderLevel: '0', reorderQty: '0',
@@ -110,6 +112,7 @@ function formFromProduct(p: Product): FormState {
     purchaseUnitId: p.purchaseUnitId ?? '',
     salesUnitId: p.salesUnitId ?? '',
     costEntryUnitId: p.costEntryUnitId ?? '',
+    priceEntryUnitId: p.priceEntryUnitId ?? '',
     receiptName: p.receiptName ?? '',
     cost: (p.costCents / 100).toFixed(2),
     price: (p.priceCents / 100).toFixed(2),
@@ -208,13 +211,15 @@ export default function ProductsPage() {
   // so subsequent conversion edits in the same session don't clobber the user's
   // typed cost field.
   const initialCostDeriveDoneRef = useRef<string | null>(null);
+  const initialPriceDeriveDoneRef = useRef<string | null>(null);
   // v1.0.69 fix #3: factor in effect at the moment the user picked
   // the current entry unit (load-time for existing products, or last
   // dropdown switch for new ones). Used by handleSubmit's edit branch
   // to avoid double-applying the factor delta when the backend Chunk 2
   // recalc fires on conversion-factor edits. Distinct from the live
   // conversions array (which the user may have just edited).
-  const loadedFactorRef = useRef<number>(1);
+  const loadedCostFactorRef = useRef<number>(1);
+  const loadedPriceFactorRef = useRef<number>(1);
 
   // ── Write-off (drawer) ──
   const [writeOffBatch, setWriteOffBatch] = useState<BatchDetail | null>(null);
@@ -336,13 +341,60 @@ export default function ProductsPage() {
       return;
     }
 
-    loadedFactorRef.current = factor;  // v1.0.69 fix #3: snapshot load-time factor
+    loadedCostFactorRef.current = factor;  // v1.0.69 fix #3: snapshot load-time factor
     setForm((f) => ({
       ...f,
       cost: ((editingProduct.costCents * factor) / 100).toFixed(2),
       costEntryUnitId: entryUnitId,
     }));
     initialCostDeriveDoneRef.current = editingProduct.id;
+  }, [editingProduct, conversions]);
+
+  // v1.0.70 — price mirror of the cost-derive effect above. Shifts the
+  // displayed price into the price-entry unit once conversions have loaded,
+  // snapshots the load-time factor, and marks the session derived so later
+  // conversion edits don't clobber the user's typed price field.
+  useEffect(() => {
+    if (!editingProduct) {
+      initialPriceDeriveDoneRef.current = null;
+      return;
+    }
+    if (initialPriceDeriveDoneRef.current === editingProduct.id) return;
+
+    const entryUnitId = editingProduct.priceEntryUnitId;
+    const baseUnitId = editingProduct.baseUnitId ?? editingProduct.unitId;
+
+    // Nothing to derive — mark done so future conversion edits don't trigger.
+    if (!entryUnitId || entryUnitId === baseUnitId) {
+      initialPriceDeriveDoneRef.current = editingProduct.id;
+      return;
+    }
+
+    // Need a valid active conversion to derive. If not loaded yet, wait
+    // (don't mark done — let a future conversions update re-trigger).
+    const conv = conversions.find(
+      (c) =>
+        c.fromUnitId === entryUnitId &&
+        c.toUnitId === baseUnitId &&
+        c.fromUnitId &&
+        c.toUnitId,
+    );
+    if (!conv) return;
+
+    const factor = parseFloat(conv.conversionQty);
+    if (!(factor > 0)) {
+      // Conversion present but factor invalid — mark done (no derive possible).
+      initialPriceDeriveDoneRef.current = editingProduct.id;
+      return;
+    }
+
+    loadedPriceFactorRef.current = factor;  // v1.0.70: snapshot load-time price factor
+    setForm((f) => ({
+      ...f,
+      price: ((editingProduct.priceCents * factor) / 100).toFixed(2),
+      priceEntryUnitId: entryUnitId,
+    }));
+    initialPriceDeriveDoneRef.current = editingProduct.id;
   }, [editingProduct, conversions]);
 
   // v1.0.44 — auto-save the in-progress form to localStorage (debounced 1s).
@@ -512,7 +564,9 @@ export default function ProductsPage() {
 
   function openNew() {
     initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
-    loadedFactorRef.current = 1;              // v1.0.69 fix #3: reset
+    loadedCostFactorRef.current = 1;              // v1.0.69 fix #3: reset
+    initialPriceDeriveDoneRef.current = null; // v1.0.70: reset per edit session
+    loadedPriceFactorRef.current = 1;             // v1.0.70: reset
     setEditingProduct(null);
     setForm(emptyForm());
     setConversions([]);
@@ -524,7 +578,9 @@ export default function ProductsPage() {
 
   function openEdit(p: Product) {
     initialCostDeriveDoneRef.current = null;  // v1.0.69: reset per edit session
-    loadedFactorRef.current = 1;              // v1.0.69 fix #3: reset; cost-derive effect repopulates
+    loadedCostFactorRef.current = 1;              // v1.0.69 fix #3: reset; cost-derive effect repopulates
+    initialPriceDeriveDoneRef.current = null; // v1.0.70: reset per edit session
+    loadedPriceFactorRef.current = 1;             // v1.0.70: reset; price-derive effect repopulates
     setEditingProduct(p);
     setForm(formFromProduct(p));
     setConversions([]);
@@ -552,7 +608,7 @@ export default function ProductsPage() {
     if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); return; }
 
     // v1.0.69 fix #3: Convert display cost (entry unit) to per-base cents.
-    // EDIT branch: use the LOAD-TIME factor (loadedFactorRef) — backend
+    // EDIT branch: use the LOAD-TIME factor (loadedCostFactorRef) — backend
     // Chunk 2 recalc inside setConversions then applies any factor delta
     // exactly once. CREATE branch: no prior DB conversion exists, so the
     // backend recalc has nothing to compare against — must use the CURRENT
@@ -564,7 +620,7 @@ export default function ProductsPage() {
     if (entryUnitId && entryUnitId !== baseUnitIdForCost) {
       if (editingProduct) {
         // EDIT: snapshot of factor at form-load (or last dropdown switch)
-        if (loadedFactorRef.current > 0) costFactor = loadedFactorRef.current;
+        if (loadedCostFactorRef.current > 0) costFactor = loadedCostFactorRef.current;
       } else {
         // CREATE: take from the just-edited conversions array
         const conv = conversions.find(
@@ -577,7 +633,32 @@ export default function ProductsPage() {
       }
     }
     const costCents            = Math.round((parsedCost * 100) / costFactor);
-    const priceCents           = Math.round(parseFloat(form.price || '0') * 100);
+
+    // v1.0.70 fix: Convert display price (entry unit) to per-base cents —
+    // structural mirror of the cost block above. EDIT branch uses the
+    // LOAD-TIME factor (loadedPriceFactorRef); backend Chunk 2 recalc then
+    // applies any factor delta exactly once. CREATE branch reads the current
+    // factor from the just-edited conversions array.
+    const parsedPrice = parseFloat(form.price || '0');
+    const priceEntryUnitId = form.priceEntryUnitId || null;
+    const baseUnitIdForPrice = form.baseUnitId || form.unitId;
+    let priceFactor = 1;
+    if (priceEntryUnitId && priceEntryUnitId !== baseUnitIdForPrice) {
+      if (editingProduct) {
+        // EDIT: snapshot of factor at form-load (or last dropdown switch)
+        if (loadedPriceFactorRef.current > 0) priceFactor = loadedPriceFactorRef.current;
+      } else {
+        // CREATE: take from the just-edited conversions array
+        const conv = conversions.find(
+          (c) => c.fromUnitId === priceEntryUnitId && c.toUnitId === baseUnitIdForPrice,
+        );
+        if (conv) {
+          const f = parseFloat(conv.conversionQty);
+          if (f > 0) priceFactor = f;
+        }
+      }
+    }
+    const priceCents           = Math.round((parsedPrice * 100) / priceFactor);
     const defaultDiscountCents = Math.round(parseFloat(form.defaultDiscount || '0') * 100);
     const serviceChargeCents   = Math.round(parseFloat(form.serviceCharge || '0') * 100);
     if (isNaN(costCents) || isNaN(priceCents)) {
@@ -597,6 +678,7 @@ export default function ProductsPage() {
       purchaseUnitId: form.purchaseUnitId || null,
       salesUnitId:    form.salesUnitId || null,
       costEntryUnitId: form.costEntryUnitId || null,
+      priceEntryUnitId: form.priceEntryUnitId || null,
       receiptName:   form.receiptName.trim() || null,
       costCents,
       priceCents,
@@ -701,16 +783,63 @@ export default function ProductsPage() {
   // ── Computed margin preview ───────────────────────────────────────────────────
 
   const previewMargin = (() => {
-    const c = parseFloat(form.cost || '0');
-    const p = parseFloat(form.price || '0');
-    if (!p) return null;
-    return Math.round(((p - c) / p) * 1000) / 10;
+    const costRupees = parseFloat(form.cost || '0');
+    const priceRupees = parseFloat(form.price || '0');
+    if (!priceRupees) return null;
+
+    // v1.0.70: cost and price may each be entered in a different unit, so
+    // normalize both to per-base units before the ratio. Factor resolution
+    // mirrors the getFactor helper used by the entry-unit change handlers.
+    const baseUnitIdForMargin = form.baseUnitId || form.unitId;
+    const resolveFactor = (entryUnitId: string): number => {
+      if (!entryUnitId || entryUnitId === baseUnitIdForMargin) return 1;
+      const conv = conversions.find(
+        (c) => c.fromUnitId === entryUnitId && c.toUnitId === baseUnitIdForMargin,
+      );
+      if (!conv) return 1;
+      const f = parseFloat(conv.conversionQty);
+      return f > 0 ? f : 1;
+    };
+
+    // v1.0.70 fix: an entry unit whose conversion was later deleted (orphan)
+    // must fall back to base, so the margin amount AND the label both describe
+    // the same effective unit. hasLiveConversion gates that fallback.
+    const hasLiveConversion = (entryUnitId: string): boolean => {
+      if (!entryUnitId || entryUnitId === baseUnitIdForMargin) return false;
+      return conversions.some(
+        (c) => c.fromUnitId === entryUnitId && c.toUnitId === baseUnitIdForMargin,
+      );
+    };
+
+    const effectiveCostEntryUnitId = hasLiveConversion(form.costEntryUnitId)
+      ? form.costEntryUnitId
+      : baseUnitIdForMargin;
+    const effectivePriceEntryUnitId = hasLiveConversion(form.priceEntryUnitId)
+      ? form.priceEntryUnitId
+      : baseUnitIdForMargin;
+
+    const priceFactor = resolveFactor(effectivePriceEntryUnitId);
+    const costPerBase = costRupees / resolveFactor(effectiveCostEntryUnitId);
+    const pricePerBase = priceRupees / priceFactor;
+    if (pricePerBase <= 0) return null;
+
+    // Absolute profit expressed in the price entry unit (per-base profit scaled
+    // back up by the price factor), so the label reads "profit per <priceUnit>".
+    const profitInPriceUnit = (pricePerBase - costPerBase) * priceFactor;
+    const priceUnit = allUnits.find((u) => u.id === effectivePriceEntryUnitId);
+    const priceUnitShortCode = priceUnit?.shortCode ?? 'unit';
+
+    return {
+      pct: Math.round(((pricePerBase - costPerBase) / pricePerBase) * 1000) / 10,
+      profitInPriceUnit,
+      priceUnitShortCode,
+    };
   })();
 
   // v1.0.69: Options for cost-entry-unit dropdown.
   // Lists base unit + every active conversion's fromUnit where toUnit = base.
   // Returns at least 1 option (the base unit) so the dropdown always shows something.
-  const getCostEntryUnitOptions = (): Array<{ id: string; shortCode: string; name: string }> => {
+  const getEntryUnitOptions = (): Array<{ id: string; shortCode: string; name: string }> => {
     const baseUnitId = form.baseUnitId || form.unitId;
     const baseUnit = allUnits.find((u) => u.id === baseUnitId);
     const opts: Array<{ id: string; shortCode: string; name: string }> = [];
@@ -751,7 +880,7 @@ export default function ProductsPage() {
 
     const oldFactor = getFactor(oldUnitId);
     const newFactor = getFactor(newUnitId);
-    loadedFactorRef.current = newFactor;  // v1.0.69 fix #3: user changed entry unit; ref tracks new intent
+    loadedCostFactorRef.current = newFactor;  // v1.0.69 fix #3: user changed entry unit; ref tracks new intent
     // currentRs is in old-unit; baseRs = currentRs / oldFactor; newRs = baseRs * newFactor
     const newRs = (currentRs / oldFactor) * newFactor;
 
@@ -759,6 +888,37 @@ export default function ProductsPage() {
       ...f,
       cost: newRs.toFixed(2),
       costEntryUnitId: newUnitId === baseUnitId ? '' : newUnitId,
+    }));
+  };
+
+  // v1.0.70: price mirror of handleCostEntryUnitChange. When the user picks a
+  // different price entry unit, convert the displayed Rupee amount to the new
+  // unit. (Storage priceCents stays per-base; this is pure display math.)
+  const handlePriceEntryUnitChange = (newUnitId: string) => {
+    const baseUnitId = form.baseUnitId || form.unitId;
+    const currentRs = parseFloat(form.price || '0');
+    const oldUnitId = form.priceEntryUnitId || baseUnitId;
+
+    const getFactor = (unitId: string): number => {
+      if (!unitId || unitId === baseUnitId) return 1;
+      const conv = conversions.find(
+        (c) => c.fromUnitId === unitId && c.toUnitId === baseUnitId,
+      );
+      if (!conv) return 1;
+      const f = parseFloat(conv.conversionQty);
+      return f > 0 ? f : 1;
+    };
+
+    const oldFactor = getFactor(oldUnitId);
+    const newFactor = getFactor(newUnitId);
+    loadedPriceFactorRef.current = newFactor;  // v1.0.70: user changed entry unit; ref tracks new intent
+    // currentRs is in old-unit; baseRs = currentRs / oldFactor; newRs = baseRs * newFactor
+    const newRs = (currentRs / oldFactor) * newFactor;
+
+    setForm((f) => ({
+      ...f,
+      price: newRs.toFixed(2),
+      priceEntryUnitId: newUnitId === baseUnitId ? '' : newUnitId,
     }));
   };
 
@@ -1550,12 +1710,12 @@ export default function ProductsPage() {
                       />
                       <select
                         value={form.costEntryUnitId || (form.baseUnitId || form.unitId)}
-                        disabled={getCostEntryUnitOptions().length <= 1}
+                        disabled={getEntryUnitOptions().length <= 1}
                         onChange={(e) => handleCostEntryUnitChange(e.target.value)}
                         style={{ minWidth: 90 }}
                         className="px-2 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
                       >
-                        {getCostEntryUnitOptions().map((opt) => (
+                        {getEntryUnitOptions().map((opt) => (
                           <option key={opt.id} value={opt.id}>{opt.shortCode}</option>
                         ))}
                       </select>
@@ -1563,15 +1723,29 @@ export default function ProductsPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Price (Rs.)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.price}
-                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                      placeholder="0.00"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.price}
+                        onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ flex: 1 }}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <select
+                        value={form.priceEntryUnitId || (form.baseUnitId || form.unitId)}
+                        disabled={getEntryUnitOptions().length <= 1}
+                        onChange={(e) => handlePriceEntryUnitChange(e.target.value)}
+                        style={{ minWidth: 90 }}
+                        className="px-2 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700 disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        {getEntryUnitOptions().map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.shortCode}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Tax %</label>
@@ -1589,11 +1763,11 @@ export default function ProductsPage() {
 
                 {/* Margin preview */}
                 {previewMargin !== null && (
-                  <div className={`mt-2 text-sm font-medium ${marginColor(previewMargin)}`}>
-                    Margin preview: {previewMargin.toFixed(1)}%
+                  <div className={`mt-2 text-sm font-medium ${marginColor(previewMargin.pct)}`}>
+                    Margin preview: {previewMargin.pct.toFixed(1)}%
                     {form.cost && form.price && (
                       <span className="ml-2 text-slate-400 font-normal text-xs">
-                        (Rs. {(parseFloat(form.price) - parseFloat(form.cost)).toFixed(2)} profit per unit)
+                        (Rs. {previewMargin.profitInPriceUnit.toFixed(2)} profit per {previewMargin.priceUnitShortCode})
                       </span>
                     )}
                   </div>
