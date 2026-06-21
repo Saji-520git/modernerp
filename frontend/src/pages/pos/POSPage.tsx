@@ -250,6 +250,10 @@ function formatStockDisplay(product: PosProduct, baseQty: number): string {
 }
 
 const HOLDS_KEY = 'pos_holds_v2';
+// v1.0.71 — context-independent ID. crypto.randomUUID is undefined in the
+// packaged Electron build (file:// is a non-secure context), so it must not
+// be used here. This helper works in any context.
+const newHoldId = () => `hold_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 function loadHolds(): HoldBill[] {
   try { return JSON.parse(localStorage.getItem(HOLDS_KEY) ?? '[]') as HoldBill[]; }
   catch { return []; }
@@ -1999,20 +2003,26 @@ export default function POSPage() {
   // ── Hold helpers ──────────────────────────────────────────────────────────────
   const holdBill = useCallback((label: string) => {
     if (cart.length === 0) { setShowHoldModal(false); return; }
-    const newHold: HoldBill = {
-      id:                crypto.randomUUID(),
-      label:             label || (customer?.name ?? 'Walk-in'),
-      cart,
-      cartDiscountType,
-      cartDiscountValue,
-      customer,
-      savedAt:           new Date().toISOString(),
-    };
-    const next = [...holds, newHold];
-    setHolds(next);
-    saveHoldsToStorage(next);
-    clearCart();
-    setShowHoldModal(false);
+    try {
+      const newHold: HoldBill = {
+        id:                newHoldId(),
+        label:             label || (customer?.name ?? 'Walk-in'),
+        cart,
+        cartDiscountType,
+        cartDiscountValue,
+        customer,
+        savedAt:           new Date().toISOString(),
+      };
+      const next = [...holds, newHold];
+      setHolds(next);
+      saveHoldsToStorage(next);
+      clearCart();
+      setShowHoldModal(false);
+    } catch (err) {
+      console.error('[v1.0.71 holdBill] failed:', err);
+      setBatchCapToast('Could not hold bill. Please try again.');
+      setShowHoldModal(false);
+    }
   }, [cart, cartDiscountType, cartDiscountValue, customer, holds, clearCart]);
 
   const resumeHold = useCallback((h: HoldBill) => {
