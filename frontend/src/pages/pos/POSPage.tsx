@@ -861,6 +861,44 @@ function HoldModal({
   );
 }
 
+// ─── CancelConfirmModal ─────────────────────────────────────────────────────────
+
+function CancelConfirmModal({
+  onConfirm, onClose,
+}: {
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6">
+        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2">
+          <Trash2 size={16} className="text-red-500" /> Cancel Sale?
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">All items in the current cart will be cleared. This cannot be undone.</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onClose}
+            onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+            className="flex-1 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Keep editing
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition"
+          >
+            Cancel sale
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // DiscountModal removed — replaced by inline DiscountInput in cart + totals panel
 
 // ─── PaymentDialog ────────────────────────────────────────────────────────────
@@ -1476,6 +1514,7 @@ export default function POSPage() {
   const [showPayment,         setShowPayment]         = useState(false);
   const [showReceipt,         setShowReceipt]         = useState(false);
   const [showHoldModal,       setShowHoldModal]       = useState(false);
+  const [showCancelConfirm,   setShowCancelConfirm]   = useState(false);
   const [showHolds,           setShowHolds]           = useState(false);
   const [showCustomer,        setShowCustomer]        = useState(false);
   const [showShortcuts,       setShowShortcuts]       = useState(false);
@@ -2367,7 +2406,7 @@ export default function POSPage() {
 
       const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
-        || showReceipt || showCustomer || !!quickAddBarcode;
+        || showReceipt || showCustomer || showCancelConfirm || !!quickAddBarcode;
       if (anyDialog) return;
 
       // F2 — focus barcode/scanner input
@@ -2387,11 +2426,7 @@ export default function POSPage() {
       // F5 — new sale (clear cart with confirmation)
       if (e.key === 'F5') {
         e.preventDefault();
-        if (cart.length > 0) {
-          if (window.confirm('Clear current cart and start a new sale?')) {
-            clearCart();
-          }
-        }
+        if (cart.length > 0) setShowCancelConfirm(true);
         return;
       }
 
@@ -2464,7 +2499,7 @@ export default function POSPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
-      showHolds, showReceipt, showCustomer, quickAddBarcode,
+      showHolds, showReceipt, showCustomer, showCancelConfirm, quickAddBarcode,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
       checkoutMutation.isPending, hasOversoldItem]);
 
@@ -2904,9 +2939,7 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (cart.length > 0 && window.confirm('Clear current cart and start a new sale?')) {
-                    clearCart();
-                  }
+                  if (cart.length > 0) setShowCancelConfirm(true);
                 }}
                 disabled={cart.length === 0 || checkoutMutation.isPending}
                 className={cls(
@@ -3049,6 +3082,13 @@ export default function POSPage() {
         <HoldModal
           onConfirm={holdBill}
           onClose={() => setShowHoldModal(false)}
+        />
+      )}
+
+      {showCancelConfirm && (
+        <CancelConfirmModal
+          onConfirm={() => { clearCart(); setShowCancelConfirm(false); }}
+          onClose={() => setShowCancelConfirm(false)}
         />
       )}
 
