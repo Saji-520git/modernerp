@@ -2899,29 +2899,51 @@ export default function POSPage() {
               </p>
             )}
 
-            {/* PAY NOW */}
-            <button
-              type="button"
-              onClick={() => {
-                if (cart.length === 0 || !warehouseId || hasOversoldItem) return;
-                setShowPayment(true);
-              }}
-              disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
-              className={cls(
-                'w-full py-3 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
-                'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
-                cart.length === 0 || !warehouseId
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : hasOversoldItem
-                    ? 'bg-red-500 cursor-not-allowed text-white opacity-75'
-                    : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-[0.98]',
-              )}
-            >
-              {checkoutMutation.isPending
-                ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
-                : <><CheckCircle size={18} /> PAY NOW <kbd className="ml-1 text-[10px] bg-white/20 border border-white/30 rounded px-1 font-mono">F8</kbd></>
-              }
-            </button>
+            {/* CANCEL + PAY NOW */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (cart.length > 0 && window.confirm('Clear current cart and start a new sale?')) {
+                    clearCart();
+                  }
+                }}
+                disabled={cart.length === 0 || checkoutMutation.isPending}
+                className={cls(
+                  'flex-1 py-3 rounded-lg font-semibold border-2 border-red-500 text-red-600 bg-white',
+                  'hover:bg-red-50 active:bg-red-100 transition-colors',
+                  'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white',
+                  'flex items-center justify-center gap-2',
+                )}
+                aria-label="Cancel sale (F5)"
+              >
+                <X className="w-5 h-5" />
+                CANCEL
+                <kbd className="ml-1 text-[10px] bg-red-50 border border-red-200 text-red-600 rounded px-1 font-mono">F5</kbd>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cart.length === 0 || !warehouseId || hasOversoldItem) return;
+                  setShowPayment(true);
+                }}
+                disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
+                className={cls(
+                  'flex-[2] py-3 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
+                  'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
+                  cart.length === 0 || !warehouseId
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : hasOversoldItem
+                      ? 'bg-red-500 cursor-not-allowed text-white opacity-75'
+                      : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-[0.98]',
+                )}
+              >
+                {checkoutMutation.isPending
+                  ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
+                  : <><CheckCircle size={18} /> PAY NOW <kbd className="ml-1 text-[10px] bg-white/20 border border-white/30 rounded px-1 font-mono">F8</kbd></>
+                }
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2937,14 +2959,6 @@ export default function POSPage() {
           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
           ⏸ Hold
           <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F4</span>
-        </button>
-
-        {/* Void & New — F5 */}
-        <button type="button"
-          onClick={() => { if (cart.length > 0 && window.confirm('Clear current cart and start a new sale?')) clearCart(); else if (cart.length === 0) clearCart(); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
-          ⊗ Void & New
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F5</span>
         </button>
 
         {/* Drafts — L */}
