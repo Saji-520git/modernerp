@@ -37,7 +37,7 @@ import { sound } from '../../lib/sound';
 const POS_SHORTCUTS = [
   { group: 'SALES',      key: 'F2',           action: 'Focus barcode / scanner' },
   { group: 'SALES',      key: 'F4',           action: 'Hold current cart' },
-  { group: 'SALES',      key: 'F5',           action: 'New sale / clear cart' },
+  { group: 'SALES',      key: 'F5',           action: 'Cancel current sale' },
   { group: 'SALES',      key: 'F8',           action: 'Pay now' },
   { group: 'SALES',      key: 'Esc',          action: 'Close any open modal' },
   { group: 'CART',       key: '+',            action: 'Add 1 to last item qty' },
@@ -2438,7 +2438,7 @@ export default function POSPage() {
         return;
       }
 
-      // F5 — new sale (clear cart with confirmation)
+      // F5 — cancel current sale (with confirmation)
       if (e.key === 'F5') {
         e.preventDefault();
         if (cart.length > 0) setShowCancelConfirm(true);
@@ -3277,7 +3277,7 @@ export default function POSPage() {
                 [
                   { label: 'SALES', keys: [
                     { key: 'F2',  desc: 'Focus scanner / barcode' },
-                    { key: 'F5',  desc: 'New sale (clear cart)' },
+                    { key: 'F5',  desc: 'Cancel current sale' },
                     { key: 'F8',  desc: 'Pay now' },
                     { key: 'F4',  desc: 'Hold current cart' },
                     { key: 'Esc', desc: 'Close any open modal' },
