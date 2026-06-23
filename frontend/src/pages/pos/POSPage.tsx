@@ -869,6 +869,8 @@ function CancelConfirmModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6">
@@ -878,17 +880,25 @@ function CancelConfirmModal({
         <p className="text-sm text-slate-500 mb-4">All items in the current cart will be cleared. This cannot be undone.</p>
         <div className="flex gap-2">
           <button
+            ref={keepRef}
             type="button"
             autoFocus
             onClick={onClose}
-            onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { onClose(); return; }
+              if (e.key === 'Tab') { e.preventDefault(); cancelRef.current?.focus(); }
+            }}
             className="flex-1 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50"
           >
             Keep editing
           </button>
           <button
+            ref={cancelRef}
             type="button"
             onClick={onConfirm}
+            onKeyDown={e => {
+              if (e.key === 'Tab') { e.preventDefault(); keepRef.current?.focus(); }
+            }}
             className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition"
           >
             Cancel sale
