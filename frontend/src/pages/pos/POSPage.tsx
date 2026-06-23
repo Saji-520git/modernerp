@@ -2412,7 +2412,12 @@ export default function POSPage() {
       }
 
       // ── Don't fire remaining shortcuts when typing in an input ────────────────
-      if (inInput) return;
+      // Exception: F4 (Hold), F5 (Cancel), F8 (Pay Now) are workflow shortcuts
+      // that must fire even when the barcode bar is focused. They are not
+      // character keys so they cannot conflict with SKU/barcode typing.
+      // Dialog-suppression still applies — these keys are gated by anyDialog
+      // (next check below).
+      if (inInput && e.key !== 'F4' && e.key !== 'F5' && e.key !== 'F8') return;
 
       const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
