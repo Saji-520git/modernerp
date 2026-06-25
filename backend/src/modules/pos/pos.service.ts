@@ -197,6 +197,18 @@ export const posService = {
     // 2. Resolve base quantities (apply unit conversion if unitId is provided)
     const resolvedItems = await Promise.all(
       items.map(async (item) => {
+        // ── Trust boundary note (v1.0.72) ─────────────────────────────────
+        // For COUNT-only units (allowDecimal === false), the frontend
+        // (POSPage.tsx commitEdit) rounds qty to integer before submission.
+        // This service accepts the resulting integer qty without re-checking.
+        //
+        // If this service is ever exposed to non-React clients (multi-tenant
+        // API, mobile app, external integration), add per-line integer
+        // validation here: when the effective unit's allowDecimal is false,
+        // reject the line if Number.isInteger(item.qty) === false.
+        //
+        // Backend Zod (.min(0.0001)) already blocks zero and negatives.
+        // ──────────────────────────────────────────────────────────────────
         const product = products.find((p) => p.id === item.productId)!;
         const baseUnitId = product.baseUnitId ?? product.unitId;
 
