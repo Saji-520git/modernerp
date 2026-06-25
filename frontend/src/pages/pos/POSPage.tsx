@@ -235,14 +235,14 @@ function formatStockDisplay(product: PosProduct, baseQty: number): string {
     .filter(p => p.factor > 1)
     .sort((a, b) => b.factor - a.factor);
 
-  let display = `${baseQty} ${baseLabel}`;
+  let display = `${fmtQty(baseQty)} ${baseLabel}`;
 
   if (packs.length > 0) {
     const pack  = packs[0];
     const whole = Math.floor(baseQty / pack.factor);
     const rem   = baseQty % pack.factor;
     if (whole > 0) {
-      display += ` (${whole} ${pack.label}${rem > 0 ? ` + ${rem}` : ''})`;
+      display += ` (${whole} ${pack.label}${rem > 0 ? ` + ${fmtQty(rem)}` : ''})`;
     }
   }
 
