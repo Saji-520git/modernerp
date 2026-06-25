@@ -31,7 +31,15 @@ export interface StockRow {
     costCents: number;
     reorderLevel: number;
     reorderQty: number;
-    unit: { shortCode: string };
+    baseUnitId: string | null;
+    unit: { id: string; shortCode: string; allowDecimal: boolean };
+    baseUnit: { id: string; shortCode: string; allowDecimal: boolean } | null;
+    unitConversions: Array<{
+      fromUnitId: string;
+      toUnitId: string;
+      conversionQty: number;
+      fromUnit: { id: string; shortCode: string; allowDecimal: boolean };
+    }>;
     category: { name: string } | null;
   };
   warehouse: { id: string; name: string; code: string };
