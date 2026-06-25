@@ -2,7 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
-import { convertFromBaseUnit } from '../../utils/unit-converter.js';
+import { convertToBaseUnit, convertFromBaseUnit } from '../../utils/unit-converter.js';
 import { getBatchSummary, getBatchDetail, deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty, repairNegativeStockQty } from '../../utils/stock-utils.js';
 import type {
@@ -436,6 +436,45 @@ export const inventoryService = {
     logger.info({ productId, warehouseId, qty, reason }, 'Stock adjustment starting');
 
     const result = await prisma.$transaction(async (tx) => {
+      // ── Resolve adjustment qty into the product's BASE unit (v1.0.72) ───────
+      // The UI submits qty already in base units (no unit selector), but an
+      // optional input.unitId lets unit-aware callers submit in a packaging unit
+      // (e.g. boxes). Convert to base BEFORE any stock or P&L arithmetic so both
+      // stay correct. Sign is preserved; convertToBaseUnit needs a positive
+      // magnitude. No unitId, or unitId === baseUnitId, means "already base" →
+      // behaves identically to the pre-v1.0.72 path.
+      const adjProductUnit = await tx.product.findUnique({
+        where:  { id: productId },
+        select: { baseUnitId: true },
+      });
+      const effectiveUnitId = input.unitId ?? adjProductUnit?.baseUnitId ?? null;
+
+      let signedBaseQty: number;
+      if (!effectiveUnitId || effectiveUnitId === adjProductUnit?.baseUnitId) {
+        signedBaseQty = Number(qty);
+      } else {
+        const magnitude = Math.abs(Number(qty));
+        const unitRow = await tx.unit.findUnique({
+          where:  { id: effectiveUnitId },
+          select: { type: true, allowDecimal: true },
+        });
+        if (unitRow && (unitRow.type === 'COUNT' || unitRow.allowDecimal === false)) {
+          if (!Number.isInteger(magnitude)) {
+            throw new HttpError(
+              400,
+              `Quantity for count-only units must be a whole number; got ${magnitude}`,
+            );
+          }
+        }
+        const { baseQty: baseMagnitude } = await convertToBaseUnit(
+          productId,
+          effectiveUnitId,
+          new Decimal(magnitude),
+          tx,
+        );
+        signedBaseQty = Number(baseMagnitude) * Math.sign(Number(qty));
+      }
+
       // ── FIX (v1.0.57): floor at 0 using a FRESH in-transaction read ─────────
       // Stock.qty is Decimal(18,4); convert with Number() for the arithmetic.
       const currentStockRow = await tx.stock.findUnique({
@@ -443,7 +482,7 @@ export const inventoryService = {
         select: { qty: true },
       });
       const freshCurrentQty = Number(currentStockRow?.qty ?? 0);
-      const baseQty = Math.abs(Number(qty));   // adjustment qty is base by construction (no unit selector)
+      const baseQty = Math.abs(signedBaseQty);
 
       // SIGN-ROUTER — keep stock batch-consistent without wiping legacy (no-batch)
       // stock. Negative = decrease → FEFO-deduct (mirror POS/write-off) with a
@@ -451,7 +490,7 @@ export const inventoryService = {
       // and set ADDITIVELY (never recompute — a blind recompute would zero a legacy
       // product's pre-existing unbacked aggregate).
       let stock;
-      if (Number(qty) < 0) {
+      if (signedBaseQty < 0) {
         // DECREASE — FEFO-deduct, mirror POS/write-off. Legacy fork protects no-batch stock.
         const deducted = await deductBatchesFEFO(tx, productId, warehouseId, baseQty, false);
         if (deducted > 0) {
@@ -491,7 +530,7 @@ export const inventoryService = {
           productId,
           warehouseId,
           type: 'ADJUSTMENT',
-          qty,
+          qty: signedBaseQty,
           refType: 'Adjustment',
           note: reason,
         },
@@ -506,14 +545,14 @@ export const inventoryService = {
       });
 
       const valueCents = Math.abs(
-        Math.round(Number(qty) * (adjProduct?.costCents ?? 0)),
+        Math.round(signedBaseQty * (adjProduct?.costCents ?? 0)),
       );
 
       if (valueCents > 0) {
-        const categoryName = Number(qty) < 0
+        const categoryName = signedBaseQty < 0
           ? 'Stock Adjustment Loss'
           : 'Stock Adjustment Gain';
-        const categoryColor = Number(qty) < 0 ? '#f97316' : '#22c55e';
+        const categoryColor = signedBaseQty < 0 ? '#f97316' : '#22c55e';
 
         // ExpenseCategory.name is unique, but findFirst + create keeps the
         // soft-delete (deletedAt) filter explicit and matches the write-off path.
@@ -532,8 +571,8 @@ export const inventoryService = {
           categoryId:    adjCategory.id,
           amount:        valueCents,
           description:
-            `Stock ${Number(qty) < 0 ? 'loss' : 'gain'}: ` +
-            `${adjProduct?.name} × ${Math.abs(Number(qty))} — ${reason}`,
+            `Stock ${signedBaseQty < 0 ? 'loss' : 'gain'}: ` +
+            `${adjProduct?.name} × ${Math.abs(signedBaseQty)} — ${reason}`,
           date:          new Date(),
           paymentMethod: 'CASH',
           reference:     `ADJ-${Date.now()}`,

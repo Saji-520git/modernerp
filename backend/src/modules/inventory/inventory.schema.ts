@@ -17,6 +17,7 @@ export const stockListSchema = z.object({
 export const adjustmentSchema = z.object({
   productId: z.string().cuid(),
   warehouseId: z.string().cuid(),
+  unitId: z.string().cuid().optional(),  // NEW — optional; absent means "qty is in base unit"
   qty: z.number().refine((n) => n !== 0, { message: 'Quantity cannot be zero' }),
   reason: z.string().min(3, 'Reason must be at least 3 characters').max(500),
 });
