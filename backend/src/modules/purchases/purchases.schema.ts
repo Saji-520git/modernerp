@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const purchaseLineInputSchema = z.object({
   productId:    z.string().cuid('Invalid product'),
-  qty:          z.number().positive('Quantity must be greater than 0'),
+  qty:          z.number().min(0.0001, 'Quantity must be greater than 0'),
   unitCostCents:z.number().int().nonnegative('Cost cannot be negative'),
   taxPercent:   z.number().min(0).max(100).default(0),
   unitId:       z.string().optional(),  // if set, qty is in this unit; backend converts to base
@@ -52,7 +52,7 @@ export const fromAlertsSchema = z.object({
   supplierId:  z.string().min(1, 'Supplier is required'),
   items: z.array(z.object({
     productId:     z.string().min(1),
-    qty:           z.number().positive(),
+    qty:           z.number().min(0.0001, 'Quantity must be greater than 0'),
     unitCostCents: z.number().int().min(0).optional(),
   })).min(1, 'Select at least one product'),
   note: z.string().max(500).optional(),

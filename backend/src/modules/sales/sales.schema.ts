@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const saleLineInputSchema = z.object({
   productId: z.string().cuid('Invalid product'),
-  qty: z.number().positive('Quantity must be greater than 0'),
+  qty: z.number().min(0.0001, 'Quantity must be greater than 0'),
   unitPriceCents: z.number().int().nonnegative('Price cannot be negative'),
   taxPercent: z.number().min(0).max(100).default(0),
   discountCents: z.number().int().nonnegative().default(0),

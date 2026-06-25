@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const checkoutLineSchema = z.object({
   productId:      z.string().cuid(),
-  qty:            z.number().positive('Quantity must be positive'),
+  qty:            z.number().min(0.0001, 'Quantity must be greater than 0'),
   unitPriceCents: z.number().int().min(0).optional(), // price override (requires adjust_sale_price perm)
   unitId:         z.string().optional(),              // unit used for this line (if omitted, uses base unit)
   discountCents:  z.number().int().min(0).default(0), // per-line discount in cents
@@ -55,7 +55,7 @@ export const saveDraftSchema = z.object({
   note:          z.string().max(500).optional().nullable(),
   items:         z.array(z.object({
     productId:      z.string().cuid(),
-    qty:            z.number().int().positive(),
+    qty:            z.number().int().min(1, 'Quantity must be at least 1'),
     unitPriceCents: z.number().int().min(0),
   })).min(0),
 });

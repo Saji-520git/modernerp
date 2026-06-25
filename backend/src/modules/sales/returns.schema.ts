@@ -9,7 +9,7 @@ export const createReturnSchema = z.object({
     .array(
       z.object({
         productId: z.string().min(1),
-        qty: z.number().positive('Quantity must be positive'),
+        qty: z.number().min(0.0001, 'Quantity must be greater than 0'),
         unitPriceCents: z.number().int().nonnegative(),
         lineTotalCents: z.number().int().nonnegative(),
       }),

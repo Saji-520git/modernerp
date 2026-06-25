@@ -26,7 +26,7 @@ export const transferSchema = z
     productId: z.string().cuid(),
     fromWarehouseId: z.string().cuid(),
     toWarehouseId: z.string().cuid(),
-    qty: z.number().positive('Quantity must be positive'),
+    qty: z.number().min(0.0001, 'Quantity must be greater than 0'),
     note: z.string().max(500).optional(),
   })
   .refine((d) => d.fromWarehouseId !== d.toWarehouseId, {
@@ -37,7 +37,7 @@ export const transferSchema = z
 export const writeOffSchema = z.object({
   batchId:    z.string().cuid(),
   warehouseId: z.string().cuid(),
-  qty:        z.number().positive('Quantity must be positive'),
+  qty:        z.number().min(0.0001, 'Quantity must be greater than 0'),
   reason:     z.string().min(3, 'Reason must be at least 3 characters').max(500),
 });
 
