@@ -835,6 +835,9 @@ function HoldModal({
   onClose: () => void;
 }) {
   const [label, setLabel] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const holdRef = useRef<HTMLButtonElement>(null);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6">
@@ -842,17 +845,54 @@ function HoldModal({
           <Save size={16} className="text-indigo-500" /> Hold Current Bill
         </h3>
         <p className="text-sm text-slate-500 mb-4">Give this bill a label to find it easily later.</p>
-        <input autoFocus value={label} onChange={e => setLabel(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') onConfirm(label); if (e.key === 'Escape') onClose(); }}
+        <input
+          ref={inputRef}
+          autoFocus
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { onConfirm(label); return; }
+            if (e.key === 'Escape') { onClose(); return; }
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              if (e.shiftKey) holdRef.current?.focus();
+              else cancelRef.current?.focus();
+            }
+          }}
           placeholder="e.g. Table 3, Customer name…"
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-4" />
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-4"
+        />
         <div className="flex gap-2">
-          <button type="button" onClick={onClose}
-            className="flex-1 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onClose}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { onClose(); return; }
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                if (e.shiftKey) inputRef.current?.focus();
+                else holdRef.current?.focus();
+              }
+            }}
+            className="flex-1 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50"
+          >
             Cancel
           </button>
-          <button type="button" onClick={() => onConfirm(label)}
-            className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition">
+          <button
+            ref={holdRef}
+            type="button"
+            onClick={() => onConfirm(label)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { onClose(); return; }
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                if (e.shiftKey) cancelRef.current?.focus();
+                else inputRef.current?.focus();
+              }
+            }}
+            className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition"
+          >
             Hold Bill
           </button>
         </div>
