@@ -34,7 +34,7 @@ import {
 import { productsApi } from '../../services/products';
 import BarcodeInput from '../../components/common/BarcodeInput';
 import axios from 'axios';
-import { fmtQty } from '../../utils/format';
+import { fmtQty, formatStockDisplay } from '../../utils/format';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -247,8 +247,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
         <td className="px-4 py-3 text-slate-500 font-mono text-xs">{row.product.sku}</td>
         <td className="px-4 py-3 text-slate-600">{row.warehouse.name}</td>
         <td className="px-4 py-3 text-right font-semibold">
-          {row.qty.toLocaleString()}
-          <span className="ml-1 text-xs text-slate-400 font-normal">{row.product.unit.shortCode}</span>
+          {formatStockDisplay(row.product, Number(row.qty))}
         </td>
         <td className="px-4 py-3 text-right">
           {row.stockValueCents > 0
@@ -270,9 +269,9 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
             {/* Reorder info line */}
             {(row.product.reorderLevel > 0 || row.product.reorderQty > 0) && (
               <p className="text-[11px] text-slate-400 mb-1.5">
-                Reorder at: <span className="font-semibold text-slate-600">{row.product.reorderLevel} {row.product.unit.shortCode}</span>
+                Reorder at: <span className="font-semibold text-slate-600">{formatStockDisplay(row.product, Number(row.product.reorderLevel))}</span>
                 {row.product.reorderQty > 0 && (
-                  <> &nbsp;·&nbsp; Order qty: <span className="font-semibold text-slate-600">{row.product.reorderQty} {row.product.unit.shortCode}</span></>
+                  <> &nbsp;·&nbsp; Order qty: <span className="font-semibold text-slate-600">{formatStockDisplay(row.product, Number(row.product.reorderQty))}</span></>
                 )}
               </p>
             )}
