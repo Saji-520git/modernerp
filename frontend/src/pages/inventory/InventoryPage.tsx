@@ -34,13 +34,9 @@ import {
 import { productsApi } from '../../services/products';
 import BarcodeInput from '../../components/common/BarcodeInput';
 import axios from 'axios';
+import { fmtQty } from '../../utils/format';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Display qty: whole numbers as integers, decimals to 3 places */
-function fmtQty(qty: number): string {
-  return Number.isInteger(qty) ? qty.toString() : qty.toFixed(3);
-}
 
 type Tab = 'stock' | 'adjust' | 'transfer' | 'history';
 

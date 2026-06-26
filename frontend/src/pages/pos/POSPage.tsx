@@ -28,6 +28,7 @@ import QuickAddModal from '../../components/pos/QuickAddModal';
 import { productsApi, type Product } from '../../services/products';
 import axios from 'axios';
 import { generateReceiptHtml } from '../../utils/generateReceiptHtml';
+import { fmtQty, formatStockDisplay } from '../../utils/format';
 
 // ─── Audio engine ─────────────────────────────────────────────────────────────
 import { sound } from '../../lib/sound';
@@ -98,11 +99,6 @@ function useLiveClock(): string {
 
 function totalStock(p: PosProduct): number {
   return p.stock.reduce((s, r) => s + Number(r.qty), 0);
-}
-
-/** Display qty: whole numbers as integers, decimals to 3 places (e.g. 0.500 kg) */
-function fmtQty(qty: number): string {
-  return Number.isInteger(qty) ? qty.toString() : qty.toFixed(3);
 }
 
 /**
@@ -214,39 +210,6 @@ function getUnitAllowDecimal(product: PosProduct, unitId: string | undefined): b
     c => c.fromUnitId === unitId && c.toUnitId === baseUnitId,
   );
   return conv?.fromUnit?.allowDecimal ?? false;
-}
-
-/**
- * Format a base-unit stock quantity for the product grid: shows the base count
- * with its unit label, plus a pack breakdown using the largest pack conversion
- * (e.g. "45 pcs (2 box + 5)").
- */
-function formatStockDisplay(product: PosProduct, baseQty: number): string {
-  const baseUnit  = product.baseUnit ?? product.unit;
-  const baseLabel = baseUnit?.shortCode ?? 'unit';
-
-  const baseUnitId = product.baseUnitId ?? product.unitId;
-  const packs = (product.unitConversions ?? [])
-    .filter(c => c.toUnitId === baseUnitId)
-    .map(c => ({
-      label:  c.fromUnit?.shortCode ?? 'pack',
-      factor: Number(c.conversionQty),
-    }))
-    .filter(p => p.factor > 1)
-    .sort((a, b) => b.factor - a.factor);
-
-  let display = `${fmtQty(baseQty)} ${baseLabel}`;
-
-  if (packs.length > 0) {
-    const pack  = packs[0];
-    const whole = Math.floor(baseQty / pack.factor);
-    const rem   = baseQty % pack.factor;
-    if (whole > 0) {
-      display += ` (${whole} ${pack.label}${rem > 0 ? ` + ${fmtQty(rem)}` : ''})`;
-    }
-  }
-
-  return display;
 }
 
 const HOLDS_KEY = 'pos_holds_v2';
