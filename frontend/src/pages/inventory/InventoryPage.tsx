@@ -1,4 +1,4 @@
-import { useState, useRef, Fragment } from 'react';
+import { useState, useRef, useMemo, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -36,6 +36,11 @@ import BarcodeInput from '../../components/common/BarcodeInput';
 import axios from 'axios';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Display qty: whole numbers as integers, decimals to 3 places */
+function fmtQty(qty: number): string {
+  return Number.isInteger(qty) ? qty.toString() : qty.toFixed(3);
+}
 
 type Tab = 'stock' | 'adjust' | 'transfer' | 'history';
 
@@ -594,6 +599,7 @@ function StockTab({ onAdjust }: { onAdjust: (productId: string, warehouseId: str
 function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?: string; prefillWarehouseId?: string }) {
   const qc = useQueryClient();
   const [productId, setProductId] = useState(prefillProductId ?? '');
+  const [unitId, setUnitId] = useState('');
   const [warehouseId, setWarehouseId] = useState(prefillWarehouseId ?? '');
   const [qty, setQty] = useState('');
   const [reason, setReason] = useState('');
@@ -607,6 +613,7 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
     try {
       const found = await productsApi.getByBarcode(barcode);
       setProductId(found.id);
+      setUnitId('');
       setScanMsg({ text: `✓ ${found.name} selected`, ok: true });
       setTimeout(() => setScanMsg(null), 2000);
       setTimeout(() => qtyInputRef.current?.focus(), 50);
@@ -631,6 +638,40 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
   const products = stockData
     ? [...new Map(stockData.data.map((r) => [r.product.id, r.product])).values()]
     : [];
+
+  // Unit-aware adjustment: derive the selected product's base unit + the
+  // packaging conversions that map directly to it (mirror Purchases picker).
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === productId),
+    [products, productId],
+  );
+
+  const baseUnitId = selectedProduct
+    ? (selectedProduct.baseUnitId ?? selectedProduct.unit.id)
+    : null;
+
+  const baseUnit = selectedProduct
+    ? (selectedProduct.baseUnit ?? selectedProduct.unit)
+    : null;
+
+  const availableConvs = useMemo(
+    () => (selectedProduct?.unitConversions ?? []).filter((c) => c.toUnitId === baseUnitId),
+    [selectedProduct, baseUnitId],
+  );
+
+  const selectedConv = availableConvs.find((c) => c.fromUnitId === unitId);
+
+  const selectedUnitAllowDecimal = unitId === '' || unitId === baseUnitId
+    ? (baseUnit?.allowDecimal ?? true)
+    : (selectedConv?.fromUnit.allowDecimal ?? true);
+
+  // Conversion preview: base-unit equivalent of the entered qty (string Decimal
+  // → Number per house convention). Sign-aware; null hides the preview line.
+  const previewBaseQty = useMemo(() => {
+    const numQty = parseFloat(qty);
+    if (!selectedConv || !Number.isFinite(numQty) || numQty === 0) return null;
+    return numQty * Number(selectedConv.conversionQty);
+  }, [qty, selectedConv]);
 
   const mutation = useMutation({
     mutationFn: (payload: AdjustmentPayload) => inventoryApi.createAdjustment(payload),
@@ -657,7 +698,13 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
       setError('All fields are required');
       return;
     }
-    mutation.mutate({ productId, warehouseId, qty: parseFloat(qty), reason });
+    mutation.mutate({
+      productId,
+      warehouseId,
+      unitId: unitId || undefined,
+      qty: parseFloat(qty),
+      reason,
+    });
   };
 
   return (
@@ -686,11 +733,27 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
         </div>
         <div>
           <label className="text-sm font-medium text-slate-700">Product</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} required
+          <select value={productId} onChange={(e) => { setProductId(e.target.value); setUnitId(''); }} required
             className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">— Select product —</option>
             {products.map((p) => (
               <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-slate-700">Unit</label>
+          <select
+            value={unitId}
+            onChange={(e) => setUnitId(e.target.value)}
+            disabled={!productId}
+            className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">{baseUnit?.shortCode ?? 'Base unit'} (base)</option>
+            {availableConvs.map((c) => (
+              <option key={c.fromUnitId} value={c.fromUnitId}>
+                {c.fromUnit.shortCode}
+              </option>
             ))}
           </select>
         </div>
@@ -709,7 +772,7 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
             Quantity <span className="text-slate-400 font-normal">(use negative to remove, e.g. -5)</span>
           </label>
           <div className="mt-1 relative">
-            <input ref={qtyInputRef} type="number" step="0.01" value={qty} onChange={(e) => setQty(e.target.value)}
+            <input ref={qtyInputRef} type="number" step={selectedUnitAllowDecimal ? "0.01" : "1"} value={qty} onChange={(e) => setQty(e.target.value)}
               placeholder="e.g. 10 or -3" required
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             {qty && (
@@ -720,6 +783,12 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
               </span>
             )}
           </div>
+          {selectedConv && previewBaseQty !== null && (
+            <p className="text-[10px] text-indigo-500 mt-0.5 px-1">
+              = {fmtQty(Math.abs(previewBaseQty))} {baseUnit?.shortCode}
+              {previewBaseQty < 0 ? ' (removed)' : ' (added)'}
+            </p>
+          )}
         </div>
         <div>
           <label className="text-sm font-medium text-slate-700">Reason <span className="text-red-500">*</span></label>

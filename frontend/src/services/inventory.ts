@@ -66,6 +66,7 @@ export interface Warehouse {
 export interface AdjustmentPayload {
   productId: string;
   warehouseId: string;
+  unitId?: string;
   qty: number;
   reason: string;
 }
