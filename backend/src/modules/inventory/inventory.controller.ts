@@ -27,19 +27,19 @@ export const getWarehouses: RequestHandler = async (_req, res) => {
   res.json(result);
 };
 
-export const createAdjustment: RequestHandler = async (req, res) => {
+export const createAdjustment: RequestHandler = h(async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = adjustmentSchema.parse(req.body);
   const result = await inventoryService.createAdjustment(input, req.auth.userId);
   res.status(201).json(result);
-};
+});
 
-export const createTransfer: RequestHandler = async (req, res) => {
+export const createTransfer: RequestHandler = h(async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = transferSchema.parse(req.body);
   const result = await inventoryService.createTransfer(input, req.auth.userId);
   res.status(201).json(result);
-};
+});
 
 export const listMovements: RequestHandler = async (req, res) => {
   const input = movementsListSchema.parse(req.query);
