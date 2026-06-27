@@ -456,7 +456,10 @@ export const inventoryService = {
       // behaves identically to the pre-v1.0.72 path.
       const adjProductUnit = await tx.product.findUnique({
         where:  { id: productId },
-        select: { baseUnitId: true },
+        select: {
+          baseUnitId: true,
+          baseUnit:   { select: { type: true, allowDecimal: true } },
+        },
       });
       const effectiveUnitId = input.unitId ?? adjProductUnit?.baseUnitId ?? null;
 
@@ -484,6 +487,22 @@ export const inventoryService = {
           tx,
         );
         signedBaseQty = Number(baseMagnitude) * Math.sign(Number(qty));
+      }
+
+      // CHUNK 9: enforce integer for COUNT base units regardless of
+      // entry unit. The else-branch above catches fractional non-base
+      // inputs early; this catches the base-path case (T8 rehearsal
+      // failure: fractional pcs accepted) and any non-base input that
+      // converts to fractional base qty. Skipped silently for products
+      // with null baseUnit (legacy data) — existing logic handles that.
+      const baseUnitMeta = adjProductUnit?.baseUnit;
+      if (baseUnitMeta && (baseUnitMeta.type === 'COUNT' || baseUnitMeta.allowDecimal === false)) {
+        if (!Number.isInteger(signedBaseQty)) {
+          throw new HttpError(
+            400,
+            `Quantity for count-only products must be a whole number; got ${signedBaseQty}`,
+          );
+        }
       }
 
       // ── FIX (v1.0.57): floor at 0 using a FRESH in-transaction read ─────────
