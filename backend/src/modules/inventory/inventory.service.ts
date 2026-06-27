@@ -459,6 +459,8 @@ export const inventoryService = {
         select: {
           baseUnitId: true,
           baseUnit:   { select: { type: true, allowDecimal: true } },
+          unitId:     true,
+          unit:       { select: { type: true, allowDecimal: true } },
         },
       });
       const effectiveUnitId = input.unitId ?? adjProductUnit?.baseUnitId ?? null;
@@ -489,13 +491,17 @@ export const inventoryService = {
         signedBaseQty = Number(baseMagnitude) * Math.sign(Number(qty));
       }
 
-      // CHUNK 9: enforce integer for COUNT base units regardless of
+      // CHUNK 9 + 10: enforce integer for COUNT products regardless of
       // entry unit. The else-branch above catches fractional non-base
       // inputs early; this catches the base-path case (T8 rehearsal
       // failure: fractional pcs accepted) and any non-base input that
-      // converts to fractional base qty. Skipped silently for products
-      // with null baseUnit (legacy data) — existing logic handles that.
-      const baseUnitMeta = adjProductUnit?.baseUnit;
+      // converts to fractional base qty. Resolves count-ness from
+      // `baseUnit ?? unit` — matches the codebase convention
+      // (baseUnitId ?? unitId at 7+ sites) and protects null-baseUnit
+      // products (43% of ACM data) whose count semantics live on the
+      // display unit. unitId is REQUIRED in the schema, so the fallback
+      // always resolves to a non-null unit row.
+      const baseUnitMeta = adjProductUnit?.baseUnit ?? adjProductUnit?.unit;
       if (baseUnitMeta && (baseUnitMeta.type === 'COUNT' || baseUnitMeta.allowDecimal === false)) {
         if (!Number.isInteger(signedBaseQty)) {
           throw new HttpError(
