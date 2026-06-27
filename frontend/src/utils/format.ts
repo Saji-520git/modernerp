@@ -20,7 +20,7 @@ interface StockDisplayProduct {
   baseUnitId: string | null;
   unit:     { id: string; shortCode: string } | null;
   baseUnit: { shortCode: string } | null;
-  unitConversions: Array<{
+  unitConversions?: Array<{
     toUnitId: string;
     conversionQty: number;
     fromUnit: { shortCode: string } | null;

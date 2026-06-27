@@ -33,6 +33,12 @@ export interface Product {
   baseUnit:     ProductUnit | null;
   purchaseUnit: ProductUnit | null;
   salesUnit:    ProductUnit | null;
+  unitConversions?: Array<{
+    fromUnitId: string;
+    toUnitId: string;
+    conversionQty: number;
+    fromUnit: { shortCode: string };
+  }>;
   costCents: number;
   priceCents: number;
   defaultDiscountCents: number;

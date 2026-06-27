@@ -25,6 +25,7 @@ import { purchasesApi } from '../../services/purchases';
 import { daysUntilExpiry } from '../../services/pos';
 import { categoriesApi, brandsApi } from '../../services/masterData';
 import SearchableSelect from '../../components/common/SearchableSelect';
+import { formatStockDisplay } from '../../utils/format';
 
 // v1.0.44 — localStorage key for the in-progress product-form draft. Lets a
 // half-filled form survive a session expiry / reload so the user can recover it.
@@ -1174,8 +1175,7 @@ export default function ProductsPage() {
                         {stock === 0 && <XCircle size={10} />}
                         {stock > 0 && isLow && <AlertTriangle size={10} />}
                         {stock > 0 && !isLow && <CheckCircle size={10} />}
-                        {Number.isInteger(stock) ? stock.toLocaleString() : stock.toFixed(2)}
-                        <span className="font-normal opacity-70">{p.unit?.shortCode}</span>
+                        {formatStockDisplay(p, stock)}
                       </span>
                     </td>
 
@@ -1305,7 +1305,7 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Reorder at</p>
-                  <p className="font-medium text-slate-700">{drawer.reorderLevel} {drawer.unit?.shortCode}</p>
+                  <p className="font-medium text-slate-700">{formatStockDisplay(drawer, Number(drawer.reorderLevel))}</p>
                 </div>
               </div>
 
@@ -1339,8 +1339,7 @@ export default function ProductsPage() {
                           <p className="text-[10px] text-slate-400 font-mono">{s.warehouse.code}</p>
                         </div>
                         <span className={`text-sm font-semibold ${qty === 0 ? 'text-red-500' : low ? 'text-amber-600' : 'text-green-600'}`}>
-                          {Number.isInteger(qty) ? qty.toLocaleString() : qty.toFixed(2)}
-                          <span className="ml-1 text-xs font-normal text-slate-400">{drawer.unit?.shortCode}</span>
+                          {formatStockDisplay(drawer, qty)}
                         </span>
                       </div>
                     );
@@ -1348,8 +1347,7 @@ export default function ProductsPage() {
                   <div className="flex items-center justify-between pt-2 mt-1 border-t border-slate-200">
                     <p className="text-xs font-semibold text-slate-500">Total</p>
                     <p className="text-sm font-bold text-slate-800">
-                      {totalStock(drawer).toLocaleString()}
-                      <span className="ml-1 text-xs font-normal text-slate-400">{drawer.unit?.shortCode}</span>
+                      {formatStockDisplay(drawer, totalStock(drawer))}
                     </p>
                   </div>
                 </div>
@@ -2169,12 +2167,9 @@ export default function ProductsPage() {
 
       {/* ── Delete confirmation (stock-aware — v1.0.62a) ────────────────────── */}
       {deleteTarget && (() => {
-        const stockQty   = totalStock(deleteTarget);
-        const unitLabel  = deleteTarget.unit?.shortCode ?? 'units';
-        const hasStock   = stockQty > 0;
-        const stockLabel = Number.isInteger(stockQty)
-          ? stockQty.toLocaleString()
-          : stockQty.toFixed(2);
+        const stockQty     = totalStock(deleteTarget);
+        const hasStock     = stockQty > 0;
+        const stockDisplay = formatStockDisplay(deleteTarget, stockQty);
 
         return (
           <div
@@ -2202,7 +2197,7 @@ export default function ProductsPage() {
               {hasStock ? (
                 <>
                   <p className="text-sm text-slate-600 mb-5">
-                    This product has <strong>{stockLabel} {unitLabel}</strong> still in
+                    This product has <strong>{stockDisplay}</strong> still in
                     stock. Write off the stock first to record the loss, then delete.
                   </p>
                   <div className="flex">

@@ -60,6 +60,16 @@ export const productsService = {
           category: { select: { id: true, name: true } },
           brand:    { select: { id: true, name: true } },
           unit:     { select: { id: true, name: true, shortCode: true } },
+          baseUnit: { select: { id: true, name: true, shortCode: true } },
+          unitConversions: {
+            where: { isActive: true },
+            select: {
+              fromUnitId: true,
+              toUnitId: true,
+              conversionQty: true,
+              fromUnit: { select: { shortCode: true } },
+            },
+          },
           stock: {
             select: {
               qty: true,
