@@ -208,7 +208,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
     const batch = batches?.find(b => b.id === writeOffBatchId);
     if (isNaN(qty) || qty <= 0) { setWoError('Enter a valid quantity'); return; }
     if (batch && qty > batch.qty) { setWoError(`Cannot exceed batch qty (${batch.qty})`); return; }
-    if (!woReason.trim())         { setWoError('Reason is required'); return; }
+    if (woReason.trim().length < 3) { setWoError('Reason must be at least 3 characters'); return; }
     setWoError(null);
     writeOffMutation.mutate({ batchId: writeOffBatchId, warehouseId: row.warehouse.id, qty, reason: woReason.trim() });
   }
@@ -329,7 +329,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
                               <input
                                 type="text" placeholder="Reason (min 3 chars)"
                                 value={woReason}
-                                onChange={e => setWoReason(e.target.value)}
+                                onChange={e => { setWoReason(e.target.value); if (woError) setWoError(null); }}
                                 className="flex-1 min-w-32 border border-red-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-red-400"
                               />
                               <button
@@ -600,6 +600,7 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
   const [reason, setReason] = useState('');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
 
@@ -689,8 +690,14 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
     e.preventDefault();
     setError('');
     setSuccess('');
+    setReasonError(null);
     if (!productId || !warehouseId || !qty || !reason) {
       setError('All fields are required');
+      return;
+    }
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length < 3) {
+      setReasonError('Reason must be at least 3 characters');
       return;
     }
     mutation.mutate({
@@ -698,7 +705,7 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
       warehouseId,
       unitId: unitId || undefined,
       qty: parseFloat(qty),
-      reason,
+      reason: trimmedReason,
     });
   };
 
@@ -787,10 +794,12 @@ function AdjustTab({ prefillProductId, prefillWarehouseId }: { prefillProductId?
         </div>
         <div>
           <label className="text-sm font-medium text-slate-700">Reason <span className="text-red-500">*</span></label>
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)}
+          <textarea value={reason}
+            onChange={(e) => { setReason(e.target.value); if (reasonError) setReasonError(null); }}
             placeholder="e.g. Stocktake correction, damaged goods, opening balance" required
             rows={2}
             className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          {reasonError && <span className="text-red-600 text-xs">{reasonError}</span>}
         </div>
 
         {error && (
