@@ -642,7 +642,11 @@ export const inventoryService = {
     // Check product
     const product = await prisma.product.findFirst({
       where: { id: productId, isActive: true },
-      select: { name: true },
+      select: {
+        name: true,
+        baseUnit: { select: { type: true, allowDecimal: true } },
+        unit:     { select: { type: true, allowDecimal: true } },
+      },
     });
     if (!product) throw new HttpError(404, 'Product not found or inactive');
 
@@ -665,6 +669,23 @@ export const inventoryService = {
     ]);
     if (!fromWh) throw new HttpError(404, 'Source warehouse not found');
     if (!toWh) throw new HttpError(404, 'Destination warehouse not found');
+
+    // CHUNK 20 (v1.0.73): enforce integer for COUNT products on transfer.
+    // Transfer is inherently base-unit (no unitId in schema, no conversion),
+    // so the check applies directly to qty. Resolves count-ness from
+    // `baseUnit ?? unit` — matches the codebase convention (baseUnitId
+    // ?? unitId at 7+ sites) and protects null-baseUnit products (43%
+    // of ACM data) whose count semantics live on the display unit.
+    // Mirrors the chunk-9/10 check on createAdjustment.
+    const transferBaseUnitMeta = product.baseUnit ?? product.unit;
+    if (transferBaseUnitMeta && (transferBaseUnitMeta.type === 'COUNT' || transferBaseUnitMeta.allowDecimal === false)) {
+      if (!Number.isInteger(qty)) {
+        throw new HttpError(
+          400,
+          `Quantity for count-only products must be a whole number; got ${qty}`,
+        );
+      }
+    }
 
     logger.info({ productId, fromWarehouseId, toWarehouseId, qty }, 'Stock transfer starting');
 
