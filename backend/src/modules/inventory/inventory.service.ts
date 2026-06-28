@@ -752,12 +752,12 @@ export const inventoryService = {
     const batch = await (prisma as any).stockBatch.findFirst({
       where: { id: batchId, warehouseId },
       select: { id: true, productId: true, qty: true, expiryDate: true,
-                product: { select: { name: true, costCents: true, unit: { select: { shortCode: true } } } } },
+                product: { select: { name: true, costCents: true, baseUnit: { select: { type: true, allowDecimal: true } }, unit: { select: { shortCode: true, type: true, allowDecimal: true } } } } },
     }) as {
       id: string; productId: string;
       qty: { toNumber: () => number };
       expiryDate: Date | null;
-      product: { name: string; costCents: number; unit: { shortCode: string } };
+      product: { name: string; costCents: number; baseUnit: { type: string; allowDecimal: boolean } | null; unit: { shortCode: string; type: string; allowDecimal: boolean } };
     } | null;
 
     if (!batch) throw new HttpError(404, 'Batch not found');
@@ -765,6 +765,23 @@ export const inventoryService = {
     const batchQty = batch.qty.toNumber();
     if (qty > batchQty) {
       throw new HttpError(400, `Write-off qty (${qty}) exceeds batch qty (${batchQty})`);
+    }
+
+    // CHUNK 21 (v1.0.73): enforce integer for COUNT products on write-off.
+    // Write-off is inherently base-unit (no unitId in schema, targets a
+    // base-unit batch), so the check applies directly to qty. Resolves
+    // count-ness from `baseUnit ?? unit` — matches the codebase convention
+    // (baseUnitId ?? unitId at 7+ sites) and protects null-baseUnit
+    // products (43% of ACM data) whose count semantics live on the
+    // display unit. Mirrors the chunk-9/10/20 check pattern.
+    const writeOffBaseUnitMeta = batch.product.baseUnit ?? batch.product.unit;
+    if (writeOffBaseUnitMeta && (writeOffBaseUnitMeta.type === 'COUNT' || writeOffBaseUnitMeta.allowDecimal === false)) {
+      if (!Number.isInteger(qty)) {
+        throw new HttpError(
+          400,
+          `Quantity for count-only products must be a whole number; got ${qty}`,
+        );
+      }
     }
 
     const lossCents = Math.round(qty * batch.product.costCents);
