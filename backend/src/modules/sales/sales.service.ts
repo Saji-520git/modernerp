@@ -225,7 +225,18 @@ export const salesService = {
   confirmSale: async (id: string) => {
     const sale = await (prisma as any).sale.findFirst({
       where: { id, isPos: false, deletedAt: null },
-      include: { lines: true },
+      include: {
+        lines: {
+          include: {
+            product: {
+              select: {
+                baseUnit: { select: { type: true, allowDecimal: true } },
+                unit:     { select: { type: true, allowDecimal: true } },
+              },
+            },
+          },
+        },
+      },
     });
     if (!sale) throw new HttpError(404, 'Invoice not found');
     if (sale.status !== 'DRAFT') {
@@ -233,6 +244,26 @@ export const salesService = {
     }
 
     logger.info({ saleId: id, number: sale.number, lines: sale.lines.length }, 'Confirming invoice');
+
+    // CHUNK 22a (v1.0.73): enforce integer qty for COUNT products on sale
+    // confirmation. Sales has no unit selector at the line level (see the
+    // comment below at line-loop time — line.qty IS the base qty for
+    // non-POS invoices), so the check applies directly to Number(line.qty)
+    // per line. Resolves count-ness from `baseUnit ?? unit` — matches the
+    // codebase convention and protects null-baseUnit products (43% of ACM
+    // data). Mirrors chunks 9/10/20/21. Note: line.qty is a Prisma Decimal;
+    // Number.isInteger(Decimal) is always false, so coerce via Number(...).
+    for (const line of sale.lines) {
+      const saleBaseUnitMeta = line.product?.baseUnit ?? line.product?.unit;
+      if (saleBaseUnitMeta && (saleBaseUnitMeta.type === 'COUNT' || saleBaseUnitMeta.allowDecimal === false)) {
+        if (!Number.isInteger(Number(line.qty))) {
+          throw new HttpError(
+            400,
+            `Quantity for count-only products must be a whole number; got ${Number(line.qty)}`,
+          );
+        }
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       // Lock each stock row with SELECT FOR UPDATE before checking or decrementing.
