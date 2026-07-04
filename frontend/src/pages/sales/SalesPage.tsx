@@ -987,6 +987,7 @@ export default function SalesPage() {
   const [returnId, setReturnId]           = useState<string | null>(null);
   const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [editSale, setEditSale]           = useState<any>(null);
+  const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
   const [paymentSaleId, setPaymentSaleId] = useState<string | null>(null);
   const [confirmSaleId, setConfirmSaleId] = useState<string | null>(null);
   const [deleteSaleId, setDeleteSaleId]   = useState<string | null>(null);
@@ -1269,7 +1270,23 @@ export default function SalesPage() {
                     <td className="px-4 py-3 text-center whitespace-nowrap sticky right-0 bg-white border-l border-slate-100">
                       <PortalDropdown items={[
                         { label: 'View Detail',      icon: <Eye size={14} />,        onClick: () => setDetailId(sale.id) },
-                        { label: 'Edit Draft',       icon: <FileText size={14} />,   onClick: () => { const s = sales.find(x => x.id === sale.id); if (s) { setEditSale(s); setShowNewInvoice(true); } }, hidden: sale.status !== 'DRAFT' || sale.isPos },
+                        { label: 'Edit Draft',       icon: <FileText size={14} />,   onClick: async () => {
+                            // CHUNK 24: fetch full sale (with lines) before opening edit modal (Mode 1 fix)
+                            if (loadingEditId) return; // guard against double-click / re-entrancy
+                            setLoadingEditId(sale.id);
+                            try {
+                              const fullSale = await queryClient.fetchQuery({
+                                queryKey: ['sale', sale.id],
+                                queryFn: () => salesApi.getSale(sale.id),
+                              });
+                              setEditSale(fullSale);
+                              setShowNewInvoice(true);
+                            } catch (err: any) {
+                              showToast(err?.response?.data?.message ?? 'Failed to load draft for editing', false);
+                            } finally {
+                              setLoadingEditId(null);
+                            }
+                          }, hidden: sale.status !== 'DRAFT' || sale.isPos },
                         { label: 'Confirm Invoice',  icon: <CheckCircle size={14} />,onClick: () => inlineConfirmMutation.mutate(sale.id),  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdminOrManager },
                         { label: 'Delete Draft',     icon: <Trash2 size={14} />,     onClick: () => setDeleteSaleId(sale.id), danger: true,  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdmin },
                         { label: 'Record Payment',   icon: <CreditCard size={14} />, onClick: () => setPaymentSaleId(sale.id),               hidden: sale.status !== 'CONFIRMED' || (sale.totalCents ?? 0) - (sale.paidCents ?? 0) <= 0 },
