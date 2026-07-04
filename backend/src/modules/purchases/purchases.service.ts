@@ -263,7 +263,13 @@ export const purchaseService = {
       const lineProductIds = purchase.lines.map((l: any) => l.productId);
       const lineProducts = await tx.product.findMany({
         where: { id: { in: lineProductIds } },
-        select: { id: true, baseUnitId: true, unitId: true },
+        select: {
+          id: true,
+          baseUnitId: true,
+          unitId: true,
+          baseUnit: { select: { type: true, allowDecimal: true } },
+          unit:     { select: { type: true, allowDecimal: true } },
+        },
       });
       const lineProductMap = new Map(lineProducts.map((p) => [p.id, p]));
 
@@ -288,6 +294,31 @@ export const purchaseService = {
           }
         } else {
           baseQty = new Decimal(line.qty.toString());
+        }
+
+        // CHUNK 23a (v1.0.73): enforce integer for COUNT products on purchase
+        // confirmation. Purchase lines DO have unit conversion (line.unitId can
+        // differ from base), so the check fires on POST-conversion baseQty per
+        // line. Resolves count-ness from `baseUnit ?? unit` — matches the
+        // codebase convention and protects null-baseUnit products (43% of ACM
+        // data). Mirrors chunks 9/10/20/21/22a. Note: baseQty is a Prisma
+        // Decimal; Number.isInteger(Decimal) is always false, so coerce via
+        // .toNumber(). The check sits inside the $transaction: an in-tx throw
+        // rolls back safely with no partial-write risk (audit Task 11a).
+        const confirmPurchaseLineMeta = lineProductMap.get(line.productId);
+        const confirmPurchaseUnitMeta =
+          confirmPurchaseLineMeta?.baseUnit ?? confirmPurchaseLineMeta?.unit;
+        if (
+          confirmPurchaseUnitMeta &&
+          (confirmPurchaseUnitMeta.type === 'COUNT' ||
+            confirmPurchaseUnitMeta.allowDecimal === false)
+        ) {
+          if (!Number.isInteger(baseQty.toNumber())) {
+            throw new HttpError(
+              400,
+              `Quantity for count-only products must be a whole number; got ${baseQty.toNumber()}`,
+            );
+          }
         }
 
         // Derive the per-base-unit cost. The line stores the cost of ONE purchase
