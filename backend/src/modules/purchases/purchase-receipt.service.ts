@@ -77,6 +77,25 @@ export async function createReceipt(
       },
     });
 
+    // CHUNK 23c (v1.0.73): pre-fetch each receipt line's product unit metadata
+    // once, so the COUNT-integer guard below can resolve count-ness for EVERY
+    // line — including lines with a null unitId (which skip the per-line
+    // findUnique in the conversion block). Mirrors confirmPurchase's
+    // lineProductMap (chunk 23a). Purely additive: the existing conversion /
+    // stock logic and the per-line findUnique are left untouched.
+    const receiptProductIds = [
+      ...new Set(lines.map((rl) => lineMap.get(rl.purchaseLineId)!.productId)),
+    ];
+    const receiptProducts = await tx.product.findMany({
+      where: { id: { in: receiptProductIds } },
+      select: {
+        id: true,
+        baseUnit: { select: { type: true, allowDecimal: true } },
+        unit:     { select: { type: true, allowDecimal: true } },
+      },
+    });
+    const receiptProductMetaMap = new Map(receiptProducts.map((p) => [p.id, p]));
+
     // 2. Process each receipt line
     for (const rl of lines) {
       const poLine   = lineMap.get(rl.purchaseLineId)!;
@@ -103,6 +122,29 @@ export async function createReceipt(
         }
       } else {
         baseQty = qtyDec;
+      }
+
+      // CHUNK 23c (v1.0.73): enforce integer for COUNT products on GRN receipt.
+      // Receipt lines DO have unit conversion (poLine.unitId can differ from the
+      // base unit), so the check fires on POST-conversion baseQty per line.
+      // Resolves count-ness from `baseUnit ?? unit` — matches the codebase
+      // convention and protects null-baseUnit products (43% of ACM data).
+      // Mirrors chunk 23a (confirmPurchase). baseQty is a Prisma Decimal;
+      // Number.isInteger(Decimal) is always false, so coerce via .toNumber().
+      // The check sits inside the $transaction: an in-tx throw rolls back the
+      // just-created GRN header + any prior lines safely (no partial write).
+      const receiptLineMeta = receiptProductMetaMap.get(poLine.productId);
+      const receiptUnitMeta = receiptLineMeta?.baseUnit ?? receiptLineMeta?.unit;
+      if (
+        receiptUnitMeta &&
+        (receiptUnitMeta.type === 'COUNT' || receiptUnitMeta.allowDecimal === false)
+      ) {
+        if (!Number.isInteger(baseQty.toNumber())) {
+          throw new HttpError(
+            400,
+            `Quantity for count-only products must be a whole number; got ${baseQty.toNumber()}`,
+          );
+        }
       }
 
       // 2a. Create receipt line document
