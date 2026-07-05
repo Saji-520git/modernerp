@@ -19,7 +19,7 @@ export const adjustmentSchema = z.object({
   warehouseId: z.string().cuid(),
   unitId: z.string().cuid().optional(),  // NEW — optional; absent means "qty is in base unit"
   qty: z.number().refine((n) => n !== 0, { message: 'Quantity cannot be zero' }),
-  reason: z.string().min(3, 'Reason must be at least 3 characters').max(500),
+  reason: z.string().trim().min(3, 'Reason must be at least 3 characters').max(500),
 });
 
 export const transferSchema = z
@@ -39,7 +39,7 @@ export const writeOffSchema = z.object({
   batchId:    z.string().cuid(),
   warehouseId: z.string().cuid(),
   qty:        z.number().min(0.0001, 'Quantity must be greater than 0'),
-  reason:     z.string().min(3, 'Reason must be at least 3 characters').max(500),
+  reason:     z.string().trim().min(3, 'Reason must be at least 3 characters').max(500),
 });
 
 export const movementsListSchema = z.object({
