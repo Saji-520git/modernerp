@@ -190,6 +190,37 @@ export const purchaseService = {
       throw new HttpError(400, 'One or more products not found or inactive');
     }
 
+    // CHUNK 23d (v1.0.73): defense-in-depth COUNT-integer guard at DRAFT create.
+    // No unit conversion happens here (qty is stored in the line's entry unit),
+    // so we can only safely mirror confirmPurchase's base-unit check (chunk 23a)
+    // for lines whose qty is ALREADY in base units — i.e. unitId is null. For
+    // those lines create-time qty === confirm-time baseQty exactly, so the guard
+    // is a zero-false-positive early mirror. Lines with a non-null unitId are
+    // deferred to the confirm guard (23a), which runs the conversion first.
+    // Purely additive: validation only, no change to line/total computation.
+    const createLineMeta = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        baseUnit: { select: { type: true, allowDecimal: true } },
+        unit:     { select: { type: true, allowDecimal: true } },
+      },
+    });
+    const createLineMetaMap = new Map(createLineMeta.map((p) => [p.id, p]));
+    for (const line of input.lines) {
+      if (line.unitId) continue; // qty not in base units; confirm guard (23a) authoritative
+      const meta = createLineMetaMap.get(line.productId);
+      const unitMeta = meta?.baseUnit ?? meta?.unit;
+      if (unitMeta && (unitMeta.type === 'COUNT' || unitMeta.allowDecimal === false)) {
+        if (!Number.isInteger(Number(line.qty))) {
+          throw new HttpError(
+            400,
+            `Quantity for count-only products must be a whole number; got ${Number(line.qty)}`,
+          );
+        }
+      }
+    }
+
     const number = await generatePONumber();
 
     // Compute line and order totals — no tax per business decision
@@ -439,6 +470,35 @@ export const purchaseService = {
       subtotalCents += Math.round(Number(l.qty) * l.unitCostCents);
     }
     const totalCents = subtotalCents; // No tax per business decision
+
+    // CHUNK 23d (v1.0.73): defense-in-depth COUNT-integer guard at DRAFT update.
+    // Same rationale as createPurchase — mirror confirmPurchase (23a) only for
+    // null-unitId lines (qty already in base units, zero false-positive); defer
+    // converted-unit lines to the confirm guard. Runs before the transaction so
+    // a bad edit fails fast without opening a write tx. Purely additive.
+    const updateProductIds = [...new Set(lines.map((l) => l.productId))];
+    const updateLineMeta = await prisma.product.findMany({
+      where: { id: { in: updateProductIds } },
+      select: {
+        id: true,
+        baseUnit: { select: { type: true, allowDecimal: true } },
+        unit:     { select: { type: true, allowDecimal: true } },
+      },
+    });
+    const updateLineMetaMap = new Map(updateLineMeta.map((p) => [p.id, p]));
+    for (const l of lines) {
+      if (l.unitId) continue; // qty not in base units; confirm guard (23a) authoritative
+      const meta = updateLineMetaMap.get(l.productId);
+      const unitMeta = meta?.baseUnit ?? meta?.unit;
+      if (unitMeta && (unitMeta.type === 'COUNT' || unitMeta.allowDecimal === false)) {
+        if (!Number.isInteger(Number(l.qty))) {
+          throw new HttpError(
+            400,
+            `Quantity for count-only products must be a whole number; got ${Number(l.qty)}`,
+          );
+        }
+      }
+    }
 
     return prisma.$transaction(async (tx) => {
       await tx.purchaseLine.deleteMany({ where: { purchaseId: id } });
