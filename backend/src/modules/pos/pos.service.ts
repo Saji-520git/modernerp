@@ -386,7 +386,7 @@ export const posService = {
           lines: { create: lineData },
         },
         include: {
-          lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } } } },
+          lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } }, unit: { select: { shortCode: true, name: true } } } },
           customer: { select: { id: true, name: true } },
           createdBy: { select: { fullName: true } },
         },
@@ -489,7 +489,7 @@ export const posService = {
           taxPercent:     l.taxPercent,
           discountCents:  l.discountCents,
           lineTotalCents: l.lineTotalCents,
-          unitShortCode:  l.product.unit?.shortCode ?? '',
+          unitShortCode:  l.unit?.shortCode ?? l.product.unit?.shortCode ?? '',
         })),
         subtotalCents:  sale.subtotalCents,
         taxCents:       sale.taxCents,
@@ -506,13 +506,19 @@ export const posService = {
     const sale = await prisma.sale.findFirst({
       where: { id, isPos: true },
       include: {
-        lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true } } } },
+        lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } }, unit: { select: { shortCode: true, name: true } } } },
         customer: { select: { id: true, name: true } },
         createdBy: { select: { fullName: true } },
       },
     });
     if (!sale) throw new HttpError(404, 'Receipt not found');
-    return sale;
+    return {
+      ...sale,
+      lines: sale.lines.map((l) => ({
+        ...l,
+        unitShortCode: l.unit?.shortCode ?? l.product.unit?.shortCode ?? '',
+      })),
+    };
   },
 
   // ── Sales history ──────────────────────────────────────────────────────────

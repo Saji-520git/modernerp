@@ -160,7 +160,7 @@ export default function ThermalReceipt({
       {/* ── ITEMS ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, marginBottom: 2 }}>
         <span style={{ flex: 1 }}>{L.product}</span>
-        <span style={{ width: 28, textAlign: 'center' }}>{L.qty}</span>
+        <span style={{ width: 44, textAlign: 'center' }}>{L.qty}</span>
         <span style={{ width: 56, textAlign: 'right' }}>{L.amount}</span>
       </div>
       {receipt.lines.map((line, i) => (
@@ -169,7 +169,7 @@ export default function ThermalReceipt({
             <span style={{ flex: 1, overflowWrap: 'break-word', wordBreak: 'break-word', paddingRight: 4 }}>
               {line.product.name}
             </span>
-            <span style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>{line.qty}</span>
+            <span style={{ width: 44, textAlign: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>{line.qty}{line.unitShortCode ? ` ${line.unitShortCode}` : ''}</span>
             <span style={{ width: 56, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmt(line.lineTotalCents)}</span>
           </div>
           {settings.receiptShowSku && (
