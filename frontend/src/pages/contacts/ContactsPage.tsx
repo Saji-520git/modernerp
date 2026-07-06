@@ -16,6 +16,11 @@ function formatCents(cents: number) {
   return `Rs. ${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Normalize a name/phone for duplicate comparison (trim + lower-case).
+function norm(s?: string | null) {
+  return (s ?? '').trim().toLowerCase();
+}
+
 // ─── Shared supplier modal ────────────────────────────────────────────────────
 
 function SupplierModal({
@@ -263,8 +268,38 @@ function SupplierTable() {
 
   const toggleMutation = useMutation({ mutationFn: suppliersApi.toggleActive, onSuccess: invalidate });
 
-  const handleSave = (body: ContactBody) => {
+  const handleSave = async (body: ContactBody) => {
     setModalError('');
+
+    // ── Duplicate-name guard (frontend-only advisory; no backend contract change).
+    // Suppliers list returns all records regardless of active status, so
+    // soft-deleted twins are included. Three-tier rule:
+    //   no name match           → proceed (phone stays optional)
+    //   name match, no phone     → BLOCK, require a phone to distinguish
+    //   name + phone both match  → HARD BLOCK, likely duplicate
+    //   name match, phone differs → proceed (genuinely different supplier)
+    const editId = modal?.mode === 'edit' ? modal.item.id : undefined;
+    let nameMatches: Supplier[] = [];
+    try {
+      const res = await suppliersApi.list({ search: body.name.trim(), pageSize: 100 });
+      nameMatches = res.data.filter((s) => norm(s.name) === norm(body.name) && s.id !== editId);
+    } catch (e) {
+      // Fail-open: a broken lookup must never block a legitimate save.
+      console.error('Supplier duplicate-check failed; proceeding with save.', e);
+      nameMatches = [];
+    }
+    if (nameMatches.length > 0) {
+      const phone = (body.phone ?? '').trim();
+      if (!phone) {
+        setModalError(`A supplier named '${body.name.trim()}' already exists. Please enter a phone number to distinguish this supplier.`);
+        return;
+      }
+      if (nameMatches.some((s) => norm(s.phone) === norm(phone))) {
+        setModalError(`A supplier named '${body.name.trim()}' with this phone number already exists. This may be a duplicate — please check the existing supplier list.`);
+        return;
+      }
+    }
+
     if (modal?.mode === 'create') createMutation.mutate(body);
     else if (modal?.mode === 'edit') updateMutation.mutate({ id: modal.item.id, body });
   };
@@ -394,8 +429,38 @@ function CustomerTable() {
 
   const toggleMutation = useMutation({ mutationFn: customersApi.toggleActive, onSuccess: invalidate });
 
-  const handleSave = (body: CustomerBody) => {
+  const handleSave = async (body: CustomerBody) => {
     setModalError('');
+
+    // ── Duplicate-name guard (frontend-only advisory; no backend contract change).
+    // Backend customer list defaults isActive:'all', so soft-deleted twins are
+    // included without passing a param. Three-tier rule:
+    //   no name match            → proceed (phone stays optional)
+    //   name match, no phone      → BLOCK, require a phone to distinguish
+    //   name + phone both match   → HARD BLOCK, likely duplicate
+    //   name match, phone differs → proceed (genuinely different customer)
+    const editId = modal?.mode === 'edit' ? modal.item.id : undefined;
+    let nameMatches: Customer[] = [];
+    try {
+      const res = await customersApi.list({ search: body.name.trim(), pageSize: 100 });
+      nameMatches = res.data.filter((c) => norm(c.name) === norm(body.name) && c.id !== editId);
+    } catch (e) {
+      // Fail-open: a broken lookup must never block a legitimate save.
+      console.error('Customer duplicate-check failed; proceeding with save.', e);
+      nameMatches = [];
+    }
+    if (nameMatches.length > 0) {
+      const phone = (body.phone ?? '').trim();
+      if (!phone) {
+        setModalError(`A customer named '${body.name.trim()}' already exists. Please enter a phone number to distinguish this customer.`);
+        return;
+      }
+      if (nameMatches.some((c) => norm(c.phone) === norm(phone))) {
+        setModalError(`A customer named '${body.name.trim()}' with this phone number already exists. This may be a duplicate — please check the existing customer list.`);
+        return;
+      }
+    }
+
     if (modal?.mode === 'create') createMutation.mutate(body);
     else if (modal?.mode === 'edit') updateMutation.mutate({ id: modal.item.id, body });
   };

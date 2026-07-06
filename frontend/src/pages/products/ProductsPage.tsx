@@ -734,6 +734,23 @@ export default function ProductsPage() {
 
     // SALES UNIT — warning only, do NOT block save (handled via hint text in UI).
 
+    // ── Duplicate-name soft warning (advisory; never blocks). This is separate
+    // from and independent of the SKU/barcode 409 hard-block. Same product name
+    // (case-insensitive, regardless of price) → confirm dialog → proceed on
+    // confirm, abort on cancel. Backend product list default is isActive:'true',
+    // so pass 'all' to include soft-deleted twins. Fail-open on lookup error.
+    try {
+      const dupRes = await productsApi.list({ search: payload.name, pageSize: 100, isActive: 'all' });
+      const dup = dupRes.data.find(
+        (p) => p.name.trim().toLowerCase() === payload.name.toLowerCase() && p.id !== editingProduct?.id,
+      );
+      if (dup && !window.confirm(`A product named '${payload.name}' already exists (SKU: ${dup.sku}). Save anyway?`)) {
+        return;
+      }
+    } catch (e) {
+      console.error('Product duplicate-check failed; proceeding with save.', e);
+    }
+
     setSaving(true);
     try {
       if (editingProduct) {
