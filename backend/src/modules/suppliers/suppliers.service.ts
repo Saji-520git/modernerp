@@ -2,6 +2,42 @@ import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import type { SupplierBodyInput, ListSuppliersInput } from './suppliers.schema.js';
 
+// Normalize a name/phone for duplicate comparison (trim + lower-case).
+const norm = (s?: string | null) => (s ?? '').trim().toLowerCase();
+
+// Three-tier duplicate-name guard — enforced here so EVERY create/update entry
+// point is covered (Suppliers list page, Purchases quick-add supplier, etc.).
+// No DB uniqueness constraint; this is an advisory 409 with a clear message.
+//   no name match             → allow
+//   name match, no phone      → 409, require a phone to distinguish
+//   name + phone both match   → 409, likely duplicate
+//   name match, phone differs → allow (genuinely different supplier)
+async function assertNoDuplicateSupplier(
+  name: string,
+  phone: string | null | undefined,
+  excludeId?: string,
+): Promise<void> {
+  const candidates = await prisma.supplier.findMany({
+    where: { name: { contains: name.trim(), mode: 'insensitive' as const }, isActive: true },
+    select: { id: true, name: true, phone: true },
+  });
+  const nameMatches = candidates.filter((c) => norm(c.name) === norm(name) && c.id !== excludeId);
+  if (nameMatches.length === 0) return;
+  const p = (phone ?? '').trim();
+  if (!p) {
+    throw new HttpError(
+      409,
+      `A supplier named '${name.trim()}' already exists. Please enter a phone number to distinguish this supplier.`,
+    );
+  }
+  if (nameMatches.some((c) => norm(c.phone) === norm(p))) {
+    throw new HttpError(
+      409,
+      `A supplier named '${name.trim()}' with this phone number already exists. This may be a duplicate — please check the existing supplier list.`,
+    );
+  }
+}
+
 export const suppliersService = {
   list: async (input: ListSuppliersInput) => {
     const { search, page, pageSize } = input;
@@ -75,6 +111,7 @@ export const suppliersService = {
   },
 
   create: async (input: SupplierBodyInput) => {
+    await assertNoDuplicateSupplier(input.name, input.phone);
     return prisma.supplier.create({
       data: {
         name: input.name,
@@ -88,6 +125,12 @@ export const suppliersService = {
   update: async (id: string, input: SupplierBodyInput) => {
     const existing = await prisma.supplier.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, 'Supplier not found');
+    // Only enforce the dup-guard when the identifying values actually change,
+    // so editing an unrelated field (address/email) on a record that already
+    // shares a name with another never gets retroactively blocked.
+    if (norm(existing.name) !== norm(input.name) || norm(existing.phone) !== norm(input.phone)) {
+      await assertNoDuplicateSupplier(input.name, input.phone, id);
+    }
     return prisma.supplier.update({
       where: { id },
       data: {
