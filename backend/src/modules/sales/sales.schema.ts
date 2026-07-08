@@ -8,6 +8,7 @@ export const saleLineInputSchema = z.object({
   unitPriceCents: z.number().int().nonnegative('Price cannot be negative'),
   taxPercent: z.number().min(0).max(100).default(0),
   discountCents: z.number().int().nonnegative().default(0),
+  unitId: z.string().optional(),
 });
 
 // ─── Create invoice ───────────────────────────────────────────────────────────

@@ -61,6 +61,44 @@ interface LineForm {
   unitPrice: string;
   taxPercent: string;
   discountCents: string;
+  unitId?: string;   // selected sales unit (undefined = base unit)
+}
+
+// ─── Unit options ──────────────────────────────────────────────────────────────
+// Mirrors POSPage.tsx getUnitOptions: the base unit plus every conversion that
+// converts directly TO the base unit (the only sellable units). Price for a
+// non-base unit is its explicit conversion price, else base × conversion factor
+// (same formula the backend getUnitPrice uses). Read-only display + auto-fill;
+// backend continues to trust the submitted price (Flag B — unchanged trust).
+interface SaleUnitOption {
+  unitId: string;
+  label: string;
+  priceCents: number;
+  isBase: boolean;
+}
+function getSaleUnitOptions(product?: SaleProduct): SaleUnitOption[] {
+  if (!product) return [];
+  const baseUnitId = product.baseUnitId ?? product.unitId ?? product.unit?.id;
+  const baseUnit   = product.baseUnit ?? product.unit;
+  const basePrice  = product.priceCents;
+  const options: SaleUnitOption[] = [{
+    unitId:     baseUnitId ?? '',
+    label:      baseUnit?.shortCode ?? baseUnit?.name ?? 'unit',
+    priceCents: basePrice,
+    isBase:     true,
+  }];
+  for (const conv of (product.unitConversions ?? [])) {
+    if (conv.toUnitId !== baseUnitId) continue; // only direct-to-base units are sellable
+    const factor = Number(conv.conversionQty);
+    const unitPrice = conv.priceCents != null ? conv.priceCents : Math.round(basePrice * factor);
+    options.push({
+      unitId:     conv.fromUnitId,
+      label:      conv.fromUnit?.shortCode ?? conv.fromUnit?.name ?? 'unit',
+      priceCents: unitPrice,
+      isBase:     false,
+    });
+  }
+  return options;
 }
 
 // ─── Payment Modal ─────────────────────────────────────────────────────────────
@@ -572,6 +610,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
           key: i, productId: l.productId,
           qty: String(Number(l.qty)), unitPrice: (l.unitPriceCents / 100).toFixed(2),
           taxPercent: String(l.taxPercent), discountCents: String(l.discountCents ?? 0),
+          unitId: l.unitId ?? undefined,
         }))
       : [{ key: 0, productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }],
   );
@@ -584,7 +623,31 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
   const addLine = () => setLines(p => [...p, { key: Date.now(), productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }]);
   const removeLine = (key: number) => setLines(p => p.filter(l => l.key !== key));
   const updateLine = (key: number, field: keyof LineForm, value: string) =>
-    setLines(p => p.map(l => l.key === key ? { ...l, [field]: value, ...(field === 'productId' ? (() => { const pr = products.find(x => x.id === value); return pr ? { unitPrice: (pr.priceCents / 100).toFixed(2), taxPercent: String(pr.taxPercent) } : {}; })() : {}) } : l));
+    setLines(p => p.map(l => {
+      if (l.key !== key) return l;
+      if (field === 'productId') {
+        // Product change → reset unit to base and price to the base-unit price.
+        const pr = products.find(x => x.id === value);
+        if (!pr) return { ...l, productId: value, unitId: undefined };
+        const opts = getSaleUnitOptions(pr);
+        const base = opts.find(o => o.isBase);
+        return {
+          ...l,
+          productId: value,
+          unitId: undefined,
+          unitPrice: ((base?.priceCents ?? pr.priceCents) / 100).toFixed(2),
+          taxPercent: String(pr.taxPercent),
+        };
+      }
+      if (field === 'unitId') {
+        // Unit change → auto-fill price from the selected unit option (Flag B:
+        // frontend price authority only; backend still trusts submitted price).
+        const pr = products.find(x => x.id === l.productId);
+        const opt = getSaleUnitOptions(pr).find(o => o.unitId === value);
+        return { ...l, unitId: value || undefined, ...(opt ? { unitPrice: (opt.priceCents / 100).toFixed(2) } : {}) };
+      }
+      return { ...l, [field]: value };
+    }));
 
   const buildPayload = () => ({
     customerId: customerId || undefined,
@@ -597,6 +660,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
       unitPriceCents: Math.round((parseFloat(l.unitPrice) || 0) * 100),
       taxPercent: parseFloat(l.taxPercent) || 0,
       discountCents: parseInt(l.discountCents) || 0,
+      unitId: l.unitId || undefined,
     })),
   });
 
@@ -671,9 +735,11 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
               </button>
             </div>
             <div className="space-y-2">
-              {lines.map(l => (
+              {lines.map(l => {
+                const unitOpts = getSaleUnitOptions(products.find((x: any) => x.id === l.productId));
+                return (
                 <div key={l.key} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-4">
+                  <div className="col-span-3">
                     <select value={l.productId} onChange={e => updateLine(l.key, 'productId', e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                       <option value="">— Product —</option>
@@ -685,11 +751,21 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
                       className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                   <div className="col-span-2">
+                    {unitOpts.length > 1 ? (
+                      <select value={l.unitId ?? (unitOpts.find(o => o.isBase)?.unitId ?? '')} onChange={e => updateLine(l.key, 'unitId', e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                        {unitOpts.map(o => <option key={o.unitId} value={o.unitId}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <span className="block text-center text-xs text-slate-400 py-1.5">{unitOpts[0]?.label ?? '—'}</span>
+                    )}
+                  </div>
+                  <div className="col-span-2">
                     <input type="number" min="0" step="0.01" placeholder="Price" value={l.unitPrice} onChange={e => updateLine(l.key, 'unitPrice', e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                   {/* Tax% input hidden */}
-                  <div className="col-span-3 text-right text-sm font-semibold text-slate-700">
+                  <div className="col-span-2 text-right text-sm font-semibold text-slate-700">
                     {formatCents(lineTotal(l))}
                   </div>
                   <div className="col-span-1 flex justify-end">
@@ -698,7 +774,8 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="text-right text-base font-bold text-slate-800 mt-3 pt-3 border-t border-slate-200">
               Grand Total: <span className="text-indigo-600">{formatCents(grandTotal)}</span>

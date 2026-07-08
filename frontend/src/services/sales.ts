@@ -9,6 +9,23 @@ export interface SaleCustomer {
   email: string | null;
 }
 
+export interface SaleUnitRef {
+  id: string;
+  shortCode: string;
+  name?: string;
+  allowDecimal?: boolean;
+}
+
+export interface SaleUnitConversion {
+  id: string;
+  fromUnitId: string;
+  toUnitId: string;
+  conversionQty: number | string;
+  priceCents: number | null;
+  fromUnit?: { id: string; name: string; shortCode: string; allowDecimal?: boolean };
+  toUnit?: { id: string; name: string; shortCode: string };
+}
+
 export interface SaleProduct {
   id: string;
   name: string;
@@ -16,7 +33,13 @@ export interface SaleProduct {
   priceCents: number;
   taxPercent: number;
   stockQty: number;
-  unit: { shortCode: string };
+  unit: SaleUnitRef;
+  unitId?: string;
+  baseUnitId?: string | null;
+  salesUnitId?: string | null;
+  baseUnit?: SaleUnitRef | null;
+  salesUnit?: SaleUnitRef | null;
+  unitConversions?: SaleUnitConversion[];
 }
 
 export type SaleStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
@@ -31,6 +54,8 @@ export interface SaleLine {
   taxPercent: number;
   discountCents: number;
   lineTotalCents: number;
+  unitId?: string | null;
+  baseQty?: number | null;
   product: {
     id: string;
     name: string;
@@ -75,6 +100,7 @@ export interface SaleLineInput {
   unitPriceCents: number;
   taxPercent: number;
   discountCents: number;
+  unitId?: string;
 }
 
 export interface CreateSalePayload {

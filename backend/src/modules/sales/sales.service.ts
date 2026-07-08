@@ -1,6 +1,8 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import type { CreateSaleInput, ListSalesInput, RecordPaymentInput } from './sales.schema.js';
@@ -42,7 +44,24 @@ export const salesService = {
         sku: true,
         priceCents: true,
         taxPercent: true,
-        unit: { select: { shortCode: true } },
+        unitId: true,
+        baseUnitId: true,
+        salesUnitId: true,
+        unit:      { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
+        baseUnit:  { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
+        salesUnit: { select: { id: true, shortCode: true, name: true, allowDecimal: true } },
+        unitConversions: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            fromUnitId: true,
+            toUnitId: true,
+            conversionQty: true,
+            priceCents: true,
+            fromUnit: { select: { id: true, name: true, shortCode: true, allowDecimal: true } },
+            toUnit:   { select: { id: true, name: true, shortCode: true } },
+          },
+        },
         stock: warehouseId
           ? { where: { warehouseId }, select: { qty: true } }
           : { select: { qty: true, warehouseId: true } },
@@ -163,18 +182,31 @@ export const salesService = {
 
     const number = await generateInvoiceNumber();
 
-    // Compute line and order totals (all integer cents)
-    const computedLines = input.lines.map((line) => {
-      const subtotal = Math.round(line.qty * line.unitPriceCents);
-      const tax = Math.round(subtotal * (line.taxPercent / 100));
-      const lineTotal = subtotal + tax - line.discountCents;
-      return {
-        ...line,
-        subtotalCents: subtotal,
-        taxLineCents: tax,
-        lineTotalCents: Math.max(0, lineTotal),
-      };
-    });
+    // Compute line and order totals (all integer cents). Totals stay computed on
+    // the DISPLAY qty × DISPLAY unit price (e.g. 2 boxes × box-price) — unchanged.
+    // Additionally resolve baseQty via unit conversion when a non-base unit is
+    // selected, so confirmSale deducts stock in base units (mirrors POS pattern).
+    const computedLines = await Promise.all(
+      input.lines.map(async (line) => {
+        const product = products.find((p) => p.id === line.productId)!;
+        const baseUnitId = product.baseUnitId ?? product.unitId;
+        let baseQty = line.qty;
+        if (line.unitId && line.unitId !== baseUnitId) {
+          const r = await convertToBaseUnit(line.productId, line.unitId, new Decimal(line.qty), prisma);
+          baseQty = r.baseQty.toNumber();
+        }
+        const subtotal = Math.round(line.qty * line.unitPriceCents);
+        const tax = Math.round(subtotal * (line.taxPercent / 100));
+        const lineTotal = subtotal + tax - line.discountCents;
+        return {
+          ...line,
+          baseQty,
+          subtotalCents: subtotal,
+          taxLineCents: tax,
+          lineTotalCents: Math.max(0, lineTotal),
+        };
+      }),
+    );
 
     const subtotalCents = computedLines.reduce((s, l) => s + l.subtotalCents, 0);
     const taxCents = computedLines.reduce((s, l) => s + l.taxLineCents, 0);
@@ -205,6 +237,8 @@ export const salesService = {
             taxPercent: l.taxPercent,
             discountCents: l.discountCents,
             lineTotalCents: l.lineTotalCents,
+            unitId: l.unitId ?? null,
+            baseQty: l.baseQty !== l.qty ? l.baseQty : null,
           })),
         },
       },
@@ -246,20 +280,23 @@ export const salesService = {
     logger.info({ saleId: id, number: sale.number, lines: sale.lines.length }, 'Confirming invoice');
 
     // CHUNK 22a (v1.0.73): enforce integer qty for COUNT products on sale
-    // confirmation. Sales has no unit selector at the line level (see the
-    // comment below at line-loop time — line.qty IS the base qty for
-    // non-POS invoices), so the check applies directly to Number(line.qty)
-    // per line. Resolves count-ness from `baseUnit ?? unit` — matches the
+    // confirmation. Count-ness is resolved from the BASE unit (`baseUnit ??
+    // unit`), so the value validated must be the BASE quantity: for a line
+    // with a non-base unit selected, baseQty holds the converted count; for
+    // legacy/no-unit lines baseQty is null and `baseQty ?? qty` falls back to
+    // qty (which IS the base qty there) — byte-identical to the pre-unit
+    // behaviour. Resolves count-ness from `baseUnit ?? unit` — matches the
     // codebase convention and protects null-baseUnit products (43% of ACM
-    // data). Mirrors chunks 9/10/20/21. Note: line.qty is a Prisma Decimal;
-    // Number.isInteger(Decimal) is always false, so coerce via Number(...).
+    // data). Mirrors chunks 9/10/20/21. Note: Decimal → Number.isInteger is
+    // always false, so coerce via Number(...). The interpolated value reports
+    // the same base quantity that was checked (approved exception, Flag A).
     for (const line of sale.lines) {
       const saleBaseUnitMeta = line.product?.baseUnit ?? line.product?.unit;
       if (saleBaseUnitMeta && (saleBaseUnitMeta.type === 'COUNT' || saleBaseUnitMeta.allowDecimal === false)) {
-        if (!Number.isInteger(Number(line.qty))) {
+        if (!Number.isInteger(Number(line.baseQty ?? line.qty))) {
           throw new HttpError(
             400,
-            `Quantity for count-only products must be a whole number; got ${Number(line.qty)}`,
+            `Quantity for count-only products must be a whole number; got ${Number(line.baseQty ?? line.qty)}`,
           );
         }
       }
@@ -276,7 +313,11 @@ export const salesService = {
           FOR UPDATE
         `;
         const available = locked[0]?.qty ?? 0;
-        const needed    = Number(line.qty);
+        // Availability is checked against the BASE quantity (null baseQty →
+        // qty, which is base for legacy/no-unit lines). Must mirror the base
+        // qty deducted below, else a non-base unit (e.g. 2 boxes) would be
+        // checked against display qty instead of base qty (24 pcs).
+        const needed    = Number(line.baseQty ?? line.qty);
         if (available < needed) {
           const product = await tx.product.findUnique({
             where: { id: line.productId },
@@ -295,10 +336,10 @@ export const salesService = {
       // Deduct stock + write SALE_OUT movements (row is still locked for this transaction)
       for (const line of sale.lines) {
         // Mirror POS checkout exactly: deduct from StockBatch rows in FEFO order,
-        // then reconcile the aggregate Stock.qty. A non-POS invoice line has no
-        // unit selector, so unitId/baseQty are always null and line.qty IS the
-        // base qty (null baseQty → qty is base). includeExpired = false (BLOCK
-        // default — confirmSale has no expiredStockPolicy in scope).
+        // then reconcile the aggregate Stock.qty. When a non-base sales unit was
+        // selected, baseQty holds the converted count; otherwise baseQty is null
+        // and line.qty IS the base qty (null baseQty → qty is base). includeExpired
+        // = false (BLOCK default — confirmSale has no expiredStockPolicy in scope).
         const baseQty = Number(line.baseQty ?? line.qty);
         const deducted = await deductBatchesFEFO(tx, line.productId, sale.warehouseId, baseQty, false);
         if (deducted > 0) {
@@ -325,8 +366,11 @@ export const salesService = {
           data: {
             productId:   line.productId,
             warehouseId: sale.warehouseId,
+            // Log the BASE quantity that was actually deducted (mirrors POS
+            // pos.service.ts:446). null baseQty → qty, byte-identical for
+            // legacy/no-unit lines.
             type:        'SALE_OUT',
-            qty:         line.qty,
+            qty:         line.baseQty ?? line.qty,
             refType:     'Sale',
             refId:       id,
             note:        `Invoice ${sale.number}`,
@@ -373,6 +417,28 @@ export const salesService = {
     const discountCents = input.discountCents ?? sale.discountCents;
     const totalCents = Math.max(0, subtotalCents - discountCents);
 
+    // Resolve baseQty per line (unit conversion) — same treatment as createSale.
+    // Load only the unit-role fields needed to know each product's base unit.
+    const productIds = [...new Set(lines.map((l) => l.productId))];
+    const lineProducts = productIds.length
+      ? await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, baseUnitId: true, unitId: true },
+        })
+      : [];
+    const computedLines = await Promise.all(
+      lines.map(async (l) => {
+        const product = lineProducts.find((p) => p.id === l.productId);
+        const baseUnitId = product?.baseUnitId ?? product?.unitId;
+        let baseQty = l.qty;
+        if (l.unitId && baseUnitId && l.unitId !== baseUnitId) {
+          const r = await convertToBaseUnit(l.productId, l.unitId, new Decimal(l.qty), prisma);
+          baseQty = r.baseQty.toNumber();
+        }
+        return { ...l, baseQty };
+      }),
+    );
+
     return prisma.$transaction(async (tx) => {
       await tx.saleLine.deleteMany({ where: { saleId: id } });
       return tx.sale.update({
@@ -386,13 +452,15 @@ export const salesService = {
           subtotalCents,
           totalCents,
           lines: {
-            create: lines.map((l) => ({
+            create: computedLines.map((l) => ({
               productId:     l.productId,
               qty:           l.qty,
               unitPriceCents:l.unitPriceCents,
               taxPercent:    l.taxPercent,
               discountCents: l.discountCents ?? 0,
               lineTotalCents: Math.round(l.qty * l.unitPriceCents) - (l.discountCents ?? 0),
+              unitId:        l.unitId ?? null,
+              baseQty:       l.baseQty !== l.qty ? l.baseQty : null,
             })),
           },
         },
