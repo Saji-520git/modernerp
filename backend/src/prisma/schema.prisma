@@ -105,6 +105,8 @@ model User {
   attachments       Attachment[]
   customerPayments  CustomerPayment[]   @relation("CPAYCreatedByUser")
   purchaseReturns   PurchaseReturn[]    @relation("PRETCreatedBy")
+  customerCreditEntries CustomerCreditLedger[] @relation("CustomerCreditCreatedBy")
+  supplierCreditEntries SupplierCreditLedger[] @relation("SupplierCreditCreatedBy")
 }
 
 model Category {
@@ -299,9 +301,14 @@ model Customer {
   creditAlertPct   Int     @default(80)     // warn at this % of limit (0-100)
   creditSettleDays Int?                     // expected settlement period in days
 
+  // Unallocated (prepaid) credit balance in cents — leftover from lump-sum
+  // payments that exceeded all outstanding bills. Never negative.
+  creditBalanceCents Int    @default(0)
+
   sales            Sale[]
   posDrafts        PosDraft[]
   customerPayments CustomerPayment[]
+  creditLedger     CustomerCreditLedger[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -313,9 +320,15 @@ model Supplier {
   email     String?
   address   String?
   isActive  Boolean  @default(true)
+
+  // Unallocated credit balance in cents — leftover from lump-sum payments that
+  // exceeded all outstanding purchase orders. Never negative.
+  creditBalanceCents Int  @default(0)
+
   purchases          Purchase[]
   supplierPayments   SupplierPayment[]
   purchaseReturns    PurchaseReturn[]
+  creditLedger       SupplierCreditLedger[]
   defaultForProducts Product[]         @relation("ProductDefaultSupplier")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -701,12 +714,15 @@ model SupplierPayment {
   bankName      String?
   paymentDate   DateTime
   notes         String?
+  // Groups the N rows created by one lump-sum payment. Null = standalone payment.
+  allocationGroupId String?
   createdById   String
   createdByUser User                  @relation("SPAYCreatedBy", fields: [createdById], references: [id])
   isActive      Boolean               @default(true)
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
+  @@index([allocationGroupId])
   @@map("supplier_payments")
 }
 
@@ -818,13 +834,60 @@ model CustomerPayment {
   bankName      String?
   paymentDate   DateTime
   notes         String?
+  // Groups the N rows created by one lump-sum payment. Null = standalone payment.
+  allocationGroupId String?
   createdBy     String
   createdByUser User          @relation("CPAYCreatedByUser", fields: [createdBy], references: [id])
   isActive      Boolean       @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  @@index([allocationGroupId])
   @@map("customer_payments")
+}
+
+// ─── Credit Ledgers (unallocated payment credit trail) ───────────────────────
+// Append-only audit of every movement of a party's unallocated credit balance.
+// amountCents is SIGNED: positive = credit added, negative = credit consumed.
+// The denormalized creditBalanceCents on Customer/Supplier is the running sum,
+// updated atomically in the same transaction as each ledger insert.
+
+model CustomerCreditLedger {
+  id                String    @id @default(cuid())
+  customerId        String
+  customer          Customer  @relation(fields: [customerId], references: [id])
+  amountCents       Int                                  // signed
+  reason            String                               // LUMP_SUM_OVERFLOW | APPLIED_TO_SALE | MANUAL_ADJUST | VOID_REVERSAL
+  allocationGroupId String?                              // links back to the originating lump-sum
+  refType           String?                              // optional source doc type
+  refId             String?                              // optional source doc id
+  notes             String?
+  createdBy         String
+  createdByUser     User      @relation("CustomerCreditCreatedBy", fields: [createdBy], references: [id])
+  createdAt         DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([allocationGroupId])
+  @@map("customer_credit_ledger")
+}
+
+model SupplierCreditLedger {
+  id                String    @id @default(cuid())
+  supplierId        String
+  supplier          Supplier  @relation(fields: [supplierId], references: [id])
+  amountCents       Int                                  // signed
+  reason            String                               // LUMP_SUM_OVERFLOW | APPLIED_TO_PURCHASE | MANUAL_ADJUST | VOID_REVERSAL
+  allocationGroupId String?
+  refType           String?
+  refId             String?
+  notes             String?
+  createdBy         String
+  createdByUser     User      @relation("SupplierCreditCreatedBy", fields: [createdBy], references: [id])
+  createdAt         DateTime  @default(now())
+
+  @@index([supplierId])
+  @@index([allocationGroupId])
+  @@map("supplier_credit_ledger")
 }
 
 // ─── App Settings (singleton row) ────────────────────────────────────────────

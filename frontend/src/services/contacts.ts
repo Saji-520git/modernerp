@@ -10,6 +10,7 @@ export interface Supplier {
   address: string | null;
   isActive: boolean;
   createdAt: string;
+  creditBalanceCents: number;
   _count?: { purchases: number };
 }
 
@@ -26,6 +27,7 @@ export interface Customer {
   creditLimitCents: number;
   creditAlertPct: number;
   creditSettleDays: number | null;
+  creditBalanceCents: number;
   _count?: { sales: number };
 }
 

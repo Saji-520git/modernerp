@@ -30,6 +30,26 @@ export const createPayment: RequestHandler = async (req, res) => {
   res.status(201).json(payment);
 };
 
+export const createLumpSumPayment: RequestHandler = async (req, res) => {
+  const userId = req.auth!.userId;
+  const result = await supplierPaymentService.recordLumpSumPayment({
+    supplierId:    req.body.supplierId,
+    amountCents:   Number(req.body.amountCents),
+    paymentMethod: req.body.paymentMethod as PaymentMethod,
+    referenceNo:   req.body.referenceNo,
+    bankName:      req.body.bankName,
+    paymentDate:   req.body.paymentDate,
+    notes:         req.body.notes,
+    recordedById:  userId,
+  });
+  res.status(201).json(result);
+};
+
+export const listCreditLedger: RequestHandler = async (req, res) => {
+  const items = await supplierPaymentService.listCreditLedger(req.params.supplierId);
+  res.json(items);
+};
+
 export const receiveCredit: RequestHandler = async (req, res) => {
   const userId = req.auth!.userId;
   const body = receiveCreditSchema.parse(req.body);

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import type { PaymentMethod, PurchasePaymentStatus } from '@prisma/client';
@@ -56,6 +57,31 @@ export interface ReceiveCreditInput {
   date:         string;    // ISO date string
   notes?:       string;
   recordedById: string;
+}
+
+export interface LumpSumSupplierPaymentInput {
+  supplierId:    string;
+  amountCents:   number;
+  paymentMethod: PaymentMethod;
+  referenceNo?:  string;
+  bankName?:     string;
+  paymentDate:   string;   // ISO date string
+  notes?:        string;
+  recordedById:  string;
+}
+
+export interface LumpSumSupplierAllocation {
+  purchaseId:     string;
+  purchaseNumber: string;
+  paymentNumber:  string;
+  appliedCents:   number;
+}
+
+export interface LumpSumSupplierPaymentResult {
+  allocationGroupId: string;
+  allocations:       LumpSumSupplierAllocation[];
+  appliedCents:      number;
+  creditAddedCents:  number;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -136,6 +162,131 @@ export const supplierPaymentService = {
       });
 
       return payment;
+    });
+  },
+
+  // ── Lump-sum payment ─────────────────────────────────────────────────────────
+  // Mirror of the customer allocator. One payment auto-allocated across the
+  // supplier's outstanding CONFIRMED purchase orders, OLDEST-FIRST. Each covered
+  // PO gets its own SupplierPayment row (paymentType 'PAYMENT'), all sharing one
+  // allocationGroupId. Leftover beyond all POs is parked as unallocated supplier
+  // credit via a signed SupplierCreditLedger entry. Fully atomic.
+  async recordLumpSumPayment(
+    input: LumpSumSupplierPaymentInput,
+  ): Promise<LumpSumSupplierPaymentResult> {
+    const { supplierId, amountCents, paymentMethod, referenceNo, bankName,
+            paymentDate, notes, recordedById } = input;
+
+    if (amountCents <= 0) throw new HttpError(400, 'Payment amount must be greater than 0');
+
+    const supplier = await (prisma as any).supplier.findUnique({
+      where:  { id: supplierId },
+      select: { id: true },
+    });
+    if (!supplier) throw new HttpError(404, 'Supplier not found');
+
+    // Reserve a contiguous block of SPAY numbers up-front.
+    const year   = new Date().getFullYear();
+    const prefix = `SPAY-${year}-`;
+    const count  = await prisma.supplierPayment.count({
+      where: { paymentNumber: { startsWith: prefix } },
+    });
+    let seq = count;
+
+    const allocationGroupId = randomUUID();
+    const paidDate          = new Date(paymentDate);
+
+    return prisma.$transaction(async (tx) => {
+      const purchases = await (tx as any).purchase.findMany({
+        where: {
+          supplierId,
+          deletedAt:     null,
+          status:        'CONFIRMED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        orderBy: [{ date: 'asc' }, { number: 'asc' }],
+        select:  { id: true, number: true, totalCents: true, paidCents: true },
+      });
+
+      let remaining = amountCents;
+      const allocations: LumpSumSupplierAllocation[] = [];
+
+      for (const po of purchases) {
+        if (remaining <= 0) break;
+
+        const returnsAgg = await (tx as any).purchaseReturn.aggregate({
+          where: { purchaseId: po.id, status: 'CONFIRMED', isActive: true },
+          _sum:  { totalCents: true },
+        });
+        const returnedCents       = returnsAgg._sum.totalCents ?? 0;
+        const effectiveTotalCents = Math.max(0, (po.totalCents as number) - returnedCents);
+        const outstanding         = Math.max(0, effectiveTotalCents - (po.paidCents as number));
+        if (outstanding <= 0) continue;
+
+        const applied       = Math.min(remaining, outstanding);
+        const newPaidCents  = (po.paidCents as number) + applied;
+        const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
+        seq += 1;
+        const paymentNumber = `${prefix}${String(seq).padStart(4, '0')}`;
+
+        await (tx as any).supplierPayment.create({
+          data: {
+            paymentNumber,
+            purchaseId:    po.id,
+            supplierId,
+            amountCents:   applied,
+            paymentMethod,
+            referenceNo:   referenceNo ?? null,
+            bankName:      bankName    ?? null,
+            paymentDate:   paidDate,
+            notes:         notes       ?? null,
+            createdById:   recordedById,
+            allocationGroupId,
+          },
+        });
+        await (tx as any).purchase.update({
+          where: { id: po.id },
+          data:  { paidCents: newPaidCents, paymentStatus },
+        });
+
+        allocations.push({ purchaseId: po.id, purchaseNumber: po.number, paymentNumber, appliedCents: applied });
+        remaining -= applied;
+      }
+
+      let creditAddedCents = 0;
+      if (remaining > 0) {
+        creditAddedCents = remaining;
+        await (tx as any).supplier.update({
+          where: { id: supplierId },
+          data:  { creditBalanceCents: { increment: remaining } },
+        });
+        await (tx as any).supplierCreditLedger.create({
+          data: {
+            supplierId,
+            amountCents:       remaining,
+            reason:            'LUMP_SUM_OVERFLOW',
+            allocationGroupId,
+            notes:             notes ?? null,
+            createdBy:         recordedById,
+          },
+        });
+      }
+
+      return {
+        allocationGroupId,
+        allocations,
+        appliedCents:     amountCents - remaining,
+        creditAddedCents,
+      };
+    });
+  },
+
+  // ── Credit ledger (read) ──────────────────────────────────────────────────────
+  async listCreditLedger(supplierId: string) {
+    return (prisma as any).supplierCreditLedger.findMany({
+      where:   { supplierId },
+      orderBy: { createdAt: 'desc' },
+      include: { createdByUser: { select: { id: true, fullName: true } } },
     });
   },
 

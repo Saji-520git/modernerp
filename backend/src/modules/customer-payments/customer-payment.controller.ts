@@ -35,6 +35,46 @@ export const createCustomerPayment: RequestHandler = async (req, res) => {
   res.status(201).json(payment);
 };
 
+// ─── POST /customer-payments/lump-sum ─────────────────────────────────────────
+
+export const createLumpSumCustomerPayment: RequestHandler = async (req, res) => {
+  const { customerId, amountCents, paymentMethod, referenceNo, bankName,
+          paymentDate, notes } = req.body as {
+    customerId:    string;
+    amountCents:   number;
+    paymentMethod: string;
+    referenceNo?:  string;
+    bankName?:     string;
+    paymentDate:   string;
+    notes?:        string;
+  };
+
+  if (!customerId)    throw new HttpError(400, 'customerId is required');
+  if (!amountCents)   throw new HttpError(400, 'amountCents is required');
+  if (!paymentMethod) throw new HttpError(400, 'paymentMethod is required');
+  if (!paymentDate)   throw new HttpError(400, 'paymentDate is required');
+
+  const result = await customerPaymentService.recordLumpSumPayment({
+    customerId,
+    amountCents: Number(amountCents),
+    paymentMethod,
+    referenceNo,
+    bankName,
+    paymentDate,
+    notes,
+    createdBy: req.auth!.userId,
+  });
+
+  res.status(201).json(result);
+};
+
+// ─── GET /customer-payments/credit-ledger/:customerId ─────────────────────────
+
+export const listCustomerCreditLedger: RequestHandler = async (req, res) => {
+  const items = await customerPaymentService.listCreditLedger(req.params.customerId);
+  res.json(items);
+};
+
 // ─── GET /customer-payments/sale/:saleId ──────────────────────────────────────
 
 export const listCustomerPayments: RequestHandler = async (req, res) => {

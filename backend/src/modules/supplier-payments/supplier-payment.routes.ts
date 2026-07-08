@@ -15,11 +15,25 @@ router.post(
   asyncHandler(ctrl.createPayment),
 );
 
+// POST /api/v1/supplier-payments/lump-sum — one payment across many POs (oldest-first)
+router.post(
+  '/lump-sum',
+  requirePermission('confirm_purchases'),
+  asyncHandler(ctrl.createLumpSumPayment),
+);
+
 // POST /api/v1/supplier-payments/credit   — receive credit back from supplier
 router.post(
   '/credit',
   requirePermission('confirm_purchases'),
   asyncHandler(ctrl.receiveCredit),
+);
+
+// GET  /api/v1/supplier-payments/credit-ledger/:supplierId
+router.get(
+  '/credit-ledger/:supplierId',
+  requirePermission('view_purchases'),
+  asyncHandler(ctrl.listCreditLedger),
 );
 
 // GET  /api/v1/supplier-payments/purchase/:purchaseId  — list for a PO

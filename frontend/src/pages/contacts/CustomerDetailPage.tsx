@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Pencil, Plus, CreditCard, X, Check,
   ShieldCheck, AlertTriangle, Users, Receipt, RotateCcw,
-  DollarSign, TrendingDown, Wallet, ChevronRight,
+  DollarSign, TrendingDown, Wallet, ChevronRight, Layers,
 } from 'lucide-react';
 import {
   customersApi,
@@ -490,6 +490,234 @@ function RecordPaymentModal({
   );
 }
 
+// ─── Lump-Sum Payment Modal ───────────────────────────────────────────────────
+// One payment auto-allocated across ALL outstanding invoices, oldest-first.
+// Any leftover beyond every bill is parked as account credit (shown in the
+// preview and confirmed before submit). Backend is authoritative & returns-aware.
+
+function LumpSumPaymentModal({
+  customerId, onClose,
+}: {
+  customerId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data: salesData, isLoading: salesLoading } = useQuery({
+    queryKey: ['customer-outstanding-sales', customerId],
+    queryFn: () => salesApi.listSales({ customerId, status: 'CONFIRMED', pageSize: 100 }),
+  });
+
+  const outstandingSales = React.useMemo(() => {
+    const rows = (salesData?.data ?? []).filter(
+      (s) => s.paymentStatus === 'UNPAID' || s.paymentStatus === 'PARTIAL',
+    );
+    // Oldest-first: invoice date, then sequential number as tie-break.
+    return rows.sort((a, b) => {
+      const d = new Date(a.date).getTime() - new Date(b.date).getTime();
+      return d !== 0 ? d : a.number.localeCompare(b.number);
+    });
+  }, [salesData]);
+
+  const totalOutstanding = outstandingSales.reduce(
+    (s, x) => s + Math.max(0, x.totalCents - x.paidCents), 0,
+  );
+
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('CASH');
+  const [refNo, setRefNo]   = useState('');
+  const [bank, setBank]     = useState('');
+  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes]   = useState('');
+  const [error, setError]   = useState('');
+  const [result, setResult] = useState<import('../../services/customerPayments').LumpSumCustomerPaymentResult | null>(null);
+
+  const amountCents = Math.round(parseFloat(amount || '0') * 100);
+
+  // Client-side preview (final numbers come from the backend on save).
+  const preview = React.useMemo(() => {
+    let remaining = amountCents > 0 ? amountCents : 0;
+    const rows: { number: string; applied: number }[] = [];
+    for (const s of outstandingSales) {
+      if (remaining <= 0) break;
+      const out = Math.max(0, s.totalCents - s.paidCents);
+      if (out <= 0) continue;
+      const applied = Math.min(remaining, out);
+      rows.push({ number: s.number, applied });
+      remaining -= applied;
+    }
+    return { rows, credit: Math.max(0, remaining) };
+  }, [amountCents, outstandingSales]);
+
+  const mutation = useMutation({
+    mutationFn: () => customerPaymentsApi.createLumpSum({
+      customerId, amountCents, paymentMethod: method,
+      referenceNo: refNo || undefined, bankName: bank || undefined,
+      paymentDate: date, notes: notes || undefined,
+    }),
+    onSuccess: (res) => {
+      setResult(res);
+      queryClient.invalidateQueries({ queryKey: ['customer-payments-by', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-detail', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-sales', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-outstanding-sales', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-ledger', customerId] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? 'Failed to record payment');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!amountCents || amountCents <= 0) { setError('Enter a valid amount'); return; }
+    mutation.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="text-base font-semibold text-slate-800">Lump-Sum Payment</h2>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {result ? (
+          /* ── Success summary ── */
+          <div className="px-6 py-5 space-y-4">
+            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-center gap-2">
+              <Check className="w-4 h-4" /> Payment recorded successfully.
+            </div>
+            <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
+              {result.allocations.map((a) => (
+                <div key={a.paymentNumber} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span className="text-slate-600">{a.saleNumber} <span className="text-slate-400">· {a.paymentNumber}</span></span>
+                  <span className="font-semibold text-slate-800">{fmtCents(a.appliedCents)}</span>
+                </div>
+              ))}
+              {result.allocations.length === 0 && (
+                <div className="px-3 py-2 text-sm text-slate-400">No bills to apply — full amount stored as credit.</div>
+              )}
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Applied to invoices</span>
+              <span className="font-semibold text-slate-800">{fmtCents(result.appliedCents)}</span>
+            </div>
+            {result.creditAddedCents > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-emerald-600 font-medium">Stored as account credit</span>
+                <span className="font-bold text-emerald-700">{fmtCents(result.creditAddedCents)}</span>
+              </div>
+            )}
+            <div className="flex justify-end pt-1">
+              <button onClick={onClose}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── Entry form ── */
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+            )}
+
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <span className="text-slate-500">Total outstanding ({outstandingSales.length} bill{outstandingSales.length !== 1 ? 's' : ''})</span>
+              <span className="font-semibold text-slate-800">{fmtCents(totalOutstanding)}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Amount (Rs.) *</label>
+                <input type="number" min="0.01" step="0.01" value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Method *</label>
+                <select value={method} onChange={(e) => setMethod(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {Object.entries(PM_LABELS).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Allocation preview */}
+            {amountCents > 0 && (
+              <div className="border border-slate-200 rounded-lg">
+                <div className="px-3 py-1.5 text-xs font-medium text-slate-500 border-b border-slate-100 bg-slate-50 rounded-t-lg">
+                  Allocation preview (oldest-first)
+                </div>
+                <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                  {preview.rows.map((r) => (
+                    <div key={r.number} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                      <span className="text-slate-600">{r.number}</span>
+                      <span className="font-medium text-slate-800">{fmtCents(r.applied)}</span>
+                    </div>
+                  ))}
+                  {preview.rows.length === 0 && (
+                    <div className="px-3 py-1.5 text-sm text-slate-400">No outstanding bills.</div>
+                  )}
+                </div>
+                {preview.credit > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2 text-sm border-t border-slate-200 bg-emerald-50 rounded-b-lg">
+                    <span className="text-emerald-700 font-medium">→ Stored as account credit</span>
+                    <span className="font-bold text-emerald-700">{fmtCents(preview.credit)}</span>
+                  </div>
+                )}
+                <p className="px-3 py-1.5 text-[11px] text-slate-400 border-t border-slate-100">
+                  Final split (returns-aware) is confirmed by the server on save.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Reference No</label>
+                <input value={refNo} onChange={(e) => setRefNo(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Cheque / bank ref" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Date *</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Optional note" />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-1">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={mutation.isPending || salesLoading || amountCents <= 0}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
+                {mutation.isPending ? 'Saving…' : 'Record Lump-Sum'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({
@@ -836,6 +1064,7 @@ export default function CustomerDetailPage() {
   const [editOpen, setEditOpen]   = useState(false);
   const [editError, setEditError] = useState('');
   const [paymentOpen, setPaymentOpen]   = useState(false);
+  const [lumpSumOpen, setLumpSumOpen]   = useState(false);
   const [viewSaleId, setViewSaleId]     = useState<string | null>(null);
 
   const { data: customer, isLoading } = useQuery({
@@ -917,6 +1146,11 @@ export default function CustomerDetailPage() {
                     <ShieldCheck size={10} /> Credit
                   </span>
                 )}
+                {customer.creditBalanceCents > 0 && (
+                  <span className="flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                    <Wallet size={10} /> Credit balance {fmtCents(customer.creditBalanceCents)}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
                 {customer.phone && <span>{customer.phone}</span>}
@@ -941,6 +1175,10 @@ export default function CustomerDetailPage() {
             <button onClick={() => setPaymentOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
               <CreditCard size={14} /> Record Payment
+            </button>
+            <button onClick={() => setLumpSumOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+              <Layers size={14} /> Lump-Sum
             </button>
             <button onClick={() => { setEditError(''); setEditOpen(true); }}
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
@@ -1038,6 +1276,13 @@ export default function CustomerDetailPage() {
         <RecordPaymentModal
           customerId={id!}
           onClose={() => setPaymentOpen(false)}
+        />
+      )}
+
+      {lumpSumOpen && (
+        <LumpSumPaymentModal
+          customerId={id!}
+          onClose={() => setLumpSumOpen(false)}
         />
       )}
 

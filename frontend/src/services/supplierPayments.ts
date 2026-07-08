@@ -29,11 +29,55 @@ export interface ReceiveCreditPayload {
   notes?:      string;
 }
 
+export interface LumpSumSupplierPaymentPayload {
+  supplierId:    string;
+  amountCents:   number;
+  paymentMethod: SupplierPaymentMethod;
+  referenceNo?:  string;
+  bankName?:     string;
+  paymentDate:   string;   // ISO date string YYYY-MM-DD
+  notes?:        string;
+}
+
+export interface LumpSumSupplierAllocation {
+  purchaseId:     string;
+  purchaseNumber: string;
+  paymentNumber:  string;
+  appliedCents:   number;
+}
+
+export interface LumpSumSupplierPaymentResult {
+  allocationGroupId: string;
+  allocations:       LumpSumSupplierAllocation[];
+  appliedCents:      number;
+  creditAddedCents:  number;
+}
+
+export interface SupplierCreditLedgerEntry {
+  id:                string;
+  supplierId:        string;
+  amountCents:       number;   // signed
+  reason:            string;
+  allocationGroupId: string | null;
+  refType:           string | null;
+  refId:             string | null;
+  notes:             string | null;
+  createdBy:         string;
+  createdByUser:     { id: string; fullName: string };
+  createdAt:         string;
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const supplierPaymentsApi = {
   create: (payload: CreateSupplierPaymentPayload): Promise<SupplierPayment> =>
     api.post('/supplier-payments', payload).then((r) => r.data),
+
+  createLumpSum: (payload: LumpSumSupplierPaymentPayload): Promise<LumpSumSupplierPaymentResult> =>
+    api.post('/supplier-payments/lump-sum', payload).then((r) => r.data),
+
+  creditLedger: (supplierId: string): Promise<SupplierCreditLedgerEntry[]> =>
+    api.get(`/supplier-payments/credit-ledger/${supplierId}`).then((r) => r.data),
 
   receiveCredit: (payload: ReceiveCreditPayload): Promise<SupplierPayment> =>
     api.post('/supplier-payments/credit', payload).then((r) => r.data),
