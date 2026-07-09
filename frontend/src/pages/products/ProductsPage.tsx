@@ -1788,6 +1788,24 @@ export default function ProductsPage() {
                   </div>
                 )}
 
+                {/* Non-blocking cost > price guardrail: catches data-entry typos
+                    (e.g. a Rs.62,500 cost on a Rs.150 item) that otherwise poison
+                    COGS / profit reports. Intentionally a warning, not a hard block —
+                    loss-leaders and clearance items legitimately sell below cost. */}
+                {previewMargin !== null &&
+                  previewMargin.pct < 0 &&
+                  parseFloat(form.cost || '0') > 0 &&
+                  parseFloat(form.price || '0') > 0 && (
+                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-500" />
+                      <span>
+                        <strong>Cost is higher than selling price.</strong> This product will
+                        sell at a loss and drag down profit &amp; COGS reports. Double-check the
+                        figures — you can still save if this is intentional (e.g. clearance).
+                      </span>
+                    </div>
+                  )}
+
                 {/* Default Discount */}
                 <div className="mt-3">
                   <label className="block text-xs font-medium text-slate-600 mb-1">

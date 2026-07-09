@@ -26,6 +26,7 @@ export interface RevenuePoint {
   revenue:       number; // cents
   orders:        number;
   expensesCents: number; // daily expense total (non-template, non-deleted)
+  cogsCents:     number; // daily cost of goods sold (qty × cost) — for true net profit
 }
 
 export interface TopProduct {

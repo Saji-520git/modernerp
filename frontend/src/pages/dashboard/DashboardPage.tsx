@@ -51,7 +51,9 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
   const totalRevenue  = data.reduce((s, d) => s + d.revenue, 0);
   const totalExpenses = data.reduce((s, d) => s + (d.expensesCents ?? 0), 0);
-  const netProfit     = totalRevenue - totalExpenses;
+  const totalCogs     = data.reduce((s, d) => s + (d.cogsCents ?? 0), 0);
+  // True net profit = revenue − COGS − expenses (consistent with the P&L report).
+  const netProfit     = totalRevenue - totalCogs - totalExpenses;
   const xLabels = pts.filter((_, i) => i % Math.ceil(pts.length / 5) === 0 || i === pts.length - 1);
 
   // Bar width for expense overlay — each bar spans the per-point column width
@@ -138,9 +140,10 @@ function LineChart({ data }: { data: RevenuePoint[] }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mt-2 pt-3 border-t border-slate-100">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 pt-3 border-t border-slate-100">
         {[
           { label: 'Total Revenue',  value: formatCurrency(totalRevenue) },
+          { label: 'COGS',           value: formatCurrencyShort(totalCogs) },
           { label: 'Total Expenses', value: formatCurrencyShort(totalExpenses) },
           { label: 'Net Profit',     value: formatCurrencyShort(netProfit), color: netProfit >= 0 ? 'text-emerald-700' : 'text-red-600' },
         ].map(s => (

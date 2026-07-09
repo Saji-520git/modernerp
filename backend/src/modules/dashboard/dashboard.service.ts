@@ -187,7 +187,7 @@ export const dashboardService = {
   revenueChart: async (days: 30 | 60 | 90 = 30) => {
     const interval = `${days} days`;
 
-    const [salesRows, expenseRows] = await Promise.all([
+    const [salesRows, expenseRows, cogsRows] = await Promise.all([
       prisma.$queryRaw<DailyRevenue[]>`
         SELECT
           DATE_TRUNC('day', date)::date AS day,
@@ -210,6 +210,22 @@ export const dashboardService = {
         GROUP BY DATE_TRUNC('day', date)
         ORDER BY day ASC
       `,
+      // Daily COGS (qty × cost of goods actually sold) so the chart can show a
+      // TRUE net profit (revenue − COGS − expenses), consistent with the P&L.
+      // Previously the footer computed "Net Profit" as revenue − expenses only,
+      // silently ignoring COGS and overstating profit.
+      prisma.$queryRaw<{ day: Date; cogs: bigint }[]>`
+        SELECT DATE_TRUNC('day', s.date)::date AS day,
+          COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
+        FROM "Sale" s
+        JOIN "SaleLine" sl ON sl."saleId" = s.id
+        JOIN "Product" p ON p.id = sl."productId"
+        WHERE s.status = 'CONFIRMED'
+          AND s."deletedAt" IS NULL
+          AND s.date >= NOW() - INTERVAL '1 day' * ${days}
+        GROUP BY DATE_TRUNC('day', s.date)
+        ORDER BY day ASC
+      `,
     ]);
 
     const salesMap = new Map<string, { revenue: number; orders: number }>();
@@ -221,8 +237,12 @@ export const dashboardService = {
     for (const row of expenseRows) {
       expMap.set(new Date(row.day).toISOString().slice(0, 10), Number(row.total));
     }
+    const cogsMap = new Map<string, number>();
+    for (const row of cogsRows) {
+      cogsMap.set(new Date(row.day).toISOString().slice(0, 10), Number(row.cogs));
+    }
 
-    const result: { date: string; revenue: number; orders: number; expensesCents: number }[] = [];
+    const result: { date: string; revenue: number; orders: number; expensesCents: number; cogsCents: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setUTCHours(0, 0, 0, 0);
@@ -233,6 +253,7 @@ export const dashboardService = {
         revenue:       salesMap.get(key)?.revenue ?? 0,
         orders:        salesMap.get(key)?.orders  ?? 0,
         expensesCents: expMap.get(key) ?? 0,
+        cogsCents:     cogsMap.get(key) ?? 0,
       });
     }
 
