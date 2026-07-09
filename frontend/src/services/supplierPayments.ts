@@ -53,6 +53,20 @@ export interface LumpSumSupplierPaymentResult {
   creditAddedCents:  number;
 }
 
+export interface ApplyCreditSupplierPayload {
+  supplierId:  string;
+  amountCents: number;
+  paymentDate: string;   // ISO date string YYYY-MM-DD
+  notes?:      string;
+}
+
+export interface ApplyCreditSupplierResult {
+  allocationGroupId:    string;
+  allocations:          LumpSumSupplierAllocation[];
+  appliedCents:         number;
+  creditRemainingCents: number;
+}
+
 export interface SupplierCreditLedgerEntry {
   id:                string;
   supplierId:        string;
@@ -75,6 +89,9 @@ export const supplierPaymentsApi = {
 
   createLumpSum: (payload: LumpSumSupplierPaymentPayload): Promise<LumpSumSupplierPaymentResult> =>
     api.post('/supplier-payments/lump-sum', payload).then((r) => r.data),
+
+  applyCredit: (payload: ApplyCreditSupplierPayload): Promise<ApplyCreditSupplierResult> =>
+    api.post('/supplier-payments/apply-credit', payload).then((r) => r.data),
 
   creditLedger: (supplierId: string): Promise<SupplierCreditLedgerEntry[]> =>
     api.get(`/supplier-payments/credit-ledger/${supplierId}`).then((r) => r.data),

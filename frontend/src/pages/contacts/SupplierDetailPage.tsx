@@ -21,6 +21,7 @@ import {
   supplierPaymentsApi,
   type SupplierPaymentMethod,
   type LumpSumSupplierPaymentResult,
+  type ApplyCreditSupplierResult,
   SPAY_METHOD_LABELS,
 } from '../../services/supplierPayments';
 import type { SupplierPayment } from '../../services/purchases';
@@ -997,6 +998,225 @@ function LumpSumSupplierPaymentModal({
   );
 }
 
+// ─── Apply Supplier Credit Modal ──────────────────────────────────────────────
+
+function ApplyCreditSupplierModal({
+  supplierId, availableCents, onClose,
+}: {
+  supplierId: string;
+  availableCents: number;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data: purchasesData, isLoading: purchasesLoading } = useQuery({
+    queryKey: ['supplier-outstanding-purchases', supplierId],
+    queryFn: () => purchasesApi.listPurchases({ supplierId, pageSize: 100 }),
+  });
+
+  const poOutstanding = (p: { totalCents: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
+    Math.max(0, p.totalCents - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0));
+
+  const outstandingPurchases = React.useMemo(() => {
+    const rows = (purchasesData?.data ?? []).filter(
+      (p) => p.status === 'CONFIRMED' &&
+        (p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL'),
+    );
+    return rows.sort((a, b) => {
+      const d = new Date(a.date).getTime() - new Date(b.date).getTime();
+      return d !== 0 ? d : a.number.localeCompare(b.number);
+    });
+  }, [purchasesData]);
+
+  const totalOutstanding = outstandingPurchases.reduce((s, p) => s + poOutstanding(p), 0);
+
+  // Default the amount to the most that can actually be applied.
+  const applicableMax = Math.min(availableCents, totalOutstanding);
+
+  const [amount, setAmount] = useState('');
+  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes]   = useState('');
+  const [error, setError]   = useState('');
+  const [result, setResult] = useState<ApplyCreditSupplierResult | null>(null);
+
+  const amountCents = Math.round(parseFloat(amount || '0') * 100);
+
+  // Client-side preview (final numbers come from the backend on save).
+  const preview = React.useMemo(() => {
+    let remaining = Math.min(amountCents > 0 ? amountCents : 0, availableCents);
+    const rows: { number: string; applied: number }[] = [];
+    for (const p of outstandingPurchases) {
+      if (remaining <= 0) break;
+      const out = poOutstanding(p);
+      if (out <= 0) continue;
+      const applied = Math.min(remaining, out);
+      rows.push({ number: p.number, applied });
+      remaining -= applied;
+    }
+    const consumed = rows.reduce((sm, r) => sm + r.applied, 0);
+    return { rows, consumed, creditLeft: Math.max(0, availableCents - consumed) };
+  }, [amountCents, availableCents, outstandingPurchases]);
+
+  const mutation = useMutation({
+    mutationFn: () => supplierPaymentsApi.applyCredit({
+      supplierId, amountCents, paymentDate: date, notes: notes || undefined,
+    }),
+    onSuccess: (res) => {
+      setResult(res);
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments-by', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-detail', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-purchases', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-outstanding-purchases', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-credit-ledger', supplierId] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? 'Failed to apply credit');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!amountCents || amountCents <= 0) { setError('Enter a valid amount'); return; }
+    if (amountCents > availableCents) {
+      setError(`Amount exceeds available credit of ${fmtCents(availableCents)}`);
+      return;
+    }
+    mutation.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="text-base font-semibold text-slate-800">Apply Supplier Credit</h2>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {result ? (
+          /* ── Success summary ── */
+          <div className="px-6 py-5 space-y-4">
+            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-center gap-2">
+              <Check className="w-4 h-4" /> Credit applied successfully.
+            </div>
+            <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
+              {result.allocations.map((a) => (
+                <div key={a.paymentNumber} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span className="text-slate-600">{a.purchaseNumber} <span className="text-slate-400">· {a.paymentNumber}</span></span>
+                  <span className="font-semibold text-slate-800">{fmtCents(a.appliedCents)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Credit applied to orders</span>
+              <span className="font-semibold text-slate-800">{fmtCents(result.appliedCents)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-emerald-600 font-medium">Remaining account credit</span>
+              <span className="font-bold text-emerald-700">{fmtCents(result.creditRemainingCents)}</span>
+            </div>
+            <div className="flex justify-end pt-1">
+              <button onClick={onClose}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── Entry form ── */
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm">
+                <span className="text-emerald-600">Available credit</span>
+                <span className="font-semibold text-emerald-700">{fmtCents(availableCents)}</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <span className="text-slate-500">Outstanding ({outstandingPurchases.length})</span>
+                <span className="font-semibold text-slate-800">{fmtCents(totalOutstanding)}</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-slate-600">Amount to apply (Rs.) *</label>
+                {applicableMax > 0 && (
+                  <button type="button"
+                    onClick={() => setAmount((applicableMax / 100).toFixed(2))}
+                    className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700">
+                    Use max ({fmtCents(applicableMax)})
+                  </button>
+                )}
+              </div>
+              <input type="number" min="0.01" step="0.01" max={(availableCents / 100).toFixed(2)} value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="0.00" />
+            </div>
+
+            {/* Allocation preview */}
+            {amountCents > 0 && (
+              <div className="border border-slate-200 rounded-lg">
+                <div className="px-3 py-1.5 text-xs font-medium text-slate-500 border-b border-slate-100 bg-slate-50 rounded-t-lg">
+                  Allocation preview (oldest-first)
+                </div>
+                <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                  {preview.rows.map((r) => (
+                    <div key={r.number} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                      <span className="text-slate-600">{r.number}</span>
+                      <span className="font-medium text-slate-800">{fmtCents(r.applied)}</span>
+                    </div>
+                  ))}
+                  {preview.rows.length === 0 && (
+                    <div className="px-3 py-1.5 text-sm text-slate-400">No outstanding orders to apply against.</div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-sm border-t border-slate-200 bg-emerald-50 rounded-b-lg">
+                  <span className="text-emerald-700 font-medium">Credit remaining after</span>
+                  <span className="font-bold text-emerald-700">{fmtCents(preview.creditLeft)}</span>
+                </div>
+                <p className="px-3 py-1.5 text-[11px] text-slate-400 border-t border-slate-100">
+                  Final split (returns-aware) is confirmed by the server on save.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Optional note" />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-1">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={mutation.isPending || purchasesLoading || amountCents <= 0 || totalOutstanding === 0}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60">
+                {mutation.isPending ? 'Applying…' : 'Apply Credit'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1008,6 +1228,7 @@ export default function SupplierDetailPage() {
   const [viewPoId, setViewPoId]   = useState<string | null>(null);
   const [payOpen, setPayOpen]     = useState(false);
   const [lumpOpen, setLumpOpen]   = useState(false);
+  const [applyCreditOpen, setApplyCreditOpen] = useState(false);
 
   const { data: supplier, isLoading } = useQuery({
     queryKey: ['supplier-detail', id],
@@ -1114,6 +1335,12 @@ export default function SupplierDetailPage() {
               className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-50 transition-colors">
               <Layers size={14} /> Lump-Sum
             </button>
+            {supplier.creditBalanceCents > 0 && (
+              <button onClick={() => setApplyCreditOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 bg-emerald-50 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors">
+                <Wallet size={14} /> Apply Credit
+              </button>
+            )}
             <button onClick={() => { setEditError(''); setEditOpen(true); }}
               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
               <Pencil size={14} /> Edit
@@ -1209,6 +1436,14 @@ export default function SupplierDetailPage() {
         <LumpSumSupplierPaymentModal
           supplierId={id!}
           onClose={() => setLumpOpen(false)}
+        />
+      )}
+
+      {applyCreditOpen && (
+        <ApplyCreditSupplierModal
+          supplierId={id!}
+          availableCents={supplier.creditBalanceCents}
+          onClose={() => setApplyCreditOpen(false)}
         />
       )}
     </div>

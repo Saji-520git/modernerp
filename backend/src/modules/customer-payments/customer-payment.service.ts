@@ -40,6 +40,21 @@ export interface LumpSumCustomerPaymentResult {
   creditAddedCents:  number;   // leftover parked as unallocated credit
 }
 
+export interface ApplyCreditCustomerInput {
+  customerId:  string;
+  amountCents: number;         // requested amount to draw from credit balance
+  paymentDate: string | Date;
+  notes?:      string;
+  createdBy:   string;
+}
+
+export interface ApplyCreditCustomerResult {
+  allocationGroupId:   string;
+  allocations:         LumpSumAllocation[];
+  appliedCents:        number;   // total credit actually consumed across bills
+  creditRemainingCents: number;  // customer's credit balance after this apply
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function nextPaymentNumber(): Promise<string> {
@@ -243,6 +258,145 @@ export const customerPaymentService = {
         allocations,
         appliedCents:     amountCents - remaining,
         creditAddedCents,
+      };
+    });
+  },
+
+  // ── Apply existing credit to outstanding bills ────────────────────────────────
+  // Spends the customer's unallocated credit balance against outstanding CONFIRMED
+  // bills, OLDEST-FIRST (mirrors recordLumpSumPayment). The funding pool is the
+  // credit balance itself — no fresh cash — so each covered bill gets a
+  // CustomerPayment row tagged paymentType 'CREDIT_APPLIED' (distinguishes it from
+  // tendered cash in reports), and Sale.paidCents is bumped exactly like a normal
+  // payment so outstanding-balance math stays consistent. One signed-negative
+  // CustomerCreditLedger row records the consumption; creditBalanceCents is
+  // decremented by the same amount. Never parks overflow (leftover stays credit),
+  // never overdraws (balance re-read inside the tx). Fully atomic.
+  async applyCreditToBills(
+    input: ApplyCreditCustomerInput,
+  ): Promise<ApplyCreditCustomerResult> {
+    const { customerId, amountCents, paymentDate, notes, createdBy } = input;
+
+    if (amountCents <= 0) throw new HttpError(400, 'Amount must be positive');
+
+    const customer = await (prisma as any).customer.findUnique({
+      where:  { id: customerId },
+      select: { id: true, creditBalanceCents: true },
+    });
+    if (!customer) throw new HttpError(404, 'Customer not found');
+    if ((customer.creditBalanceCents as number) <= 0) {
+      throw new HttpError(400, 'Customer has no available credit balance');
+    }
+
+    // Reserve a contiguous block of CPAY numbers up-front (mirrors lump-sum).
+    const year   = new Date().getFullYear();
+    const prefix = `CPAY-${year}-`;
+    const last   = await (prisma as any).customerPayment.findFirst({
+      where:   { paymentNumber: { startsWith: prefix } },
+      orderBy: { paymentNumber: 'desc' },
+      select:  { paymentNumber: true },
+    });
+    let seq = last ? parseInt(last.paymentNumber.slice(prefix.length), 10) : 0;
+
+    const allocationGroupId = randomUUID();
+    const paidDate          = new Date(paymentDate);
+
+    return prisma.$transaction(async (tx) => {
+      // Re-read the balance INSIDE the tx to prevent concurrent overdraw.
+      const fresh = await (tx as any).customer.findUnique({
+        where:  { id: customerId },
+        select: { creditBalanceCents: true },
+      });
+      const available = fresh?.creditBalanceCents ?? 0;
+      if (available <= 0) throw new HttpError(400, 'Customer has no available credit balance');
+
+      // Funding pool = min(requested, available credit). Capped again by real
+      // outstanding as we walk bills — leftover simply stays as credit.
+      let remaining = Math.min(amountCents, available);
+
+      const sales = await (tx as any).sale.findMany({
+        where: {
+          customerId,
+          status:        'CONFIRMED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        orderBy: [{ date: 'asc' }, { number: 'asc' }],
+        select:  { id: true, number: true, totalCents: true, paidCents: true, customerId: true },
+      });
+
+      const allocations: LumpSumAllocation[] = [];
+
+      for (const sale of sales) {
+        if (remaining <= 0) break;
+
+        // Returns-aware outstanding — identical to createPayment / lump-sum.
+        const returnsAgg = await (tx as any).saleReturn.aggregate({
+          where: { saleId: sale.id },
+          _sum:  { totalCents: true },
+        });
+        const returnedCents  = returnsAgg._sum.totalCents ?? 0;
+        const effectiveTotal = Math.max(0, (sale.totalCents as number) - returnedCents);
+        const outstanding    = effectiveTotal - (sale.paidCents as number);
+        if (outstanding <= 0) continue;
+
+        const applied   = Math.min(remaining, outstanding);
+        const newPaid   = (sale.paidCents as number) + applied;
+        const newStatus = computePaymentStatus(effectiveTotal, newPaid);
+        seq += 1;
+        const paymentNumber = `${prefix}${String(seq).padStart(4, '0')}`;
+
+        await (tx as any).customerPayment.create({
+          data: {
+            paymentNumber,
+            saleId:       sale.id,
+            customerId:   sale.customerId ?? customerId,
+            amountCents:  applied,
+            paymentMethod: 'CREDIT',       // cosmetic; paymentType is the real signal
+            paymentType:  'CREDIT_APPLIED',
+            paymentDate:  paidDate,
+            notes:        notes ?? null,
+            createdBy,
+            allocationGroupId,
+          },
+        });
+        await (tx as any).sale.update({
+          where: { id: sale.id },
+          data:  { paidCents: newPaid, paymentStatus: newStatus },
+        });
+
+        allocations.push({ saleId: sale.id, saleNumber: sale.number, paymentNumber, appliedCents: applied });
+        remaining -= applied;
+      }
+
+      const consumed = allocations.reduce((s, a) => s + a.appliedCents, 0);
+      if (consumed <= 0) {
+        throw new HttpError(400, 'No outstanding bills to apply credit against');
+      }
+      // Defensive: never overdraw (consumed is bounded by `available` above).
+      if (consumed > available) throw new HttpError(400, 'Credit application exceeds available balance');
+
+      await (tx as any).customer.update({
+        where: { id: customerId },
+        data:  { creditBalanceCents: { decrement: consumed } },
+      });
+      await (tx as any).customerCreditLedger.create({
+        data: {
+          customerId,
+          amountCents:       -consumed,            // negative = credit consumed
+          reason:            'APPLIED_TO_SALE',
+          allocationGroupId,
+          refType:           'CustomerPayment',
+          refId:             allocations[0]?.saleId ?? null,
+          notes:             notes ?? null,
+          createdBy,
+        },
+      });
+
+      return {
+        allocationGroupId,
+        allocations,
+        appliedCents:         consumed,
+        creditRemainingCents: available - consumed,
       };
     });
   },

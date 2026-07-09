@@ -677,7 +677,9 @@ export const reportsService = {
           },
         }),
         prisma.customerPayment.findMany({
-          where:   { isActive: true },
+          // CREDIT_APPLIED rows move pre-existing account credit onto a bill — no
+          // fresh cash changes hands, so they are excluded from the cash activity feed.
+          where:   { isActive: true, paymentType: { not: 'CREDIT_APPLIED' } },
           orderBy: { createdAt: 'desc' },
           take:    5,
           select:  {
@@ -686,7 +688,9 @@ export const reportsService = {
           },
         }),
         prisma.supplierPayment.findMany({
-          where:   { isActive: true },
+          // Same rationale — a CREDIT_APPLIED supplier row is an internal credit
+          // reallocation, not a cash payment out; keep it out of the feed.
+          where:   { isActive: true, paymentType: { not: 'CREDIT_APPLIED' } },
           orderBy: { createdAt: 'desc' },
           take:    5,
           select:  {

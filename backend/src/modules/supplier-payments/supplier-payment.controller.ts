@@ -45,6 +45,18 @@ export const createLumpSumPayment: RequestHandler = async (req, res) => {
   res.status(201).json(result);
 };
 
+export const applyCredit: RequestHandler = async (req, res) => {
+  const userId = req.auth!.userId;
+  const result = await supplierPaymentService.applyCreditToPurchases({
+    supplierId:   req.body.supplierId,
+    amountCents:  Number(req.body.amountCents),
+    paymentDate:  req.body.paymentDate,
+    notes:        req.body.notes,
+    recordedById: userId,
+  });
+  res.status(201).json(result);
+};
+
 export const listCreditLedger: RequestHandler = async (req, res) => {
   const items = await supplierPaymentService.listCreditLedger(req.params.supplierId);
   res.json(items);

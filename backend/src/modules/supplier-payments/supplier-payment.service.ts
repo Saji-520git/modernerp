@@ -84,6 +84,21 @@ export interface LumpSumSupplierPaymentResult {
   creditAddedCents:  number;
 }
 
+export interface ApplyCreditSupplierInput {
+  supplierId:   string;
+  amountCents:  number;        // requested amount to draw from credit balance
+  paymentDate:  string;        // ISO date string
+  notes?:       string;
+  recordedById: string;
+}
+
+export interface ApplyCreditSupplierResult {
+  allocationGroupId:    string;
+  allocations:          LumpSumSupplierAllocation[];
+  appliedCents:         number;   // total credit actually consumed across POs
+  creditRemainingCents: number;   // supplier's credit balance after this apply
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const supplierPaymentService = {
@@ -277,6 +292,139 @@ export const supplierPaymentService = {
         allocations,
         appliedCents:     amountCents - remaining,
         creditAddedCents,
+      };
+    });
+  },
+
+  // ── Apply existing credit to outstanding purchase orders ──────────────────────
+  // Mirror of the customer applyCreditToBills. Spends the supplier's unallocated
+  // credit balance against outstanding CONFIRMED POs, OLDEST-FIRST. The funding
+  // pool is the credit balance itself — no fresh cash out — so each covered PO
+  // gets a SupplierPayment row tagged paymentType 'CREDIT_APPLIED', and
+  // Purchase.paidCents is bumped exactly like a normal payment so payable math
+  // stays consistent. One signed-negative SupplierCreditLedger row records the
+  // consumption; creditBalanceCents is decremented by the same amount. Never
+  // parks overflow, never overdraws (balance re-read inside the tx). Fully atomic.
+  async applyCreditToPurchases(
+    input: ApplyCreditSupplierInput,
+  ): Promise<ApplyCreditSupplierResult> {
+    const { supplierId, amountCents, paymentDate, notes, recordedById } = input;
+
+    if (amountCents <= 0) throw new HttpError(400, 'Amount must be greater than 0');
+
+    const supplier = await (prisma as any).supplier.findUnique({
+      where:  { id: supplierId },
+      select: { id: true, creditBalanceCents: true },
+    });
+    if (!supplier) throw new HttpError(404, 'Supplier not found');
+    if ((supplier.creditBalanceCents as number) <= 0) {
+      throw new HttpError(400, 'Supplier has no available credit balance');
+    }
+
+    // Reserve a contiguous block of SPAY numbers up-front.
+    const year   = new Date().getFullYear();
+    const prefix = `SPAY-${year}-`;
+    const count  = await prisma.supplierPayment.count({
+      where: { paymentNumber: { startsWith: prefix } },
+    });
+    let seq = count;
+
+    const allocationGroupId = randomUUID();
+    const paidDate          = new Date(paymentDate);
+
+    return prisma.$transaction(async (tx) => {
+      // Re-read the balance INSIDE the tx to prevent concurrent overdraw.
+      const fresh = await (tx as any).supplier.findUnique({
+        where:  { id: supplierId },
+        select: { creditBalanceCents: true },
+      });
+      const available = fresh?.creditBalanceCents ?? 0;
+      if (available <= 0) throw new HttpError(400, 'Supplier has no available credit balance');
+
+      let remaining = Math.min(amountCents, available);
+
+      const purchases = await (tx as any).purchase.findMany({
+        where: {
+          supplierId,
+          deletedAt:     null,
+          status:        'CONFIRMED',
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        orderBy: [{ date: 'asc' }, { number: 'asc' }],
+        select:  { id: true, number: true, totalCents: true, paidCents: true },
+      });
+
+      const allocations: LumpSumSupplierAllocation[] = [];
+
+      for (const po of purchases) {
+        if (remaining <= 0) break;
+
+        const returnsAgg = await (tx as any).purchaseReturn.aggregate({
+          where: { purchaseId: po.id, status: 'CONFIRMED', isActive: true },
+          _sum:  { totalCents: true },
+        });
+        const returnedCents       = returnsAgg._sum.totalCents ?? 0;
+        const effectiveTotalCents = Math.max(0, (po.totalCents as number) - returnedCents);
+        const outstanding         = Math.max(0, effectiveTotalCents - (po.paidCents as number));
+        if (outstanding <= 0) continue;
+
+        const applied       = Math.min(remaining, outstanding);
+        const newPaidCents  = (po.paidCents as number) + applied;
+        const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
+        seq += 1;
+        const paymentNumber = `${prefix}${String(seq).padStart(4, '0')}`;
+
+        await (tx as any).supplierPayment.create({
+          data: {
+            paymentNumber,
+            purchaseId:    po.id,
+            supplierId,
+            amountCents:   applied,
+            paymentMethod: 'CREDIT',        // cosmetic; paymentType is the real signal
+            paymentType:   'CREDIT_APPLIED',
+            paymentDate:   paidDate,
+            notes:         notes ?? null,
+            createdById:   recordedById,
+            allocationGroupId,
+          },
+        });
+        await (tx as any).purchase.update({
+          where: { id: po.id },
+          data:  { paidCents: newPaidCents, paymentStatus },
+        });
+
+        allocations.push({ purchaseId: po.id, purchaseNumber: po.number, paymentNumber, appliedCents: applied });
+        remaining -= applied;
+      }
+
+      const consumed = allocations.reduce((s, a) => s + a.appliedCents, 0);
+      if (consumed <= 0) {
+        throw new HttpError(400, 'No outstanding purchase orders to apply credit against');
+      }
+      if (consumed > available) throw new HttpError(400, 'Credit application exceeds available balance');
+
+      await (tx as any).supplier.update({
+        where: { id: supplierId },
+        data:  { creditBalanceCents: { decrement: consumed } },
+      });
+      await (tx as any).supplierCreditLedger.create({
+        data: {
+          supplierId,
+          amountCents:       -consumed,          // negative = credit consumed
+          reason:            'APPLIED_TO_PURCHASE',
+          allocationGroupId,
+          refType:           'SupplierPayment',
+          refId:             allocations[0]?.purchaseId ?? null,
+          notes:             notes ?? null,
+          createdBy:         recordedById,
+        },
+      });
+
+      return {
+        allocationGroupId,
+        allocations,
+        appliedCents:         consumed,
+        creditRemainingCents: available - consumed,
       };
     });
   },

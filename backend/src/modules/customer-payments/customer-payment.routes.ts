@@ -10,6 +10,7 @@ router.use(requireAuth);
 
 router.post(  '/',                              h(ctrl.createCustomerPayment));
 router.post(  '/lump-sum',                      h(requirePermission('record_payments')), h(ctrl.createLumpSumCustomerPayment));
+router.post(  '/apply-credit',                  h(requirePermission('record_payments')), h(ctrl.applyCustomerCredit));
 router.get(   '/credit-ledger/:customerId',     h(ctrl.listCustomerCreditLedger));
 router.get(   '/sale/:saleId',                  h(ctrl.listCustomerPayments));
 router.get(   '/customer/:customerId',           h(ctrl.listPaymentsByCustomer));

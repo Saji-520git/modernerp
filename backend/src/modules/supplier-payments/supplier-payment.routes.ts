@@ -29,6 +29,13 @@ router.post(
   asyncHandler(ctrl.receiveCredit),
 );
 
+// POST /api/v1/supplier-payments/apply-credit — spend stored supplier credit across POs
+router.post(
+  '/apply-credit',
+  requirePermission('confirm_purchases'),
+  asyncHandler(ctrl.applyCredit),
+);
+
 // GET  /api/v1/supplier-payments/credit-ledger/:supplierId
 router.get(
   '/credit-ledger/:supplierId',

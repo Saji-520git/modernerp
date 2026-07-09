@@ -9,6 +9,7 @@ export interface CustomerPayment {
   customerId:    string | null;
   amountCents:   number;
   paymentMethod: string;
+  paymentType:   string;   // "PAYMENT" | "CREDIT_APPLIED"
   referenceNo:   string | null;
   bankName:      string | null;
   paymentDate:   string;
@@ -54,6 +55,20 @@ export interface LumpSumCustomerPaymentResult {
   creditAddedCents:  number;
 }
 
+export interface ApplyCreditCustomerInput {
+  customerId:  string;
+  amountCents: number;
+  paymentDate: string;
+  notes?:      string;
+}
+
+export interface ApplyCreditCustomerResult {
+  allocationGroupId:    string;
+  allocations:          LumpSumAllocation[];
+  appliedCents:         number;
+  creditRemainingCents: number;
+}
+
 export interface CustomerCreditLedgerEntry {
   id:                string;
   customerId:        string;
@@ -76,6 +91,9 @@ export const customerPaymentsApi = {
 
   createLumpSum: (data: LumpSumCustomerPaymentInput): Promise<LumpSumCustomerPaymentResult> =>
     api.post('/customer-payments/lump-sum', data).then((r) => r.data),
+
+  applyCredit: (data: ApplyCreditCustomerInput): Promise<ApplyCreditCustomerResult> =>
+    api.post('/customer-payments/apply-credit', data).then((r) => r.data),
 
   listBySale: (saleId: string): Promise<CustomerPayment[]> =>
     api.get(`/customer-payments/sale/${saleId}`).then((r) => r.data),

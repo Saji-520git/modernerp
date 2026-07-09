@@ -68,6 +68,31 @@ export const createLumpSumCustomerPayment: RequestHandler = async (req, res) => 
   res.status(201).json(result);
 };
 
+// ─── POST /customer-payments/apply-credit ─────────────────────────────────────
+
+export const applyCustomerCredit: RequestHandler = async (req, res) => {
+  const { customerId, amountCents, paymentDate, notes } = req.body as {
+    customerId:  string;
+    amountCents: number;
+    paymentDate: string;
+    notes?:      string;
+  };
+
+  if (!customerId)  throw new HttpError(400, 'customerId is required');
+  if (!amountCents) throw new HttpError(400, 'amountCents is required');
+  if (!paymentDate) throw new HttpError(400, 'paymentDate is required');
+
+  const result = await customerPaymentService.applyCreditToBills({
+    customerId,
+    amountCents: Number(amountCents),
+    paymentDate,
+    notes,
+    createdBy: req.auth!.userId,
+  });
+
+  res.status(201).json(result);
+};
+
 // ─── GET /customer-payments/credit-ledger/:customerId ─────────────────────────
 
 export const listCustomerCreditLedger: RequestHandler = async (req, res) => {
