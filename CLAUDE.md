@@ -506,6 +506,34 @@ After completing a module:
 | 1 | Del key not clearing cart | POSPage.tsx | HIGH | Resolved |
 | 2 | Shift time not updating after new shift | posStore | HIGH | Resolved |
 | 3 | 3 pre-existing TypeScript errors | ContactsPage/UsersPage/api.ts | LOW | Resolved |
+| 4 | Dev DB carries 21 v2 tables + 5 columns not in this branch | shared dev `modernerp` DB | INFO | Accepted (Option a) — leave alone |
+
+### 12.1 ⚠️ Dev Database Drift — DO NOT run `migrate dev` (verified 2026-07-09)
+
+**What:** The shared dev DB `modernerp` physically contains 21 tables + 5 real-table
+columns that `electron-v1.0`'s migration history does NOT create:
+- Tables: BOM, BOMLine, CustomerInteraction, Delivery, LoyaltyConfig,
+  LoyaltyTransaction, PriceTier, ProductPrice, ProductionOrder, ProductionOrderLine,
+  Quotation, QuotationLine, attendance, client_config, leave, salary, staff, tenants,
+  whatsapp_config, whatsapp_log, whatsapp_template
+- Columns: Customer.loyaltyPoints, Customer.priceTierId, Sale.pointsEarned,
+  Sale.pointsRedeemed, User.tenantId
+
+**Origin (NOT contamination):** legitimate `main`/`dev` v2 migrations (HR/CRM/tenant/
+whatsapp/quotation/manufacturing, dated 2026-06-02/03) applied to this *shared* dev DB,
+then work resumed on `electron-v1.0` (forked 2026-06-01, before those migrations).
+All 8 are recorded in `_prisma_migrations`. It is a branch-vs-shared-DB mismatch.
+
+**Risk:** HARMLESS today. `migrate deploy` and `migrate status` ignore it (status shows
+"up to date"). **DANGER:** `prisma migrate dev` would see 8 applied-but-fileless
+migrations → prompt a FULL-DB RESET (drops ALL real data). The 21 DROP statements seen
+earlier came from `migrate diff` (a report), NOT from what `migrate dev` executes.
+
+**ACM production: UNAFFECTED.** ACM deploys `electron-v1.0` files via `migrate deploy`;
+those files contain none of the v2 migrations. Drift is isolated to this dev box only.
+
+**RULE:** On any shared/prod-like DB use ONLY `migrate deploy`. NEVER `migrate dev`.
+For a clean dev DB, build a *separate throwaway* database from files — never mutate this one.
 
 ## 13. Sprint State
 
