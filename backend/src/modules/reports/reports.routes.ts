@@ -16,3 +16,4 @@ router.get('/inventory', ctrl.inventoryReport);
 router.get('/profit-loss', ctrl.profitLoss);
 router.get('/pnl',        ctrl.pnlComparison);
 router.get('/dashboard',  ctrl.dashboardStats);
+router.get('/today-summary', ctrl.todaySummary);

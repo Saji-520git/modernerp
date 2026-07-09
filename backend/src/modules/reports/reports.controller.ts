@@ -80,3 +80,7 @@ export const dashboardStats: RequestHandler = async (_req, res) => {
   res.json(await reportsService.getDashboardStats());
 };
 
+export const todaySummary: RequestHandler = async (_req, res) => {
+  res.json(await reportsService.todaySummary());
+};
+

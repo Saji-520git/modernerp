@@ -217,6 +217,42 @@ export interface DashboardStats {
   recentActivity:              DashboardActivity[];
 }
 
+// ─── Today's Summary types ────────────────────────────────────────────────────
+
+export interface TodaySummary {
+  date:        string; // YYYY-MM-DD (local calendar day)
+  generatedAt: string; // ISO
+  headline: {
+    revenueCents:      number; // net of returns
+    grossRevenueCents: number;
+    returnsCents:      number;
+    orderCount:        number;
+    itemsSold:         number;
+    avgOrderCents:     number;
+    cogsCents:         number;
+    grossProfitCents:  number;
+    grossMarginPct:    number;
+  };
+  money: {
+    expensesCents:  number;
+    netProfitCents: number;
+  };
+  payments: { method: string; count: number; revenueCents: number }[];
+  topItems: { productId: string; name: string; sku: string; qty: number; revenueCents: number }[];
+  alerts: {
+    lowStockCount: number;
+    lowStockItems: { name: string; sku: string; totalQty: number; reorderLevel: number }[];
+    expiringCount: number;
+    expiringItems: { name: string; sku: string; expiryDate: string; daysLeft: number; totalQty: number }[];
+  };
+  context: {
+    yesterdayRevenueCents:   number;
+    revenueVsYesterdayPct:   number | null; // null → no prior-day baseline
+    newCustomers:            number;
+  };
+  hourly: { hour: number; revenueCents: number; orders: number }[];
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const reportsApi = {
@@ -248,4 +284,7 @@ export const reportsApi = {
 
   dashboardStats: (): Promise<DashboardStats> =>
     api.get('/reports/dashboard').then((r) => r.data),
+
+  todaySummary: (): Promise<TodaySummary> =>
+    api.get('/reports/today-summary').then((r) => r.data),
 };

@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, ShoppingCart, AlertTriangle,
   Package, Truck, ArrowRight, BarChart2, CreditCard,
   Warehouse, Receipt, ArrowUpRight, Users, UserCheck,
-  PackageOpen, RefreshCw, Bell,
+  PackageOpen, RefreshCw, Bell, Sun,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
@@ -517,6 +517,10 @@ export default function DashboardPage() {
           <span className="text-xs text-slate-400">
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </span>
+          <Link to="/dashboard/today"
+            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 rounded-lg text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-sm">
+            <Sun size={13} /> Today's Summary
+          </Link>
           <button onClick={() => refetch()}
             className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm">
             <RefreshCw size={13} /> Refresh

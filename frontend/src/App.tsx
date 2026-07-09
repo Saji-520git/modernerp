@@ -17,6 +17,7 @@ import SupplierDetailPage from './pages/contacts/SupplierDetailPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
 import ReportsPage from './pages/reports/ReportsPage';
+import TodaySummaryPage from './pages/dashboard/TodaySummaryPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import UnitsPage from './pages/units/UnitsPage';
 import ReturnsPage from './pages/returns/ReturnsPage';
@@ -172,6 +173,12 @@ export default function App() {
         <Route index element={
           <ErrorBoundary fallbackTitle="Dashboard failed to load">
             <DashboardPage />
+          </ErrorBoundary>
+        } />
+
+        <Route path="dashboard/today" element={
+          <ErrorBoundary fallbackTitle="Today's Summary failed to load">
+            <TodaySummaryPage />
           </ErrorBoundary>
         } />
 

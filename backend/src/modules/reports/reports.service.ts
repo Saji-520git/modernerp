@@ -819,6 +819,218 @@ export const reportsService = {
     };
   },
 
+  // ─── Today's Summary ─────────────────────────────────────────────────────────
+  // A friendly end-of-day snapshot scoped to [local-midnight, now]. Distinct from
+  // the 30/60/90-day dashboard chart and the custom-range reports. Uses the SAME
+  // local-midnight boundary as getDashboardStats so the headline "today" figure
+  // matches the dashboard hero card exactly. All money in cents, returns-aware.
+
+  todaySummary: async () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const now = new Date();
+
+    // Local calendar day (YYYY-MM-DD). start.toISOString() would return the UTC
+    // date of local-midnight, which is the PREVIOUS day for timezones ahead of
+    // UTC (e.g. Sri Lanka, UTC+5:30) — so build the label from local components.
+    const localDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+    // Yesterday, up to the SAME clock time as `now` — a fair "are we ahead of
+    // yesterday's pace" comparison rather than today-so-far vs a full day.
+    const elapsedMs = now.getTime() - start.getTime();
+    const yStart = new Date(start);
+    yStart.setDate(yStart.getDate() - 1);
+    const ySameTimeEnd = new Date(yStart.getTime() + elapsedMs);
+
+    const [
+      salesAgg,
+      returnsAgg,
+      cogsRaw,
+      paymentsRaw,
+      topItemsRaw,
+      expensesAgg,
+      yesterdayAgg,
+      lowStockRaw,
+      expiringRaw,
+      newCustomers,
+      hourlyRaw,
+    ] = await Promise.all([
+      // Today's confirmed sales
+      prisma.sale.aggregate({
+        where: { status: 'CONFIRMED', deletedAt: null, date: { gte: start, lt: end } },
+        _sum: { totalCents: true },
+        _count: { id: true },
+      }),
+      // Today's sales returns (SaleReturn has no soft-delete → filter createdAt)
+      prisma.saleReturn.aggregate({
+        where: { createdAt: { gte: start, lt: end } },
+        _sum: { totalCents: true },
+      }),
+      // Today's COGS + units sold
+      prisma.$queryRaw<[{ cogs: bigint; qty: number }]>`
+        SELECT COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs,
+               COALESCE(SUM(sl.qty), 0)::float                  AS qty
+        FROM "SaleLine" sl
+        JOIN "Product" p ON p.id = sl."productId"
+        JOIN "Sale"    s ON s.id = sl."saleId"
+        WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL
+          AND s.date >= ${start} AND s.date < ${end}
+      `,
+      // Payment method breakdown (gross collected, by method)
+      prisma.$queryRaw<{ method: string; count: bigint; revenue: bigint }[]>`
+        SELECT "paymentMethod" AS method,
+               COUNT(*)::bigint         AS count,
+               SUM("totalCents")::bigint AS revenue
+        FROM "Sale"
+        WHERE status = 'CONFIRMED' AND "deletedAt" IS NULL
+          AND date >= ${start} AND date < ${end}
+        GROUP BY "paymentMethod"
+        ORDER BY revenue DESC
+      `,
+      // Top 5 items sold today, by revenue
+      prisma.$queryRaw<{ productId: string; name: string; sku: string; qty: number; revenue: bigint }[]>`
+        SELECT p.id AS "productId", p.name, p.sku,
+               SUM(sl.qty)::float               AS qty,
+               SUM(sl."lineTotalCents")::bigint AS revenue
+        FROM "SaleLine" sl
+        JOIN "Product" p ON p.id = sl."productId"
+        JOIN "Sale"    s ON s.id = sl."saleId"
+        WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL
+          AND s.date >= ${start} AND s.date < ${end}
+        GROUP BY p.id, p.name, p.sku
+        ORDER BY revenue DESC
+        LIMIT 5
+      `,
+      // Today's expenses (exclude recurring templates + soft-deleted)
+      prisma.expense.aggregate({
+        where: { isRecurring: false, deletedAt: null, date: { gte: start, lt: end } },
+        _sum: { amount: true },
+      }),
+      // Yesterday up to the same clock time (pace comparison)
+      prisma.sale.aggregate({
+        where: { status: 'CONFIRMED', deletedAt: null, date: { gte: yStart, lt: ySameTimeEnd } },
+        _sum: { totalCents: true },
+      }),
+      // Low stock items (aggregate across warehouses)
+      prisma.$queryRaw<{ name: string; sku: string; reorderLevel: number; totalQty: number }[]>`
+        SELECT p.name, p.sku, p."reorderLevel",
+               COALESCE(SUM(s.qty), 0)::float AS "totalQty"
+        FROM "Product" p
+        LEFT JOIN "Stock" s ON s."productId" = p.id
+        WHERE p."isActive" = true
+        GROUP BY p.id, p.name, p.sku, p."reorderLevel"
+        HAVING p."reorderLevel" > 0 AND COALESCE(SUM(s.qty), 0) <= p."reorderLevel"
+        ORDER BY (p."reorderLevel" - COALESCE(SUM(s.qty), 0)) DESC
+      `,
+      // Products expiring within 30 days (that still have stock on hand)
+      prisma.$queryRaw<{ name: string; sku: string; expiryDate: Date; totalQty: number }[]>`
+        SELECT p.name, p.sku, p."expiryDate",
+               COALESCE(SUM(s.qty), 0)::float AS "totalQty"
+        FROM "Product" p
+        LEFT JOIN "Stock" s ON s."productId" = p.id
+        WHERE p."isActive" = true
+          AND p."expiryDate" IS NOT NULL
+          AND p."expiryDate" <= NOW() + INTERVAL '30 days'
+        GROUP BY p.id, p.name, p.sku, p."expiryDate"
+        HAVING COALESCE(SUM(s.qty), 0) > 0
+        ORDER BY p."expiryDate" ASC
+      `,
+      // New customers registered today
+      prisma.customer.count({ where: { createdAt: { gte: start, lt: end } } }),
+      // Hourly revenue trend for today
+      prisma.$queryRaw<{ hour: number; revenue: bigint; orders: bigint }[]>`
+        SELECT EXTRACT(HOUR FROM date)::int AS hour,
+               SUM("totalCents")::bigint    AS revenue,
+               COUNT(*)::bigint             AS orders
+        FROM "Sale"
+        WHERE status = 'CONFIRMED' AND "deletedAt" IS NULL
+          AND date >= ${start} AND date < ${end}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+    ]);
+
+    const grossRevenueCents = salesAgg._sum.totalCents ?? 0;
+    const returnsCents       = returnsAgg._sum.totalCents ?? 0;
+    const revenueCents       = Math.max(0, grossRevenueCents - returnsCents);
+    const orderCount         = salesAgg._count.id ?? 0;
+    const cogsCents          = Number(cogsRaw[0]?.cogs ?? 0);
+    const itemsSold          = Number(cogsRaw[0]?.qty ?? 0);
+    const grossProfitCents   = revenueCents - cogsCents;
+    const expensesCents      = expensesAgg._sum.amount ?? 0;
+    const netProfitCents     = grossProfitCents - expensesCents;
+
+    const yesterdayRevenueCents = yesterdayAgg._sum.totalCents ?? 0;
+    const revenueVsYesterdayPct =
+      yesterdayRevenueCents > 0
+        ? Math.round(((revenueCents - yesterdayRevenueCents) / yesterdayRevenueCents) * 1000) / 10
+        : null; // null → no prior-day baseline to compare against
+
+    const msPerDay = 86_400_000;
+    const expiringItems = expiringRaw.map((r) => ({
+      name:       r.name,
+      sku:        r.sku,
+      expiryDate: new Date(r.expiryDate).toISOString().slice(0, 10),
+      daysLeft:   Math.ceil((new Date(r.expiryDate).getTime() - now.getTime()) / msPerDay),
+      totalQty:   r.totalQty,
+    }));
+
+    return {
+      date:        localDate,
+      generatedAt: now.toISOString(),
+      headline: {
+        revenueCents,
+        grossRevenueCents,
+        returnsCents,
+        orderCount,
+        itemsSold,
+        avgOrderCents:    orderCount > 0 ? Math.round(revenueCents / orderCount) : 0,
+        cogsCents,
+        grossProfitCents,
+        grossMarginPct:   revenueCents > 0 ? Math.round((grossProfitCents / revenueCents) * 1000) / 10 : 0,
+      },
+      money: {
+        expensesCents,
+        netProfitCents,
+      },
+      payments: paymentsRaw.map((r) => ({
+        method:       r.method,
+        count:        Number(r.count),
+        revenueCents: Number(r.revenue),
+      })),
+      topItems: topItemsRaw.map((r) => ({
+        productId:    r.productId,
+        name:         r.name,
+        sku:          r.sku,
+        qty:          r.qty,
+        revenueCents: Number(r.revenue),
+      })),
+      alerts: {
+        lowStockCount: lowStockRaw.length,
+        lowStockItems: lowStockRaw.slice(0, 5).map((r) => ({
+          name:         r.name,
+          sku:          r.sku,
+          totalQty:     r.totalQty,
+          reorderLevel: r.reorderLevel,
+        })),
+        expiringCount: expiringItems.length,
+        expiringItems: expiringItems.slice(0, 5),
+      },
+      context: {
+        yesterdayRevenueCents,
+        revenueVsYesterdayPct,
+        newCustomers,
+      },
+      hourly: hourlyRaw.map((r) => ({
+        hour:         Number(r.hour),
+        revenueCents: Number(r.revenue),
+        orders:       Number(r.orders),
+      })),
+    };
+  },
+
   // ─── P&L Comparison (current vs previous period) ────────────────────────────
 
   getPnlComparison: async (dateFrom: string, dateTo: string, warehouseId?: string) => {
