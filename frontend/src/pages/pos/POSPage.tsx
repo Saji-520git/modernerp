@@ -403,6 +403,12 @@ interface CartLineHandle {
   focusDiscount: () => void;
 }
 
+// Shared column template for the cart table — applied to BOTH the sticky header
+// row and every CartLine so columns align.
+// Product | Unit | Unit Price | Qty | Disc Type | Disc Total | Total | trash
+const CART_GRID     = 'minmax(0,1fr) 62px 74px 60px 116px 68px 84px 20px';
+const CART_GRID_GAP = 8;
+
 const CartLine = forwardRef<CartLineHandle, {
   item: CartItem;
   onChange: (qty: number) => void;
@@ -491,18 +497,20 @@ const CartLine = forwardRef<CartLineHandle, {
 
   const qtyBoxStyle: React.CSSProperties = {
     background: '#f8fafc', border: '1px solid #e2e8f0',
-    borderRadius: 7, padding: '4px 8px',
+    borderRadius: 7, padding: '4px 4px',
     fontSize: 13, fontWeight: 700,
-    width: 64, textAlign: 'center', color: '#1e1b4b',
+    width: '100%', textAlign: 'center', color: '#1e1b4b',
+    boxSizing: 'border-box',
   };
 
   return (
     <div className="mb-1">
-      {/* Fix 4: single grid row — name | qty | unit | unit-price | line-total | trash */}
+      {/* Single-line table row — columns match CART_GRID header:
+          Product | Unit | Unit Price | Qty | Disc Type | Disc Total | Total | trash */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto auto auto',
-        gap: 10,
+        gridTemplateColumns: CART_GRID,
+        gap: CART_GRID_GAP,
         alignItems: 'center',
         padding: '7px 12px',
         background: 'white',
@@ -510,13 +518,36 @@ const CartLine = forwardRef<CartLineHandle, {
         border: '1px solid #eef2f7',
         boxShadow: '0 1px 2px rgba(15,23,42,0.05)',
       }}>
-        {/* Product name — service charge gets amber styling */}
+        {/* 1 — Product name (service charge gets amber styling) */}
         <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
           {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
           {item.product.name}
         </span>
 
-        {/* Editable qty box — service charge items show fixed qty (not editable) */}
+        {/* 2 — Unit: selector when >1 sellable unit, else static short code (never blank) */}
+        {unitOpts.length > 1 ? (
+          <select
+            value={item.unitId}
+            onChange={e => onChangeUnit(e.target.value)}
+            className="text-xs border rounded px-1 py-0.5 bg-white"
+            style={{ color: '#475569', borderColor: '#cbd5e1', width: '100%', boxSizing: 'border-box' }}
+          >
+            {unitOpts.map(opt => (
+              <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
+            ))}
+          </select>
+        ) : (
+          <span style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {unitOpts[0]?.label ?? ''}
+          </span>
+        )}
+
+        {/* 3 — Unit price */}
+        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+          {formatCents(item.unitPriceCents)}
+        </span>
+
+        {/* 4 — Editable qty box (service charge shows fixed non-editable qty) */}
         {item.isServiceCharge ? (
           <span style={{ ...qtyBoxStyle, cursor: 'default', opacity: 0.6 }}>1</span>
         ) : editing ? (
@@ -556,38 +587,73 @@ const CartLine = forwardRef<CartLineHandle, {
           </button>
         )}
 
-        {/* Unit selector — only when the product has more than one sellable unit */}
-        {unitOpts.length > 1 ? (
-          <select
-            value={item.unitId}
-            onChange={e => onChangeUnit(e.target.value)}
-            className="text-xs border rounded px-1 py-0.5 bg-white"
-            style={{ color: '#475569', borderColor: '#cbd5e1', maxWidth: 90 }}
-          >
-            {unitOpts.map(opt => (
-              <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
-            ))}
-          </select>
-        ) : (
+        {/* 5 — Disc Type: %/₨ toggle + value input when active/editing; else compact "+" to reveal.
+              Preserves the existing showDiscount reveal — relocated into a cell, not a second row. */}
+        {item.isServiceCharge ? (
           <span />
+        ) : (showDiscount || editing) ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={() => onUpdateDiscount('percent', 0)}
+              style={{
+                padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
+                background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
+                color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
+                border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+              }}
+            >%</button>
+            <button
+              type="button"
+              onClick={() => onUpdateDiscount('amount', 0)}
+              style={{
+                padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
+                background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
+                color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
+                border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+              }}
+            >₨</button>
+            <DiscountInput
+              ref={discountRef}
+              mode={item.itemDiscountType}
+              value={item.itemDiscountValue}
+              maxAmount={item.unitPriceCents}
+              onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
+              onEnter={onNavigateToBarcode}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowDiscount(true)}
+            style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '3px 0', width: '100%', letterSpacing: 0.2 }}
+            title="Add item discount"
+          >
+            + disc
+          </button>
         )}
 
-        {/* Unit price — muted, 11.5px */}
-        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-          {formatCents(item.unitPriceCents)}
+        {/* 6 — Disc Total (computed discount for the line) */}
+        <span style={{
+          fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+          color: item.itemDiscountCents > 0 ? '#16a34a' : '#cbd5e1',
+        }}>
+          {item.itemDiscountCents > 0 ? `-${formatCents(item.itemDiscountCents)}` : '–'}
         </span>
 
-        {/* Line total — bold, full price before discount */}
-        <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a', whiteSpace: 'nowrap', minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-          {formatCents(lineSubtotal)}
+        {/* 7 — Total (post-discount line total — B1 fix: was showing pre-discount subtotal) */}
+        <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a', whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+          {formatCents(lineTotal)}
         </span>
 
-        {/* Trash — hidden for auto service-charge lines (removed when parent is removed) */}
-        {!item.isServiceCharge && (
+        {/* 8 — Trash (hidden for auto service-charge lines, removed with their parent) */}
+        {!item.isServiceCharge ? (
           <button type="button" onClick={() => { sound.beep(); onRemove(); }}
             className="text-slate-300 hover:text-red-600 transition shrink-0">
             <Trash2 size={14} />
           </button>
+        ) : (
+          <span />
         )}
       </div>
 
@@ -596,63 +662,6 @@ const CartLine = forwardRef<CartLineHandle, {
         <p style={{ fontSize: 11, color: '#854F0B', padding: '1px 14px 0' }}>
           Only {cappedAt} in stock
         </p>
-      )}
-
-      {/* Per-item discount row — hidden for service charge items; shown when discount exists or being edited */}
-      {!item.isServiceCharge && (showDiscount || editing) && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          padding: '4px 12px 5px',
-          margin: '2px 0 0',
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', marginRight: 2, textTransform: 'uppercase', letterSpacing: 0.3 }}>Item disc.</span>
-          {/* Type toggle: % / Rs. */}
-          <button
-            type="button"
-            onClick={() => onUpdateDiscount('percent', 0)}
-            style={{
-              padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
-              background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
-              color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
-              border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-            }}
-          >%</button>
-          <button
-            type="button"
-            onClick={() => onUpdateDiscount('amount', 0)}
-            style={{
-              padding: '1px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600,
-              background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
-              color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
-              border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-            }}
-          >₨</button>
-          <DiscountInput
-            ref={discountRef}
-            mode={item.itemDiscountType}
-            value={item.itemDiscountValue}
-            maxAmount={item.unitPriceCents}
-            onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
-            onEnter={onNavigateToBarcode}
-          />
-          {item.itemDiscountCents > 0 && (
-            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginLeft: 2 }}>
-              -{formatCents(item.itemDiscountCents)}
-            </span>
-          )}
-        </div>
-      )}
-      {/* For items without active discount, show a small "D" hint when in qty-edit mode */}
-      {!item.isServiceCharge && !showDiscount && !editing && item.itemDiscountCents === 0 && (
-        <div style={{ padding: '2px 12px 2px' }}>
-          <button
-            type="button"
-            onClick={() => setShowDiscount(true)}
-            style={{ fontSize: 9, fontWeight: 600, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 9999, padding: '1px 8px', letterSpacing: 0.2 }}
-          >
-            + disc
-          </button>
-        </div>
       )}
     </div>
   );
@@ -2696,7 +2705,7 @@ export default function POSPage() {
       ═══════════════════════════════════════════════════════════════ */}
       <div
         className="overflow-hidden"
-        style={{ display: 'grid', gridTemplateColumns: '55fr 45fr' }}
+        style={{ display: 'grid', gridTemplateColumns: '52fr 48fr' }}
       >
 
         {/* ─── LEFT PANEL: products ─────────────────────────────────── */}
@@ -2811,7 +2820,7 @@ export default function POSPage() {
                 tabIndex={-1}
                 onKeyDown={handleGridKeyDown}
                 className="grid gap-3 outline-none"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(156px, 1fr))' }}
               >
                 {products.map((p, idx) => (
                   <ProductCard
@@ -2835,9 +2844,16 @@ export default function POSPage() {
               <ShoppingCart size={17} className="text-indigo-500" />
               Cart
               {cart.length > 0 && (
-                <span className="bg-indigo-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {cart.reduce((s, i) => s + i.qty, 0)}
-                </span>
+                <>
+                  <span className="bg-indigo-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center"
+                        title="Total quantity">
+                    {cart.reduce((s, i) => s + i.qty, 0)}
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-400"
+                        title="Distinct line items">
+                    {cart.length} {cart.length === 1 ? 'item' : 'items'}
+                  </span>
+                </>
               )}
             </div>
             {customer && (
@@ -2874,19 +2890,36 @@ export default function POSPage() {
                 <p className="text-xs text-slate-200">Scan a barcode or tap a product</p>
               </div>
             ) : (
-              cart.map(item => (
-                <CartLine
-                  key={item.product.id}
-                  ref={el => { cartLineRefs.current[item.product.id] = el; }}
-                  item={item}
-                  onChange={qty => updateQty(item.product.id, qty)}
-                  onRemove={() => removeFromCart(item.product.id)}
-                  onBatchCap={msg => setBatchCapToast(msg)}
-                  onUpdateDiscount={(type, value) => updateItemDiscount(item.product.id, type, value)}
-                  onNavigateToBarcode={refocusBarcode}
-                  onChangeUnit={unitId => changeCartUnit(item.product.id, unitId)}
-                />
-              ))
+              <>
+                {/* Sticky column-header row — aligns with every CartLine via CART_GRID */}
+                <div
+                  className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-1 pb-1.5 mb-1 border-b border-slate-100
+                             text-[9px] font-semibold uppercase tracking-wide text-slate-400"
+                  style={{ display: 'grid', gridTemplateColumns: CART_GRID, columnGap: CART_GRID_GAP, alignItems: 'end' }}
+                >
+                  <span>Item</span>
+                  <span>Unit</span>
+                  <span className="text-right">Price</span>
+                  <span className="text-center">Qty</span>
+                  <span className="text-center">Disc</span>
+                  <span className="text-right">Disc Tot</span>
+                  <span className="text-right">Total</span>
+                  <span />
+                </div>
+                {cart.map(item => (
+                  <CartLine
+                    key={item.product.id}
+                    ref={el => { cartLineRefs.current[item.product.id] = el; }}
+                    item={item}
+                    onChange={qty => updateQty(item.product.id, qty)}
+                    onRemove={() => removeFromCart(item.product.id)}
+                    onBatchCap={msg => setBatchCapToast(msg)}
+                    onUpdateDiscount={(type, value) => updateItemDiscount(item.product.id, type, value)}
+                    onNavigateToBarcode={refocusBarcode}
+                    onChangeUnit={unitId => changeCartUnit(item.product.id, unitId)}
+                  />
+                ))}
+              </>
             )}
           </div>
 
