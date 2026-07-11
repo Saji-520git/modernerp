@@ -406,8 +406,11 @@ interface CartLineHandle {
 // Shared column template for the cart table — applied to BOTH the sticky header
 // row and every CartLine so columns align.
 // Product | Unit | Unit Price | Qty | Disc Type | Disc Total | Total | trash
-const CART_GRID     = 'minmax(0,1fr) 62px 74px 60px 116px 68px 84px 20px';
-const CART_GRID_GAP = 8;
+// Columns are gap-less: vertical dividers are drawn per-cell (borderRight) so the
+// header and every row share continuous column rules.
+const CART_GRID       = 'minmax(0,1fr) 66px 80px 64px 128px 74px 90px 30px';
+const CART_COL_BORDER = '1px solid #eef2f7';                 // divider between body columns
+const CART_HDR_BORDER = '1px solid rgba(148,163,184,0.22)';  // divider on the dark header
 
 const CartLine = forwardRef<CartLineHandle, {
   item: CartItem;
@@ -497,169 +500,183 @@ const CartLine = forwardRef<CartLineHandle, {
 
   const qtyBoxStyle: React.CSSProperties = {
     background: '#f8fafc', border: '1px solid #e2e8f0',
-    borderRadius: 7, padding: '4px 4px',
+    borderRadius: 7, padding: '3px 4px',
     fontSize: 13, fontWeight: 700,
     width: '100%', textAlign: 'center', color: '#1e1b4b',
     boxSizing: 'border-box',
   };
 
   return (
-    <div className="mb-1">
-      {/* Single-line table row — columns match CART_GRID header:
-          Product | Unit | Unit Price | Qty | Disc Type | Disc Total | Total | trash */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: CART_GRID,
-        gap: CART_GRID_GAP,
-        alignItems: 'center',
-        padding: '7px 12px',
-        background: 'white',
-        borderRadius: 10,
-        border: '1px solid #eef2f7',
-        boxShadow: '0 1px 2px rgba(15,23,42,0.05)',
-      }}>
+    <div className="group" style={{ background: '#fff', borderBottom: CART_COL_BORDER }}>
+      {/* Single flush table row with per-cell vertical dividers — columns match the
+          dark CART_GRID header: Product | Unit | Price | Qty | Disc | Disc Tot | Total | trash */}
+      <div
+        className="transition-colors group-hover:bg-slate-50/70"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: CART_GRID,
+          columnGap: 0,
+          alignItems: 'stretch',
+        }}
+      >
         {/* 1 — Product name (service charge gets amber styling) */}
-        <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
-          {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
-          {item.product.name}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
+          <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
+            {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
+            {item.product.name}
+          </span>
+        </div>
 
         {/* 2 — Unit: selector when >1 sellable unit, else static short code (never blank) */}
-        {unitOpts.length > 1 ? (
-          <select
-            value={item.unitId}
-            onChange={e => onChangeUnit(e.target.value)}
-            className="text-xs border rounded px-1 py-0.5 bg-white"
-            style={{ color: '#475569', borderColor: '#cbd5e1', width: '100%', boxSizing: 'border-box' }}
-          >
-            {unitOpts.map(opt => (
-              <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
-            ))}
-          </select>
-        ) : (
-          <span style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {unitOpts[0]?.label ?? ''}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
+          {unitOpts.length > 1 ? (
+            <select
+              value={item.unitId}
+              onChange={e => onChangeUnit(e.target.value)}
+              className="text-xs border rounded px-1 py-0.5 bg-white"
+              style={{ color: '#475569', borderColor: '#cbd5e1', width: '100%', boxSizing: 'border-box' }}
+            >
+              {unitOpts.map(opt => (
+                <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+              {unitOpts[0]?.label ?? ''}
+            </span>
+          )}
+        </div>
 
         {/* 3 — Unit price */}
-        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-          {formatCents(item.unitPriceCents)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderRight: CART_COL_BORDER }}>
+          <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+            {formatCents(item.unitPriceCents)}
+          </span>
+        </div>
 
         {/* 4 — Editable qty box (service charge shows fixed non-editable qty) */}
-        {item.isServiceCharge ? (
-          <span style={{ ...qtyBoxStyle, cursor: 'default', opacity: 0.6 }}>1</span>
-        ) : editing ? (
-          <input
-            ref={inputRef}
-            type="number"
-            min={unitAllowDecimal ? '0.001' : '1'}
-            step={unitAllowDecimal ? '0.001' : '1'}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={e => {
-              if ((e.key === 'd' || e.key === 'D') && !item.isServiceCharge) {
-                e.preventDefault();
-                commitEdit();
-                // Delay past refocusBarcode's 100ms timeout so discount focus wins
-                setShowDiscount(true);
-                setTimeout(() => {
-                  discountRef.current?.focus();
-                  discountRef.current?.select();
-                }, 150);
-              } else if (e.key === 'Enter') {
-                e.preventDefault();
-                commitEdit();
-                onNavigateToBarcode();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setEditing(false);
-                onNavigateToBarcode();
-              }
-            }}
-            style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text', background: '#fff', borderColor: '#818cf8', boxShadow: '0 0 0 2px rgba(129,140,248,0.2)' }}
-          />
-        ) : (
-          <button type="button" onClick={startEdit} style={{ ...qtyBoxStyle, cursor: 'pointer' }}>
-            {fmtQty(item.qty)}
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', borderRight: CART_COL_BORDER }}>
+          {item.isServiceCharge ? (
+            <span style={{ ...qtyBoxStyle, cursor: 'default', opacity: 0.6 }}>1</span>
+          ) : editing ? (
+            <input
+              ref={inputRef}
+              type="number"
+              min={unitAllowDecimal ? '0.001' : '1'}
+              step={unitAllowDecimal ? '0.001' : '1'}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={e => {
+                if ((e.key === 'd' || e.key === 'D') && !item.isServiceCharge) {
+                  e.preventDefault();
+                  commitEdit();
+                  // Delay past refocusBarcode's 100ms timeout so discount focus wins
+                  setShowDiscount(true);
+                  setTimeout(() => {
+                    discountRef.current?.focus();
+                    discountRef.current?.select();
+                  }, 150);
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitEdit();
+                  onNavigateToBarcode();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditing(false);
+                  onNavigateToBarcode();
+                }
+              }}
+              style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text', background: '#fff', borderColor: '#818cf8', boxShadow: '0 0 0 2px rgba(129,140,248,0.2)' }}
+            />
+          ) : (
+            <button type="button" onClick={startEdit} style={{ ...qtyBoxStyle, cursor: 'pointer' }}>
+              {fmtQty(item.qty)}
+            </button>
+          )}
+        </div>
 
         {/* 5 — Disc Type: %/₨ toggle + value input when active/editing; else compact "+" to reveal.
               Preserves the existing showDiscount reveal — relocated into a cell, not a second row. */}
-        {item.isServiceCharge ? (
-          <span />
-        ) : (showDiscount || editing) ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
+          {item.isServiceCharge ? (
+            <span />
+          ) : (showDiscount || editing) ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={() => onUpdateDiscount('percent', 0)}
+                style={{
+                  padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
+                  background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
+                  color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
+                  border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+                }}
+              >%</button>
+              <button
+                type="button"
+                onClick={() => onUpdateDiscount('amount', 0)}
+                style={{
+                  padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
+                  background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
+                  color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
+                  border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
+                }}
+              >₨</button>
+              <DiscountInput
+                ref={discountRef}
+                mode={item.itemDiscountType}
+                value={item.itemDiscountValue}
+                maxAmount={item.unitPriceCents}
+                onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
+                onEnter={onNavigateToBarcode}
+              />
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => onUpdateDiscount('percent', 0)}
-              style={{
-                padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
-                background: item.itemDiscountType === 'percent' ? '#e0e7ff' : '#f1f5f9',
-                color:      item.itemDiscountType === 'percent' ? '#4338ca' : '#94a3b8',
-                border: item.itemDiscountType === 'percent' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-              }}
-            >%</button>
-            <button
-              type="button"
-              onClick={() => onUpdateDiscount('amount', 0)}
-              style={{
-                padding: '1px 4px', fontSize: 10, borderRadius: 3, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
-                background: item.itemDiscountType === 'amount' ? '#e0e7ff' : '#f1f5f9',
-                color:      item.itemDiscountType === 'amount' ? '#4338ca' : '#94a3b8',
-                border: item.itemDiscountType === 'amount' ? '1px solid #a5b4fc' : '1px solid #e2e8f0',
-              }}
-            >₨</button>
-            <DiscountInput
-              ref={discountRef}
-              mode={item.itemDiscountType}
-              value={item.itemDiscountValue}
-              maxAmount={item.unitPriceCents}
-              onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
-              onEnter={onNavigateToBarcode}
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowDiscount(true)}
-            style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '3px 0', width: '100%', letterSpacing: 0.2 }}
-            title="Add item discount"
-          >
-            + disc
-          </button>
-        )}
+              onClick={() => setShowDiscount(true)}
+              style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '3px 0', width: '100%', letterSpacing: 0.2 }}
+              title="Add item discount"
+            >
+              + disc
+            </button>
+          )}
+        </div>
 
         {/* 6 — Disc Total (computed discount for the line) */}
-        <span style={{
-          fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-          color: item.itemDiscountCents > 0 ? '#16a34a' : '#cbd5e1',
-        }}>
-          {item.itemDiscountCents > 0 ? `-${formatCents(item.itemDiscountCents)}` : '–'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderRight: CART_COL_BORDER }}>
+          <span style={{
+            fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+            color: item.itemDiscountCents > 0 ? '#16a34a' : '#cbd5e1',
+          }}>
+            {item.itemDiscountCents > 0 ? `-${formatCents(item.itemDiscountCents)}` : '–'}
+          </span>
+        </div>
 
         {/* 7 — Total (post-discount line total — B1 fix: was showing pre-discount subtotal) */}
-        <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a', whiteSpace: 'nowrap', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-          {formatCents(lineTotal)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderRight: CART_COL_BORDER }}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+            {formatCents(lineTotal)}
+          </span>
+        </div>
 
         {/* 8 — Trash (hidden for auto service-charge lines, removed with their parent) */}
-        {!item.isServiceCharge ? (
-          <button type="button" onClick={() => { sound.beep(); onRemove(); }}
-            className="text-slate-300 hover:text-red-600 transition shrink-0">
-            <Trash2 size={14} />
-          </button>
-        ) : (
-          <span />
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 2px' }}>
+          {!item.isServiceCharge ? (
+            <button type="button" onClick={() => { sound.beep(); onRemove(); }}
+              className="text-slate-300 hover:text-red-600 transition shrink-0">
+              <Trash2 size={14} />
+            </button>
+          ) : (
+            <span />
+          )}
+        </div>
       </div>
 
       {/* Amber warning when qty was capped to max stock */}
       {cappedAt !== null && (
-        <p style={{ fontSize: 11, color: '#854F0B', padding: '1px 14px 0' }}>
+        <p style={{ fontSize: 11, color: '#854F0B', padding: '1px 14px 4px' }}>
           Only {cappedAt} in stock
         </p>
       )}
@@ -2572,7 +2589,7 @@ export default function POSPage() {
   return (
     <div
       className="h-screen w-screen overflow-hidden bg-slate-50"
-      style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto' }}
+      style={{ display: 'grid', gridTemplateRows: 'auto 1fr' }}
     >
       {/* Block POS and prompt cashier to open a shift */}
       {needsShiftOpen && (
@@ -2705,7 +2722,7 @@ export default function POSPage() {
       ═══════════════════════════════════════════════════════════════ */}
       <div
         className="overflow-hidden"
-        style={{ display: 'grid', gridTemplateColumns: '52fr 48fr' }}
+        style={{ display: 'grid', gridTemplateColumns: '46fr 54fr' }}
       >
 
         {/* ─── LEFT PANEL: products ─────────────────────────────────── */}
@@ -2820,7 +2837,7 @@ export default function POSPage() {
                 tabIndex={-1}
                 onKeyDown={handleGridKeyDown}
                 className="grid gap-3 outline-none"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(156px, 1fr))' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(144px, 1fr))' }}
               >
                 {products.map((p, idx) => (
                   <ProductCard
@@ -2833,13 +2850,64 @@ export default function POSPage() {
               </div>
             )}
           </div>
+
+          {/* ─── Quick bar — relocated under the product grid (left column only)
+               so the checkout column reclaims the full-width footer's height.
+               Shortcut handlers (F1/F4/L/Ctrl+Shift+X) live in the global
+               keydown effect — independent of where these buttons render. ── */}
+          <footer className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#f8fafc', borderTop: '.5px solid #e2e8f0' }}>
+
+            {/* Hold — F4 */}
+            <button type="button"
+              onClick={() => { if (cart.length > 0) setShowHoldModal(true); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
+              ⏸ Hold
+              <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F4</span>
+            </button>
+
+            {/* Drafts — L */}
+            <button type="button"
+              onClick={() => setShowHolds(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
+              📋 Drafts
+              {holds.length > 0 && (
+                <span style={{ background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{holds.length}</span>
+              )}
+              <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>L</span>
+            </button>
+
+            {/* Right side */}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {/* Shortcuts — F1 */}
+              <button type="button"
+                onClick={() => setShowShortcuts(prev => !prev)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
+                  border: showShortcuts ? '.5px solid #818cf8' : '.5px solid #e2e8f0',
+                  borderRadius: 6,
+                  background: showShortcuts ? '#eef2ff' : '#fff',
+                  fontSize: 12, color: showShortcuts ? '#4338ca' : '#64748b', cursor: 'pointer',
+                }}>
+                ⌨ Shortcuts
+                <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F1</span>
+              </button>
+
+              {/* Close Shift — Ctrl+Shift+X */}
+              <button type="button"
+                onClick={() => setShowCloseShift(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: '#fff', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
+                ⏱ Close Shift
+                <span style={{ fontSize: 10, color: '#fca5a5', background: '#fff1f2', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
+              </button>
+            </div>
+          </footer>
         </div>
 
         {/* ─── RIGHT PANEL: cart ────────────────────────────────────── */}
         <div className="flex flex-col overflow-hidden bg-white">
 
           {/* Cart header */}
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2 font-bold text-slate-800">
               <ShoppingCart size={17} className="text-indigo-500" />
               Cart
@@ -2882,7 +2950,7 @@ export default function POSPage() {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="flex-1 overflow-hidden px-3 py-2">
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-2">
                 <ShoppingCart size={44} />
@@ -2890,21 +2958,31 @@ export default function POSPage() {
                 <p className="text-xs text-slate-200">Scan a barcode or tap a product</p>
               </div>
             ) : (
-              <>
-                {/* Sticky column-header row — aligns with every CartLine via CART_GRID */}
+              // Framed, scrollable table card — the scroll lives here so the dark
+              // header can stay pinned (sticky) and the rounded corners clip cleanly.
+              <div
+                className="h-full overflow-y-auto"
+                style={{ borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}
+              >
+                {/* Fixed dark column-header — aligns with every CartLine via CART_GRID */}
                 <div
-                  className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-1 pb-1.5 mb-1 border-b border-slate-100
-                             text-[9px] font-semibold uppercase tracking-wide text-slate-400"
-                  style={{ display: 'grid', gridTemplateColumns: CART_GRID, columnGap: CART_GRID_GAP, alignItems: 'end' }}
+                  className="sticky top-0 z-10 text-[10px] font-bold uppercase"
+                  style={{
+                    display: 'grid', gridTemplateColumns: CART_GRID, columnGap: 0,
+                    background: 'linear-gradient(180deg,#1e293b,#0f172a)',
+                    color: '#e2e8f0', letterSpacing: '0.05em',
+                    borderRadius: '12px 12px 0 0',
+                    boxShadow: '0 2px 5px rgba(15,23,42,0.25)',
+                  }}
                 >
-                  <span>Item</span>
-                  <span>Unit</span>
-                  <span className="text-right">Price</span>
-                  <span className="text-center">Qty</span>
-                  <span className="text-center">Disc</span>
-                  <span className="text-right">Disc Tot</span>
-                  <span className="text-right">Total</span>
-                  <span />
+                  <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER }}>Item</span>
+                  <span style={{ padding: '9px 6px', borderRight: CART_HDR_BORDER, textAlign: 'center' }}>Unit</span>
+                  <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER, textAlign: 'right' }}>Price</span>
+                  <span style={{ padding: '9px 6px', borderRight: CART_HDR_BORDER, textAlign: 'center' }}>Qty</span>
+                  <span style={{ padding: '9px 6px', borderRight: CART_HDR_BORDER, textAlign: 'center' }}>Disc</span>
+                  <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER, textAlign: 'right' }}>Disc&nbsp;Tot</span>
+                  <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER, textAlign: 'right' }}>Total</span>
+                  <span style={{ padding: '9px 2px' }} />
                 </div>
                 {cart.map(item => (
                   <CartLine
@@ -2919,12 +2997,12 @@ export default function POSPage() {
                     onChangeUnit={unitId => changeCartUnit(item.product.id, unitId)}
                   />
                 ))}
-              </>
+              </div>
             )}
           </div>
 
           {/* Totals + PAY NOW */}
-          <div className="border-t border-slate-200 px-4 py-2 space-y-1 shrink-0 bg-slate-50/60">
+          <div className="border-t border-slate-200 px-4 pt-2 pb-2.5 space-y-1 shrink-0 bg-white">
             {/* Gross subtotal — full prices before any discounts */}
             <div className="flex justify-between text-sm text-slate-500">
               <span>Subtotal</span>
@@ -2989,17 +3067,9 @@ export default function POSPage() {
               </div>
             )}
 
-            {/* TOTAL */}
-            <div className="pt-1.5 mt-0.5 border-t border-slate-200">
-              <div className="flex justify-between items-baseline">
-                <span className="text-base font-bold text-slate-600 tracking-wide">TOTAL</span>
-                <span className="text-3xl font-black text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCents(grandTotal)}</span>
-              </div>
-            </div>
-
             {/* Staff Sale toggle — visible only when feature is enabled and user is ADMIN/MANAGER */}
             {appSettings?.staffSalesEnabled && isAdmin && (
-              <label className={`flex items-center gap-2.5 cursor-pointer select-none px-3 py-2 rounded-lg transition ${isStaffSale ? 'bg-violet-50 border border-violet-200' : 'bg-slate-50 border border-transparent'}`}>
+              <label className={`flex items-center gap-2.5 cursor-pointer select-none px-3 py-1.5 rounded-lg transition ${isStaffSale ? 'bg-violet-50 border border-violet-200' : 'bg-slate-50 border border-transparent'}`}>
                 <input
                   type="checkbox"
                   checked={isStaffSale}
@@ -3024,8 +3094,17 @@ export default function POSPage() {
               </p>
             )}
 
-            {/* CANCEL + PAY NOW */}
-            <div className="flex gap-2">
+            {/* TOTAL · CANCEL · PAY NOW — single row, 3 columns (compact footer) */}
+            <div className="mt-1" style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 1.3fr', gap: 8, alignItems: 'stretch' }}>
+              {/* TOTAL — premium dark band, cohesive with the cart header */}
+              <div
+                className="flex flex-col justify-center rounded-xl px-3 py-2"
+                style={{ background: 'linear-gradient(135deg,#1e293b,#0f172a)', boxShadow: '0 4px 14px rgba(15,23,42,0.18)' }}
+              >
+                <span className="text-[10px] font-bold tracking-[0.18em] text-slate-400 leading-none">TOTAL</span>
+                <span className="text-2xl font-black text-white leading-tight" style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{formatCents(grandTotal)}</span>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -3033,16 +3112,15 @@ export default function POSPage() {
                 }}
                 disabled={cart.length === 0 || checkoutMutation.isPending}
                 className={cls(
-                  'flex-1 py-3 rounded-lg font-semibold border-2 border-red-500 text-red-600 bg-white',
+                  'rounded-xl font-semibold border-2 border-red-500 text-red-600 bg-white',
                   'hover:bg-red-50 active:bg-red-100 transition-colors',
                   'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white',
-                  'flex items-center justify-center gap-2',
+                  'flex flex-col items-center justify-center gap-0.5 px-2',
                 )}
                 aria-label="Cancel sale (F5)"
               >
-                <X className="w-5 h-5" />
-                CANCEL
-                <kbd className="ml-1 text-[10px] bg-red-50 border border-red-200 text-red-600 rounded px-1 font-mono">F5</kbd>
+                <span className="flex items-center gap-1.5"><X className="w-4 h-4" /> CANCEL</span>
+                <kbd className="text-[10px] bg-red-50 border border-red-200 text-red-600 rounded px-1 font-mono">F5</kbd>
               </button>
               <button
                 type="button"
@@ -3052,7 +3130,7 @@ export default function POSPage() {
                 }}
                 disabled={cart.length === 0 || !warehouseId || checkoutMutation.isPending || hasOversoldItem}
                 className={cls(
-                  'flex-[2] py-3 font-bold text-lg rounded-xl flex items-center justify-center gap-2 transition-colors',
+                  'font-bold text-lg rounded-xl flex flex-col items-center justify-center gap-0.5 px-2 transition-colors',
                   'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
                   cart.length === 0 || !warehouseId
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -3062,64 +3140,17 @@ export default function POSPage() {
                 )}
               >
                 {checkoutMutation.isPending
-                  ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</>
-                  : <><CheckCircle size={18} /> PAY NOW <kbd className="ml-1 text-[10px] bg-white/20 border border-white/30 rounded px-1 font-mono">F8</kbd></>
+                  ? <span className="flex items-center gap-2 text-base"><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing…</span>
+                  : <>
+                      <span className="flex items-center gap-1.5"><CheckCircle size={18} /> PAY NOW</span>
+                      <kbd className="text-[10px] bg-white/20 border border-white/30 rounded px-1 font-mono">F8</kbd>
+                    </>
                 }
               </button>
             </div>
           </div>
         </div>
       </div>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          BOTTOM QUICK BAR
-      ═══════════════════════════════════════════════════════════════ */}
-      <footer style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#f8fafc', borderTop: '.5px solid #e2e8f0' }}>
-
-        {/* Hold — F4 */}
-        <button type="button"
-          onClick={() => { if (cart.length > 0) setShowHoldModal(true); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
-          ⏸ Hold
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F4</span>
-        </button>
-
-        {/* Drafts — L */}
-        <button type="button"
-          onClick={() => setShowHolds(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
-          📋 Drafts
-          {holds.length > 0 && (
-            <span style={{ background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{holds.length}</span>
-          )}
-          <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>L</span>
-        </button>
-
-        {/* Right side */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {/* Shortcuts — F1 */}
-          <button type="button"
-            onClick={() => setShowShortcuts(prev => !prev)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
-              border: showShortcuts ? '.5px solid #818cf8' : '.5px solid #e2e8f0',
-              borderRadius: 6,
-              background: showShortcuts ? '#eef2ff' : '#fff',
-              fontSize: 12, color: showShortcuts ? '#4338ca' : '#64748b', cursor: 'pointer',
-            }}>
-            ⌨ Shortcuts
-            <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F1</span>
-          </button>
-
-          {/* Close Shift — Ctrl+Shift+X */}
-          <button type="button"
-            onClick={() => setShowCloseShift(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: '#fff', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
-            ⏱ Close Shift
-            <span style={{ fontSize: 10, color: '#fca5a5', background: '#fff1f2', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
-          </button>
-        </div>
-      </footer>
 
       {/* ═══════════════════════════════════════════════════════════════
           DIALOGS / MODALS
