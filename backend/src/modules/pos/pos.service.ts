@@ -33,12 +33,13 @@ export const posService = {
   // ── Products ──────────────────────────────────────────────────────────────
 
   async searchProducts(input: ProductSearchInput) {
-    const { search, warehouseId, categoryId, page, pageSize } = input;
+    const { search, warehouseId, categoryId, brandId, page, pageSize } = input;
     const skip = (page - 1) * pageSize;
 
     const where = {
       isActive: true,
       ...(categoryId ? { categoryId } : {}),
+      ...(brandId ? { brandId } : {}),
       ...(search ? {
         OR: [
           { name:    { contains: search, mode: 'insensitive' as const } },

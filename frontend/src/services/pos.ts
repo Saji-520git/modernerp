@@ -197,6 +197,7 @@ export const posApi = {
     search?: string;
     warehouseId?: string;
     categoryId?: string;
+    brandId?: string;
     page?: number;
     pageSize?: number;
   }): Promise<ProductsResponse> =>

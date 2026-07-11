@@ -9,13 +9,15 @@ import {
   CheckCircle, LogOut, Printer, Save, Mail,
   User, CreditCard, Banknote, Building2, Layers,
   ChevronRight, FolderOpen, UserPlus, ChevronDown, QrCode,
+  RotateCcw, Tag,
 } from 'lucide-react';
 import {
   posApi, formatCents, daysUntilExpiry,
   type PosProduct, type Receipt, type AllPaymentMethods,
 } from '../../services/pos';
 import DiscountInput, { type DiscountInputHandle } from '../../components/pos/DiscountInput';
-import { categoriesApi, type Category } from '../../services/masterData';
+import { categoriesApi, brandsApi, type Category, type Brand } from '../../services/masterData';
+import NewReturnModal from '../../components/returns/NewReturnModal';
 import { shiftsApi } from '../../services/shifts';
 import { useAppSettings } from '../../context/SettingsContext';
 import { api } from '../../services/api';
@@ -1276,13 +1278,14 @@ function PaymentDialog({
 // ─── ReceiptModal ─────────────────────────────────────────────────────────────
 
 function ReceiptModal({
-  receipt, changeCents, onNewSale, onClose, onPrint,
+  receipt, changeCents, onNewSale, onClose, onPrint, onReturn,
 }: {
   receipt: Receipt;
   changeCents: number;
   onNewSale: () => void;
   onClose: () => void;
   onPrint: () => void;
+  onReturn: () => void;
 }) {
   const { settings } = useAppSettings();
 
@@ -1368,6 +1371,15 @@ function ReceiptModal({
             >
               <ShoppingCart size={15} /> New Sale
               <span className="ml-1 text-emerald-300 text-xs font-normal">F5</span>
+            </button>
+
+            {/* Return items from THIS sale — one-click into the shared return modal */}
+            <button
+              type="button"
+              onClick={onReturn}
+              className="w-full flex items-center justify-center gap-2 border border-orange-200 text-orange-600 hover:bg-orange-50 rounded-xl py-2.5 text-sm font-semibold transition"
+            >
+              <RotateCcw size={15} /> Return Items
             </button>
 
           </div>
@@ -1498,6 +1510,7 @@ export default function POSPage() {
   const [search, setSearch]                     = useState('');
   const [debouncedSearch, setDebouncedSearch]   = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedBrand, setSelectedBrand]       = useState<string | null>(null);
   // Highlighted product card index for keyboard grid navigation (v1.0.60; -1 = none)
   const [gridSelectedIndex, setGridSelectedIndex] = useState<number>(-1);
   const CART_KEY = 'pos_cart_draft';
@@ -1530,6 +1543,9 @@ export default function POSPage() {
   const [showCancelConfirm,   setShowCancelConfirm]   = useState(false);
   const [showHolds,           setShowHolds]           = useState(false);
   const [showCustomer,        setShowCustomer]        = useState(false);
+  // Quick sales return (reuses shared NewReturnModal). prefill = last completed sale id.
+  const [showReturn,          setShowReturn]          = useState(false);
+  const [returnPrefillId,     setReturnPrefillId]     = useState<string | undefined>(undefined);
   const [showShortcuts,       setShowShortcuts]       = useState(false);
   const [showExitBlocked,     setShowExitBlocked]     = useState(false);
   const [showWhDropdown,      setShowWhDropdown]      = useState(false);
@@ -1677,12 +1693,19 @@ export default function POSPage() {
     staleTime: 5 * 60_000,
   });
 
+  const { data: brands = [] } = useQuery<Brand[]>({
+    queryKey: ['brands'],
+    queryFn:  brandsApi.list,
+    staleTime: 5 * 60_000,
+  });
+
   const { data: productsData, isFetching: loadingProducts } = useQuery({
-    queryKey: ['pos-products', debouncedSearch, warehouseId, selectedCategory],
+    queryKey: ['pos-products', debouncedSearch, warehouseId, selectedCategory, selectedBrand],
     queryFn:  () => posApi.searchProducts({
       search:      debouncedSearch || undefined,
       warehouseId: warehouseId    || undefined,
       categoryId:  selectedCategory ?? undefined,
+      brandId:     selectedBrand ?? undefined,
       pageSize:    120,
     }),
     enabled: !!warehouseId,
@@ -2424,7 +2447,7 @@ export default function POSPage() {
 
       const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
-        || showReceipt || showCustomer || showCancelConfirm || !!quickAddBarcode;
+        || showReceipt || showCustomer || showCancelConfirm || showReturn || !!quickAddBarcode;
       if (anyDialog) return;
 
       // F2 — focus barcode/scanner input
@@ -2517,7 +2540,7 @@ export default function POSPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
-      showHolds, showReceipt, showCustomer, showCancelConfirm, quickAddBarcode,
+      showHolds, showReceipt, showCustomer, showCancelConfirm, showReturn, quickAddBarcode,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
       checkoutMutation.isPending, hasOversoldItem]);
 
@@ -2633,6 +2656,14 @@ export default function POSPage() {
         {/* Cashier name */}
         <span className="text-xs text-slate-400 hidden sm:block shrink-0">{user?.fullName}</span>
 
+        {/* Quick Sales Return — opens the shared return modal in search mode */}
+        <button type="button"
+          onClick={() => { setReturnPrefillId(undefined); setShowReturn(true); }}
+          title="Process a sales return"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-200 rounded-lg text-xs font-medium text-orange-600 hover:bg-orange-50 transition shrink-0">
+          <RotateCcw size={13} /> Return
+        </button>
+
         {/* Exit POS — all roles */}
         <button type="button" onClick={() => {
           if (isAdmin) {
@@ -2673,6 +2704,41 @@ export default function POSPage() {
 
           {/* Search + barcode row */}
           <div className="bg-white border-b border-slate-200 px-4 py-3 space-y-2 shrink-0">
+            {/* Category + Brand filters — compact dropdowns above the search bars
+                so they don't consume vertical space as categories/brands grow. */}
+            {(categories.length > 0 || brands.length > 0) && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <Layers size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <select
+                    value={selectedCategory ?? ''}
+                    onChange={e => setSelectedCategory(e.target.value || null)}
+                    className="w-full appearance-none pl-8 pr-7 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition cursor-pointer"
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <Tag size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <select
+                    value={selectedBrand ?? ''}
+                    onChange={e => setSelectedBrand(e.target.value || null)}
+                    className="w-full appearance-none pl-8 pr-7 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition cursor-pointer"
+                  >
+                    <option value="">All Brands</option>
+                    {brands.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
+
             {/* Barcode scanner input */}
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2723,33 +2789,6 @@ export default function POSPage() {
               />
             </div>
 
-            {/* Category chips */}
-            {categories.length > 0 && (
-              <div className="flex gap-1.5 flex-wrap">
-                <button type="button"
-                  onClick={() => setSelectedCategory(null)}
-                  className={cls(
-                    'px-2.5 py-1 rounded-full text-xs font-medium border transition',
-                    selectedCategory === null
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300',
-                  )}>
-                  All
-                </button>
-                {categories.map(cat => (
-                  <button key={cat.id} type="button"
-                    onClick={() => setSelectedCategory(cat.id === selectedCategory ? null : cat.id)}
-                    className={cls(
-                      'px-2.5 py-1 rounded-full text-xs font-medium border transition',
-                      selectedCategory === cat.id
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300',
-                    )}>
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Product grid */}
@@ -3072,6 +3111,14 @@ export default function POSPage() {
             onNewSale={newSale}
             onClose={() => { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); }}
             onPrint={printReceipt}
+            onReturn={() => {
+              // Acknowledge the receipt (clears cart, closes popup, stops the
+              // recovery effect) then open the shared return modal prefilled with
+              // the just-completed sale — "return what I just sold" in one click.
+              setReturnPrefillId(lastReceipt.id);
+              newSale();
+              setShowReturn(true);
+            }}
           />
         ) : (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -3124,6 +3171,13 @@ export default function POSPage() {
           selected={customer}
           onSelect={setCustomer}
           onClose={() => setShowCustomer(false)}
+        />
+      )}
+
+      {showReturn && (
+        <NewReturnModal
+          prefillSaleId={returnPrefillId}
+          onClose={() => { setShowReturn(false); setReturnPrefillId(undefined); refocusBarcode(); }}
         />
       )}
 

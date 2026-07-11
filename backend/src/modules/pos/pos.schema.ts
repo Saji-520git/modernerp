@@ -29,6 +29,7 @@ export const productSearchSchema = z.object({
   search:      z.string().optional(),
   warehouseId: z.string().cuid().optional(),
   categoryId:  z.string().cuid().optional(),
+  brandId:     z.string().cuid().optional(),
   page:        z.coerce.number().int().min(1).default(1),
   pageSize:    z.coerce.number().int().min(1).max(200).default(24),
 });
