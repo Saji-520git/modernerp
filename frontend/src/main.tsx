@@ -6,6 +6,7 @@ import { emitToast } from './lib/toast-bus';
 import GlobalToast from './components/common/GlobalToast';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { SettingsProvider } from './context/SettingsContext';
+import { ThemeProvider } from './context/ThemeContext';
 import App from './App';
 import './styles/index.css';
 
@@ -33,14 +34,16 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallbackTitle="Application failed to start">
-      <QueryClientProvider client={queryClient}>
-        <GlobalToast />
-        <SettingsProvider>
-          <HashRouter>
-            <App />
-          </HashRouter>
-        </SettingsProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <GlobalToast />
+          <SettingsProvider>
+            <HashRouter>
+              <App />
+            </HashRouter>
+          </SettingsProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>
 );

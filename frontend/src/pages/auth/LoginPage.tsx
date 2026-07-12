@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShoppingCart, Package, BarChart3, Truck } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+import ThemeToggle from '../../components/common/ThemeToggle';
 
 export default function LoginPage() {
   const [email,    setEmail]    = useState('admin@modernerp.local');
@@ -40,20 +41,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-900">
+    <div className="min-h-screen flex bg-app">
 
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex flex-col justify-between w-[420px] flex-shrink-0 bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900 p-12">
+      {/* Left panel — branding. A constant deep indigo→slate showcase in BOTH
+          themes (brand chrome is intentionally always-dark), so only literal
+          brand colors live here. */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] flex-shrink-0 bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 p-12">
 
         {/* Logo area */}
         <div>
-          <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center mb-6">
             <span className="text-3xl font-black text-white">B</span>
           </div>
           <h1 className="text-3xl font-black text-white leading-tight">
-            Brocode<span className="text-blue-400"> ERP</span>
+            Brocode<span className="text-indigo-400"> ERP</span>
           </h1>
-          <p className="text-blue-300/70 text-sm mt-2">
+          <p className="text-indigo-300/70 text-sm mt-2">
             Retail &amp; Grocery ERP Platform
           </p>
         </div>
@@ -68,45 +71,51 @@ export default function LoginPage() {
           ].map(f => (
             <div key={f.title} className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <f.icon size={16} className="text-blue-200" />
+                <f.icon size={16} className="text-indigo-200" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-white leading-tight">{f.title}</p>
-                <p className="text-xs text-blue-200/70 mt-0.5 leading-relaxed">{f.desc}</p>
+                <p className="text-xs text-indigo-200/70 mt-0.5 leading-relaxed">{f.desc}</p>
               </div>
             </div>
           ))}
         </div>
 
         {/* Version */}
-        <p className="text-blue-400/40 text-xs">Version 1.0.0</p>
+        <p className="text-indigo-400/40 text-xs">Version 1.0.0</p>
       </div>
 
-      {/* Right panel — login form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
+      {/* Right panel — login form (fully tokenized: themes light/dark) */}
+      <div className="relative flex-1 flex items-center justify-center p-8 bg-app">
+
+        {/* Theme toggle */}
+        <div className="absolute top-5 right-5">
+          <ThemeToggle />
+        </div>
+
         <div className="w-full max-w-md">
 
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-3">
-              <span className="text-2xl font-black text-white">B</span>
+            <div className="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center mx-auto mb-3">
+              <span className="text-2xl font-black text-accent-fg">B</span>
             </div>
-            <h1 className="text-2xl font-black text-slate-800">BROcode ERP</h1>
+            <h1 className="text-2xl font-black text-content">BROcode ERP</h1>
           </div>
 
           {/* Form card */}
-          <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200 p-8">
+          <div className="bg-surface rounded-2xl shadow-token-lg border border-line p-8">
 
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-800">Welcome back</h2>
-              <p className="text-slate-500 text-sm mt-1">
+              <h2 className="text-2xl font-bold text-content">Welcome back</h2>
+              <p className="text-content-muted text-sm mt-1">
                 Sign in to your account to continue
               </p>
             </div>
 
             {/* Error alert */}
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+              <div className="mb-4 p-3 bg-danger-subtle border border-danger rounded-lg flex items-center gap-2 text-danger text-sm">
                 <AlertCircle size={16} />
                 {error}
               </div>
@@ -114,16 +123,16 @@ export default function LoginPage() {
 
             {/* Email field */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-sm font-medium text-content-secondary mb-1.5">
                 Email address
               </label>
               <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-4 py-3 border border-line rounded-xl text-sm text-content bg-surface-inset focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   placeholder="admin@example.com"
                   autoComplete="email"
                 />
@@ -132,16 +141,16 @@ export default function LoginPage() {
 
             {/* Password field */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-sm font-medium text-content-secondary mb-1.5">
                 Password
               </label>
               <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
                 <input
                   type={showPass ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-10 py-3 border border-line rounded-xl text-sm text-content bg-surface-inset focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   placeholder="••••••••"
                   autoComplete="new-password"
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
@@ -149,7 +158,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPass(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-content-muted hover:text-content"
                 >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -160,7 +169,7 @@ export default function LoginPage() {
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-accent hover:bg-accent-hover disabled:opacity-60 text-accent-fg font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -174,7 +183,7 @@ export default function LoginPage() {
           </div>
 
           {/* Footer */}
-          <p className="text-center text-xs text-slate-400 mt-6">
+          <p className="text-center text-xs text-content-muted mt-6">
             BROcode ERP v1.0.0 · Retail Management System
           </p>
         </div>
