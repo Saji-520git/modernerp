@@ -215,6 +215,19 @@ function getUnitAllowDecimal(product: PosProduct, unitId: string | undefined): b
 }
 
 const HOLDS_KEY = 'pos_holds_v2';
+
+// v1.0.72 — pointer to the last COMPLETED sale, persisted so the cashier can
+// re-open/reprint it even after a page reload (missing-receipt escape hatch).
+const LAST_RECEIPT_KEY = 'pos_last_receipt_v1';
+interface LastSaleInfo { id: string; number: string; changeCents: number }
+function loadLastSaleInfo(): LastSaleInfo | null {
+  try {
+    const raw = localStorage.getItem(LAST_RECEIPT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LastSaleInfo;
+    return parsed && typeof parsed.id === 'string' ? parsed : null;
+  } catch { return null; }
+}
 // v1.0.71 — context-independent ID. crypto.randomUUID is undefined in the
 // packaged Electron build (file:// is a non-secure context), so it must not
 // be used here. This helper works in any context.
@@ -1304,7 +1317,7 @@ function PaymentDialog({
 // ─── ReceiptModal ─────────────────────────────────────────────────────────────
 
 function ReceiptModal({
-  receipt, changeCents, onNewSale, onClose, onPrint, onReturn,
+  receipt, changeCents, onNewSale, onClose, onPrint, onReturn, readOnly = false,
 }: {
   receipt: Receipt;
   changeCents: number;
@@ -1312,6 +1325,10 @@ function ReceiptModal({
   onClose: () => void;
   onPrint: () => void;
   onReturn: () => void;
+  // v1.0.72 — reprint (read-only) context: nothing to acknowledge and no new
+  // sale is being started, so the primary button just closes the view. Also
+  // suppresses the F5 hint, which only fires on the live post-sale receipt.
+  readOnly?: boolean;
 }) {
   const { settings } = useAppSettings();
 
@@ -1395,8 +1412,12 @@ function ReceiptModal({
               onClick={onNewSale}
               className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2.5 text-sm font-bold transition"
             >
-              <ShoppingCart size={15} /> New Sale
-              <span className="ml-1 text-emerald-300 text-xs font-normal">F5</span>
+              {readOnly ? (
+                <><X size={15} /> Close</>
+              ) : (
+                <><ShoppingCart size={15} /> New Sale
+                  <span className="ml-1 text-emerald-300 text-xs font-normal">F5</span></>
+              )}
             </button>
 
             {/* Return items from THIS sale — one-click into the shared return modal */}
@@ -1556,6 +1577,13 @@ export default function POSPage() {
   const [customer, setCustomer]                 = useState<CustomerOption | null>(null);
   const [warehouseId, setWarehouseId]           = useState('');
   const [lastReceipt, setLastReceipt]           = useState<Receipt | null>(null);
+  // v1.0.72 — Reprint Last Receipt escape hatch. lastSaleInfo survives reloads
+  // (localStorage); reprintReceipt drives a read-only ReceiptModal whose close
+  // handlers never clear the cart and never touch receiptPendingRef/lastReceipt.
+  const [lastSaleInfo, setLastSaleInfo]         = useState<LastSaleInfo | null>(loadLastSaleInfo);
+  const [reprintReceipt, setReprintReceipt]     = useState<Receipt | null>(null);
+  const [reprintChangeCents, setReprintChangeCents] = useState(0);
+  const [reprintLoading, setReprintLoading]     = useState(false);
   // v1.0.43 — true once a sale completes, until the cashier acknowledges via "New Sale".
   // Drives the receipt-recovery effect that re-opens the popup if it ever closes early.
   const receiptPendingRef                       = useRef(false);
@@ -2210,7 +2238,13 @@ export default function POSPage() {
       } else {
         setLastReceipt(data.receipt);
       }
-      setLastChangeCents(pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0);
+      const changeCents = pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0;
+      setLastChangeCents(changeCents);
+      // v1.0.72 — persist a pointer to this completed sale so "Last Receipt"
+      // can re-open/reprint it even after a page reload.
+      const saleInfo: LastSaleInfo = { id: data.receipt.id, number: data.receipt.number, changeCents };
+      setLastSaleInfo(saleInfo);
+      try { localStorage.setItem(LAST_RECEIPT_KEY, JSON.stringify(saleInfo)); } catch { /* ignore */ }
       setShowPayment(false);
       setShowReceipt(true);
       // Success toast
@@ -2349,14 +2383,27 @@ export default function POSPage() {
   }, [clearCart]);
 
   // v1.0.43 — Receipt recovery safety net. If a completed sale's receipt popup
-  // closes for any reason before the cashier clicks "New Sale", re-open it so the
-  // sale is never silently lost from view. Acknowledged only via newSale/clearCart
-  // (which clear receiptPendingRef). Intentionally re-opens on the ReceiptModal X.
+  // closes before the cashier acknowledges it, re-open it so the sale is never
+  // silently lost from view. NOTE (v1.0.72 correction): every CURRENT close
+  // path — New Sale, the modal X, and Esc — acknowledges via newSale()/clearCart(),
+  // which clear receiptPendingRef first, so today this net only catches future
+  // close paths that forget to acknowledge. It also cannot survive a page
+  // reload (the ref dies with the page) — see the beforeunload guard below.
   useEffect(() => {
     if (receiptPendingRef.current && !showReceipt && lastReceipt !== null) {
       setShowReceipt(true);
     }
   }, [showReceipt, lastReceipt]);
+
+  // v1.0.72 — Block accidental reload/close while a checkout is in flight
+  // (covers Ctrl+R and window close in both browser and Electron): the sale
+  // may commit server-side while the client loses the receipt.
+  useEffect(() => {
+    if (!checkoutMutation.isPending) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [checkoutMutation.isPending]);
 
   const handleStaffSaleChange = useCallback((checked: boolean) => {
     setIsStaffSale(checked);
@@ -2371,20 +2418,60 @@ export default function POSPage() {
     }));
   }, []);
 
-  const printReceipt = useCallback(async () => {
-    if (!lastReceipt || !appSettings) return;
+  // v1.0.72 — shared print path for both the live post-sale modal and the
+  // Reprint Last Receipt view. The window MUST be opened synchronously, before
+  // any await: window.open after an await can outlive the transient user
+  // activation (or hit a popup blocker / Electron window-open policy) and
+  // return null — which previously returned silently, so Print appeared to
+  // "do nothing" with no feedback to the cashier.
+  const printReceiptDoc = useCallback(async (receipt: Receipt, changeCents: number) => {
+    if (!appSettings) return;
+    const win = window.open('', '_blank', 'width=420,height=640');
+    if (!win) {
+      setQuickAddToast('⚠ Print window was blocked — allow pop-ups for this app and try again.');
+      setTimeout(() => setQuickAddToast(null), 5000);
+      return;
+    }
+    win.document.write('<p style="font-family:system-ui,sans-serif;padding:16px;color:#334155">Preparing receipt…</p>');
     let logoBase64: string | null = null;
     if (appSettings.receiptShowLogo && appSettings.logoUrl) {
       logoBase64 = await fetchLogoAsBase64(appSettings.logoUrl, useAuthStore.getState().accessToken);
     }
-    const html = generateReceiptHtml(lastReceipt, appSettings, lastChangeCents, logoBase64);
-    const win  = window.open('', '_blank', 'width=420,height=640');
-    if (!win) return;
+    const html = generateReceiptHtml(receipt, appSettings, changeCents, logoBase64);
+    win.document.open();
     win.document.write(html);
     win.document.close();
     win.focus();
     setTimeout(() => { win.print(); win.close(); }, 600);
-  }, [lastReceipt, appSettings, lastChangeCents]);
+  }, [appSettings]);
+
+  const printReceipt = useCallback(async () => {
+    if (!lastReceipt) return;
+    await printReceiptDoc(lastReceipt, lastChangeCents);
+  }, [lastReceipt, lastChangeCents, printReceiptDoc]);
+
+  // v1.0.72 — open the last completed sale in a read-only ReceiptModal.
+  // Uses the in-memory receipt when it matches (no network); otherwise
+  // re-fetches via GET /pos/receipt/:id — so it works after a page reload.
+  const openLastReceipt = useCallback(async () => {
+    if (!lastSaleInfo || reprintLoading) return;
+    if (lastReceipt && lastReceipt.id === lastSaleInfo.id) {
+      setReprintChangeCents(lastChangeCents);
+      setReprintReceipt(lastReceipt);
+      return;
+    }
+    setReprintLoading(true);
+    try {
+      const receipt = await posApi.getReceipt(lastSaleInfo.id);
+      setReprintChangeCents(lastSaleInfo.changeCents ?? 0);
+      setReprintReceipt(receipt);
+    } catch {
+      setQuickAddToast(`⚠ Could not load receipt ${lastSaleInfo.number}. Check Sales history.`);
+      setTimeout(() => setQuickAddToast(null), 5000);
+    } finally {
+      setReprintLoading(false);
+    }
+  }, [lastSaleInfo, reprintLoading, lastReceipt, lastChangeCents]);
 
   // ── Auto-focus barcode when shift becomes active ──────────────────────────────
   // Depend on the shift IDENTITY (currentShift?.id), not the whole object, so the
@@ -2403,6 +2490,16 @@ export default function POSPage() {
     const handler = (e: KeyboardEvent) => {
       const tag     = (e.target as HTMLElement).tagName;
       const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+      // v1.0.72 — F4/F5/F8 are POS workflow keys whose browser defaults are
+      // destructive here (F5 = page reload). Previously, when any dialog was
+      // open EXCEPT the receipt modal, these keys fell through the anyDialog
+      // gate below WITHOUT preventDefault — so F5 pressed while the payment
+      // dialog was processing reloaded the page mid-checkout: the sale still
+      // committed server-side but the receipt was lost and the cart restored
+      // from localStorage (duplicate re-ring risk). Swallow the default in
+      // EVERY state; the branches below decide what (if anything) to do.
+      if (e.key === 'F4' || e.key === 'F5' || e.key === 'F8') e.preventDefault();
 
       // ── Always-fires: F1, Ctrl+Shift+X, Ctrl+Shift+O ─────────────────────────
 
@@ -2457,6 +2554,9 @@ export default function POSPage() {
         if (showQuickAddCustomer) { setShowQuickAddCustomer(false); return; }
         if (quickAddBarcode)      { setQuickAddBarcode(null);       return; }
         if (showHolds)            { setShowHolds(false);            return; }
+        // Reprint view is read-only — closing it must NOT clear the cart
+        // (unlike the live post-sale receipt modal below).
+        if (reprintReceipt)       { setReprintReceipt(null); refocusBarcode(); return; }
         if (showReceipt)          { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); return; }
         if (showCustomer)         { setShowCustomer(false);         return; }
         refocusBarcode();
@@ -2473,7 +2573,8 @@ export default function POSPage() {
 
       const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
-        || showReceipt || showCustomer || showCancelConfirm || showReturn || !!quickAddBarcode;
+        || showReceipt || showCustomer || showCancelConfirm || showReturn || !!quickAddBarcode
+        || !!reprintReceipt;
       if (anyDialog) return;
 
       // F2 — focus barcode/scanner input
@@ -2566,7 +2667,7 @@ export default function POSPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
-      showHolds, showReceipt, showCustomer, showCancelConfirm, showReturn, quickAddBarcode,
+      showHolds, showReceipt, showCustomer, showCancelConfirm, showReturn, quickAddBarcode, reprintReceipt,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
       checkoutMutation.isPending, hasOversoldItem]);
 
@@ -2874,6 +2975,15 @@ export default function POSPage() {
                 <span style={{ background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{holds.length}</span>
               )}
               <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>L</span>
+            </button>
+
+            {/* Last Receipt — v1.0.72 reprint escape hatch (survives page reload) */}
+            <button type="button"
+              onClick={openLastReceipt}
+              disabled={!lastSaleInfo || reprintLoading}
+              title={lastSaleInfo ? `Reopen ${lastSaleInfo.number}` : 'No completed sale yet'}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: lastSaleInfo && !reprintLoading ? 'pointer' : 'not-allowed', opacity: lastSaleInfo ? 1 : 0.4 }}>
+              🧾 {reprintLoading ? 'Loading…' : 'Last Receipt'}
             </button>
 
             {/* Right side */}
@@ -3205,6 +3315,26 @@ export default function POSPage() {
             </div>
           </div>
         )
+      )}
+
+      {/* v1.0.72 — Reprint Last Receipt: read-only view of the last completed
+          sale. Reuses ReceiptModal but with non-destructive handlers — closing
+          it never clears the in-progress cart and never touches
+          receiptPendingRef / lastReceipt (unlike the live post-sale modal). */}
+      {reprintReceipt && !showReceipt && (
+        <ReceiptModal
+          receipt={reprintReceipt}
+          changeCents={reprintChangeCents}
+          readOnly
+          onNewSale={() => { setReprintReceipt(null); refocusBarcode(); }}
+          onClose={() => { setReprintReceipt(null); refocusBarcode(); }}
+          onPrint={() => printReceiptDoc(reprintReceipt, reprintChangeCents)}
+          onReturn={() => {
+            setReturnPrefillId(reprintReceipt.id);
+            setReprintReceipt(null);
+            setShowReturn(true);
+          }}
+        />
       )}
 
       {showHoldModal && (

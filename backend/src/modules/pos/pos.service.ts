@@ -510,15 +510,36 @@ export const posService = {
         lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } }, unit: { select: { shortCode: true, name: true } } } },
         customer: { select: { id: true, name: true } },
         createdBy: { select: { fullName: true } },
+        warehouse: { select: { name: true } },
       },
     });
     if (!sale) throw new HttpError(404, 'Receipt not found');
+    // Same shape as checkout's `receipt` payload so the POS ReceiptModal can
+    // re-open a past sale (Reprint Last Receipt) with no client special-casing.
     return {
-      ...sale,
+      id:            sale.id,
+      number:        sale.number,
+      date:          sale.date,
+      cashier:       sale.createdBy?.fullName ?? '',
+      customer:      sale.customer ?? null,
+      paymentMethod: sale.paymentMethod,
+      isCreditSale:  sale.paymentMethod === 'CREDIT',
+      isStaffSale:   sale.note?.startsWith('[Staff Sale]') ?? false,
+      warehouseName: sale.warehouse?.name ?? '',
       lines: sale.lines.map((l) => ({
-        ...l,
-        unitShortCode: l.unit?.shortCode ?? l.product.unit?.shortCode ?? '',
+        product:        l.product,
+        qty:            Number(l.qty),
+        unitPriceCents: l.unitPriceCents,
+        taxPercent:     l.taxPercent,
+        discountCents:  l.discountCents,
+        lineTotalCents: l.lineTotalCents,
+        unitShortCode:  l.unit?.shortCode ?? l.product.unit?.shortCode ?? '',
       })),
+      subtotalCents: sale.subtotalCents,
+      taxCents:      sale.taxCents,
+      discountCents: sale.discountCents,
+      totalCents:    sale.totalCents,
+      paidCents:     sale.paidCents,
     };
   },
 
