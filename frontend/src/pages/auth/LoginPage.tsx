@@ -30,7 +30,16 @@ export default function LoginPage() {
       setAuth(data.user, data.access, data.refresh);
       navigate('/');
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Invalid credentials. Please try again.');
+      if (!err?.response) {
+        // No HTTP response reached the client — server unreachable, network
+        // down, or a CORS block (all surface as an error with no `response`).
+        // Distinct from bad credentials so the user isn't misdirected.
+        setError('Cannot reach the server. Please check your connection and try again.');
+      } else if (err.response.status === 401) {
+        setError(err.response.data?.message ?? 'Invalid credentials. Please try again.');
+      } else {
+        setError(err.response.data?.message ?? 'Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
