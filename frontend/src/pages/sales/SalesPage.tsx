@@ -385,7 +385,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
   const [showPayment, setShowPayment] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
-  const { settings, businessName, currencySymbol } = useAppSettings();
+  const { settings, businessName, formatMoney } = useAppSettings();
 
   const queryClient = useQueryClient();
   const confirmMutation = useMutation({
@@ -449,7 +449,8 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
                       lineTotalCents: l.lineTotalCents,
                     })),
                   );
-                  const total = `${currencySymbol} ${(sale.totalCents / 100).toFixed(2)}`;
+                  // formatMoney respects currencyPosition (before/after) from Settings.
+                  const total = formatMoney(sale.totalCents);
                   const message = fillTemplate(
                     settings.waReceiptTemplate || DEFAULT_RECEIPT_TEMPLATE,
                     {

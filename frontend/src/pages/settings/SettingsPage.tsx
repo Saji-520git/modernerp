@@ -1087,11 +1087,11 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
         <Toggle label="Enable WhatsApp messaging" checked={f.whatsappEnabled}
           onChange={v => setF(p => ({ ...p, whatsappEnabled: v }))} disabled={readOnly} />
         <Field label="Business WhatsApp number">
-          <input disabled={readOnly} className={inp(readOnly)} type="tel"
+          <input disabled={readOnly} className={inp(readOnly)} type="tel" maxLength={20}
             value={f.whatsappPhone}
             onChange={e => setF(p => ({ ...p, whatsappPhone: e.target.value.replace(/[^\d+]/g, '') }))}
             placeholder="+94771234567" />
-          <p className={hint}>Country code + number, e.g. +94771234567. Digits and a leading + only.</p>
+          <p className={hint}>Country code + number, e.g. +94771234567. Digits and a leading + only. Reserved for future use (e.g. receipt footer / automated sending) — messages today are sent from whichever WhatsApp account is logged in on this PC.</p>
         </Field>
       </div>
 

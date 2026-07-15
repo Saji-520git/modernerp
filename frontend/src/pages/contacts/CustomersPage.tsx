@@ -91,7 +91,7 @@ function CustomerModal({
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Phone *</label>
                 <input
-                  required aria-required="true"
+                  required aria-required="true" maxLength={20}
                   value={phone} onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(''); }}
                   className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${phoneErr ? 'border-red-400' : 'border-slate-200'}`}
                   placeholder="+94 77 000 0000"

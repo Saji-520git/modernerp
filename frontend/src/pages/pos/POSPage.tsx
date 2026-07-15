@@ -1334,7 +1334,7 @@ function ReceiptModal({
   // suppresses the F5 hint, which only fires on the live post-sale receipt.
   readOnly?: boolean;
 }) {
-  const { settings, businessName, currencySymbol } = useAppSettings();
+  const { settings, businessName, formatMoney } = useAppSettings();
 
   if (!settings) return null;
 
@@ -1415,7 +1415,8 @@ function ReceiptModal({
                       lineTotalCents: l.lineTotalCents,
                     })),
                   );
-                  const total = `${currencySymbol} ${(receipt.totalCents / 100).toFixed(2)}`;
+                  // formatMoney respects currencyPosition (before/after) from Settings.
+                  const total = formatMoney(receipt.totalCents);
                   const message = fillTemplate(
                     settings.waReceiptTemplate || DEFAULT_RECEIPT_TEMPLATE,
                     {
@@ -1760,11 +1761,26 @@ export default function POSPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showWhDropdown]);
 
-  // Quick-add customer mutation
+  // Quick-add customer mutation. Phone is REQUIRED for registered customers
+  // (backend Zod enforces it since P1) — validate client-side before firing
+  // so the cashier gets a clear inline error, not a raw 400 mid-sale.
+  const isQuickAddPhoneValid = (() => {
+    const p = newCustPhone.trim();
+    return p.length >= 7 && /^[+\d][\d\s-]*$/.test(p);
+  })();
+  const submitQuickAddCustomer = () => {
+    if (!newCustName.trim()) return;
+    if (!isQuickAddPhoneValid) {
+      setQuickAddError('A valid phone number is required (min 7 digits)');
+      return;
+    }
+    setQuickAddError('');
+    createCustomerMutation.mutate();
+  };
   const createCustomerMutation = useMutation({
     mutationFn: () => api.post('/customers', {
       name:  newCustName.trim(),
-      phone: newCustPhone.trim() || undefined,
+      phone: newCustPhone.trim(),
     }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['customers'] });
@@ -3429,19 +3445,21 @@ export default function POSPage() {
                   value={newCustName}
                   onChange={e => setNewCustName(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && newCustName.trim()) createCustomerMutation.mutate();
+                    if (e.key === 'Enter') submitQuickAddCustomer();
                     if (e.key === 'Escape') setShowQuickAddCustomer(false);
                   }}
                   placeholder="Customer name"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Phone (optional)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Phone *</label>
                 <input
+                  required aria-required="true"
+                  maxLength={20}
                   value={newCustPhone}
-                  onChange={e => setNewCustPhone(e.target.value)}
+                  onChange={e => { setNewCustPhone(e.target.value); if (quickAddError) setQuickAddError(''); }}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && newCustName.trim()) createCustomerMutation.mutate();
+                    if (e.key === 'Enter') submitQuickAddCustomer();
                     if (e.key === 'Escape') setShowQuickAddCustomer(false);
                   }}
                   placeholder="Phone number"
@@ -3455,8 +3473,8 @@ export default function POSPage() {
                 Cancel
               </button>
               <button type="button"
-                onClick={() => createCustomerMutation.mutate()}
-                disabled={!newCustName.trim() || createCustomerMutation.isPending}
+                onClick={submitQuickAddCustomer}
+                disabled={!newCustName.trim() || !isQuickAddPhoneValid || createCustomerMutation.isPending}
                 className="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition">
                 {createCustomerMutation.isPending ? 'Adding…' : 'Add & Select'}
               </button>

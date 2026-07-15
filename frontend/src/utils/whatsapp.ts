@@ -25,6 +25,12 @@ export function formatWAPhone(phone: string | null | undefined): string {
 
   const digits = trimmed.replace(/\D/g, '');
 
+  // '00' international prefix (e.g. 0094771234567) — strip and treat like '+'.
+  if (digits.startsWith('00') && digits.length > 2) {
+    const intl = digits.slice(2);
+    return intl.length >= 7 && intl.length <= 15 ? intl : '';
+  }
+
   if (digits.length === 10 && digits.startsWith('0')) {
     return '94' + digits.slice(1);
   }
