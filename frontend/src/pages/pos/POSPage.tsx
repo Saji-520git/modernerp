@@ -20,6 +20,10 @@ import { categoriesApi, brandsApi, type Category, type Brand } from '../../servi
 import NewReturnModal from '../../components/returns/NewReturnModal';
 import { shiftsApi } from '../../services/shifts';
 import { useAppSettings } from '../../context/SettingsContext';
+import {
+  fillTemplate, openWhatsApp, buildItemsList,
+  DEFAULT_RECEIPT_TEMPLATE,
+} from '../../utils/whatsapp';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { usePosStore } from '../../store/posStore';
@@ -1330,7 +1334,7 @@ function ReceiptModal({
   // suppresses the F5 hint, which only fires on the live post-sale receipt.
   readOnly?: boolean;
 }) {
-  const { settings } = useAppSettings();
+  const { settings, businessName, currencySymbol } = useAppSettings();
 
   if (!settings) return null;
 
@@ -1396,6 +1400,42 @@ function ReceiptModal({
               <Printer size={15} /> Print Receipt
               <span className="ml-1 text-indigo-300 text-xs font-normal">F8</span>
             </button>
+
+            {/* Send the receipt over WhatsApp — only when enabled AND the
+                customer has a phone. Opens WhatsApp with recipient + message
+                pre-filled; the cashier clicks Send inside WhatsApp. */}
+            {settings?.whatsappEnabled && receipt.customer?.phone && (
+              <button
+                type="button"
+                onClick={() => {
+                  const itemsList = buildItemsList(
+                    receipt.lines.map(l => ({
+                      name: l.product.receiptName || l.product.name,
+                      qty: Number(l.qty),
+                      lineTotalCents: l.lineTotalCents,
+                    })),
+                  );
+                  const total = `${currencySymbol} ${(receipt.totalCents / 100).toFixed(2)}`;
+                  const message = fillTemplate(
+                    settings.waReceiptTemplate || DEFAULT_RECEIPT_TEMPLATE,
+                    {
+                      customerName:  receipt.customer?.name ?? 'Valued Customer',
+                      businessName:  businessName ?? 'Our Store',
+                      invoiceNumber: receipt.number ?? '',
+                      date:          new Date(receipt.date).toLocaleDateString(),
+                      items:         itemsList || 'See invoice for details',
+                      total,
+                    },
+                  );
+                  openWhatsApp(receipt.customer!.phone, message);
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition"
+                title="Open WhatsApp with the receipt pre-filled. Click Send inside WhatsApp."
+              >
+                <span className="text-base">💬</span>
+                Send Receipt via WhatsApp
+              </button>
+            )}
 
             <button
               type="button"

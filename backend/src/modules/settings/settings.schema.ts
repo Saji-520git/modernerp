@@ -70,6 +70,14 @@ export const updateSettingsSchema = z.object({
 
   // Returns
   returnPolicy:          z.string().max(500).optional(),
+
+  // WhatsApp messaging
+  whatsappEnabled:       z.boolean().optional(),
+  whatsappPhone:         z.string().max(20).optional().nullable(),
+  waReceiptTemplate:     z.string().max(2000).optional().nullable(),
+  waOutstandingTemplate: z.string().max(2000).optional().nullable(),
+  waPayableTemplate:     z.string().max(2000).optional().nullable(),
+  waOfferTemplate:       z.string().max(2000).optional().nullable(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

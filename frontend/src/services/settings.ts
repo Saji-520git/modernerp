@@ -64,6 +64,13 @@ export interface AppSettings {
   receiptHeaderLine2: string | null;
   // Returns
   returnPolicy: string;
+  // WhatsApp messaging
+  whatsappEnabled: boolean;
+  whatsappPhone: string | null;
+  waReceiptTemplate: string | null;
+  waOutstandingTemplate: string | null;
+  waPayableTemplate: string | null;
+  waOfferTemplate: string | null;
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────

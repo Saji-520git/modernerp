@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 export const customerBodySchema = z.object({
   name:              z.string().min(1, 'Name is required').max(200),
-  phone:             z.string().max(50).optional().nullable(),
+  // Phone is REQUIRED for registered customers (walk-in POS sales use
+  // Sale.customerId=null and never hit this schema). The Prisma column stays
+  // String? so pre-existing records with NULL phones remain readable.
+  phone:             z.string().trim().min(7, 'Phone is required').max(20)
+                       .regex(/^[+\d][\d\s\-]*$/, 'Invalid phone'),
   // Accept: valid email string | empty string | null | undefined — all stored as null
   email:             z.preprocess(
     (v) => (v === '' || v === null || v === undefined ? null : v),

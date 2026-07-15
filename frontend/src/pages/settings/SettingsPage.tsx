@@ -4,9 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Percent, ShoppingCart, FileText,
   ShieldCheck, ChevronRight, Check, AlertCircle,
-  Lock, Eye, Printer, Bell, X,
+  Lock, Eye, Printer, Bell, X, MessageCircle,
 } from 'lucide-react';
 import { settingsApi, type AppSettings } from '../../services/settings';
+import {
+  DEFAULT_RECEIPT_TEMPLATE,
+  DEFAULT_OUTSTANDING_TEMPLATE,
+  DEFAULT_PAYABLE_TEMPLATE,
+  DEFAULT_OFFER_TEMPLATE,
+} from '../../utils/whatsapp';
 import { attachmentsApi, getFileUrl } from '../../services/attachments';
 import { useAuthStore } from '../../store/authStore';
 
@@ -1032,9 +1038,107 @@ function AlertsPanel({ settings, onSave, isPending, readOnly }: {
   );
 }
 
+// ─── WhatsApp panel ──────────────────────────────────────────────────────────
+
+function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
+  settings: AppSettings; onSave: (d: Partial<AppSettings>) => Promise<void>;
+  isPending: boolean; readOnly?: boolean;
+}) {
+  const [f, setF] = useState({
+    whatsappEnabled:       settings.whatsappEnabled       ?? false,
+    whatsappPhone:         settings.whatsappPhone         ?? '',
+    waReceiptTemplate:     settings.waReceiptTemplate     ?? DEFAULT_RECEIPT_TEMPLATE,
+    waOutstandingTemplate: settings.waOutstandingTemplate ?? DEFAULT_OUTSTANDING_TEMPLATE,
+    waPayableTemplate:     settings.waPayableTemplate     ?? DEFAULT_PAYABLE_TEMPLATE,
+    waOfferTemplate:       settings.waOfferTemplate       ?? DEFAULT_OFFER_TEMPLATE,
+  });
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setSuccess(false); setError(null);
+    try {
+      await onSave({
+        whatsappEnabled:       f.whatsappEnabled,
+        whatsappPhone:         f.whatsappPhone || null,
+        waReceiptTemplate:     f.waReceiptTemplate || null,
+        waOutstandingTemplate: f.waOutstandingTemplate || null,
+        waPayableTemplate:     f.waPayableTemplate || null,
+        waOfferTemplate:       f.waOfferTemplate || null,
+      });
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Save failed');
+    }
+  };
+
+  const hint = 'text-xs text-slate-400 mt-1';
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-base font-semibold text-slate-800 mb-1">💬 WhatsApp Messaging</p>
+        <p className="text-sm text-slate-500">Send receipts, reminders and offers to customers over WhatsApp.</p>
+      </div>
+
+      {/* Enable + number */}
+      <div className="border-t border-slate-100 pt-4 space-y-3">
+        <Toggle label="Enable WhatsApp messaging" checked={f.whatsappEnabled}
+          onChange={v => setF(p => ({ ...p, whatsappEnabled: v }))} disabled={readOnly} />
+        <Field label="Business WhatsApp number">
+          <input disabled={readOnly} className={inp(readOnly)} type="tel"
+            value={f.whatsappPhone}
+            onChange={e => setF(p => ({ ...p, whatsappPhone: e.target.value.replace(/[^\d+]/g, '') }))}
+            placeholder="+94771234567" />
+          <p className={hint}>Country code + number, e.g. +94771234567. Digits and a leading + only.</p>
+        </Field>
+      </div>
+
+      {/* Receipt template */}
+      <div className="border-t border-slate-100 pt-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Receipt Message</p>
+        <textarea disabled={readOnly} className={inp(readOnly) + ' resize-none font-mono'} rows={6}
+          value={f.waReceiptTemplate}
+          onChange={e => setF(p => ({ ...p, waReceiptTemplate: e.target.value }))} />
+        <p className={hint}>Variables: {'{customerName}'} {'{businessName}'} {'{invoiceNumber}'} {'{date}'} {'{items}'} {'{total}'}</p>
+      </div>
+
+      {/* Outstanding template — customer direction */}
+      <div className="border-t border-slate-100 pt-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Customer Outstanding Reminder</p>
+        <textarea disabled={readOnly} className={inp(readOnly) + ' resize-none font-mono'} rows={4}
+          value={f.waOutstandingTemplate}
+          onChange={e => setF(p => ({ ...p, waOutstandingTemplate: e.target.value }))} />
+        <p className={hint}>Variables: {'{customerName}'} {'{businessName}'} {'{outstanding}'}</p>
+      </div>
+
+      {/* Payable template — supplier direction */}
+      <div className="border-t border-slate-100 pt-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Supplier Payable Reminder</p>
+        <textarea disabled={readOnly} className={inp(readOnly) + ' resize-none font-mono'} rows={4}
+          value={f.waPayableTemplate}
+          onChange={e => setF(p => ({ ...p, waPayableTemplate: e.target.value }))} />
+        <p className={hint}>Variables: {'{supplierName}'} {'{businessName}'} {'{outstanding}'}</p>
+      </div>
+
+      {/* Offer template */}
+      <div className="border-t border-slate-100 pt-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Promotional Offer</p>
+        <textarea disabled={readOnly} className={inp(readOnly) + ' resize-none font-mono'} rows={4}
+          value={f.waOfferTemplate}
+          onChange={e => setF(p => ({ ...p, waOfferTemplate: e.target.value }))} />
+        <p className={hint}>Variables: {'{customerName}'} {'{businessName}'} {'{offer}'}</p>
+      </div>
+
+      <SectionFooter onSave={handleSave} isPending={isPending} success={success} error={error} readOnly={readOnly} />
+    </div>
+  );
+}
+
 // ─── Section config ────────────────────────────────────────────────────────────
 
-type SectionKey = 'company' | 'tax' | 'pos' | 'invoice' | 'receipt' | 'alerts' | 'permissions' | 'security';
+type SectionKey = 'company' | 'tax' | 'pos' | 'invoice' | 'receipt' | 'alerts' | 'whatsapp' | 'permissions' | 'security';
 
 const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; description: string }[] = [
   { key: 'company',     label: 'Company',        icon: Building2,   description: 'Business name, address, logo' },
@@ -1043,6 +1147,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; descr
   { key: 'invoice',     label: 'Invoice',         icon: FileText,    description: 'Prefixes, due dates, footer' },
   { key: 'receipt',     label: 'Receipt',         icon: Printer,     description: 'Paper, language, layout, footer' },
   { key: 'alerts',      label: 'Alerts',          icon: Bell,        description: 'Low stock and expiry alert settings' },
+  { key: 'whatsapp',    label: 'WhatsApp',        icon: MessageCircle, description: 'Messaging number and templates' },
   { key: 'permissions', label: 'Permissions',     icon: Eye,         description: 'Role permission matrix' },
   { key: 'security',    label: 'Security',        icon: ShieldCheck, description: 'Session timeout' },
 ];
@@ -1158,6 +1263,7 @@ export default function SettingsPage() {
             {activeKey === 'invoice'     && <InvoicePanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'receipt'     && <ReceiptPanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'alerts'      && <AlertsPanel      settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
+            {activeKey === 'whatsapp'    && <WhatsAppPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'permissions' && <PermissionsPanel />}
             {activeKey === 'security'    && <SecurityPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
           </div>

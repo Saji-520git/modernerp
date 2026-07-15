@@ -31,6 +31,11 @@ import {
   RETURN_STATUS_COLORS,
   RETURN_STATUS_LABELS,
 } from '../../services/purchaseReturns';
+import {
+  fillTemplate, openWhatsApp,
+  DEFAULT_PAYABLE_TEMPLATE,
+} from '../../utils/whatsapp';
+import { useAppSettings } from '../../context/SettingsContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -535,6 +540,9 @@ function AccountInfoTab({
   supplier: SupplierDetail;
   onEdit: () => void;
 }) {
+  const { settings, businessName, formatMoney } = useAppSettings();
+  const [customMessage, setCustomMessage] = useState('');
+
   return (
     <div className="space-y-6 max-w-lg">
       <div className="bg-slate-50 rounded-xl p-5 space-y-3">
@@ -566,6 +574,71 @@ function AccountInfoTab({
           )}
         </div>
       </div>
+
+      {/* WhatsApp actions — only when enabled AND the supplier has a phone.
+          Balance reminder reuses the generic outstanding template; the custom
+          message is built inline (supplier tone, NOT the offer template).
+          Read-only: touches no purchase/payment/GRN data. */}
+      {settings?.whatsappEnabled && supplier.phone && (
+        <div className="bg-slate-50 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">💬</span>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">WhatsApp Actions</h3>
+          </div>
+
+          {/* Send Balance Reminder */}
+          <button
+            type="button"
+            onClick={() => {
+              // outstandingBalance is CENTS; formatMoney applies /100 + currency symbol.
+              const outstanding = formatMoney(supplier.outstandingBalance ?? 0);
+              const message = fillTemplate(
+                settings.waPayableTemplate || DEFAULT_PAYABLE_TEMPLATE,
+                {
+                  // Supplier-direction template uses {supplierName}.
+                  supplierName: supplier.name ?? 'Supplier',
+                  businessName: businessName ?? 'Our Store',
+                  outstanding,
+                },
+              );
+              openWhatsApp(supplier.phone!, message);
+            }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition mb-4"
+            title="Open WhatsApp with the balance reminder pre-filled."
+          >
+            <span>💬</span>
+            Send Balance Reminder
+          </button>
+
+          {/* Send Custom Message — inline, no template */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Send Custom Message</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type message..."
+                value={customMessage}
+                onChange={e => setCustomMessage(e.target.value)}
+                maxLength={500}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                type="button"
+                disabled={!customMessage.trim()}
+                onClick={() => {
+                  // Inline message — suppliers get plain wording, not the offer template.
+                  const msg = `Hi ${supplier.name ?? 'there'},\n\n${customMessage.trim()}\n\n— ${businessName ?? 'Our Store'}`;
+                  openWhatsApp(supplier.phone!, msg);
+                  setCustomMessage('');
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition whitespace-nowrap"
+              >
+                💬 Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-slate-50 rounded-xl p-5">
         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Supplier Since</h3>

@@ -100,7 +100,7 @@ export interface Receipt {
   number: string;
   date: string;
   cashier: string;
-  customer: { id: string; name: string } | null;
+  customer: { id: string; name: string; phone: string | null } | null;
   paymentMethod: string;
   isCreditSale: boolean;
   isStaffSale: boolean;

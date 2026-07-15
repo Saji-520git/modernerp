@@ -40,12 +40,20 @@ function CustomerModal({
   );
   const [alertPct, setAlertPct]     = useState(initial?.creditAlertPct ?? 80);
   const [settleDays, setSettleDays] = useState<number | ''>(initial?.creditSettleDays ?? '');
+  const [phoneErr, setPhoneErr]     = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Phone is required for registered customers (mirrors backend validation).
+    const p = phone.trim();
+    if (p.length < 7 || !/^[+\d][\d\s-]*$/.test(p)) {
+      setPhoneErr('A valid phone number is required');
+      return;
+    }
+    setPhoneErr('');
     onSave({
       name,
-      phone:            phone || undefined,
+      phone:            p,
       email:            email || undefined,
       address:          address || undefined,
       creditEnabled,
@@ -81,12 +89,14 @@ function CustomerModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Phone *</label>
                 <input
-                  value={phone} onChange={(e) => setPhone(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required aria-required="true"
+                  value={phone} onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(''); }}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${phoneErr ? 'border-red-400' : 'border-slate-200'}`}
                   placeholder="+94 77 000 0000"
                 />
+                {phoneErr && <p className="text-xs text-red-600 mt-1">{phoneErr}</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>

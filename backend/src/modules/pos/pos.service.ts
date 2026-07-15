@@ -388,7 +388,7 @@ export const posService = {
         },
         include: {
           lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } }, unit: { select: { shortCode: true, name: true } } } },
-          customer: { select: { id: true, name: true } },
+          customer: { select: { id: true, name: true, phone: true } },
           createdBy: { select: { fullName: true } },
         },
       });
@@ -508,7 +508,7 @@ export const posService = {
       where: { id, isPos: true },
       include: {
         lines: { include: { product: { select: { id: true, name: true, sku: true, receiptName: true, unit: { select: { shortCode: true, name: true } } } }, unit: { select: { shortCode: true, name: true } } } },
-        customer: { select: { id: true, name: true } },
+        customer: { select: { id: true, name: true, phone: true } },
         createdBy: { select: { fullName: true } },
         warehouse: { select: { name: true } },
       },

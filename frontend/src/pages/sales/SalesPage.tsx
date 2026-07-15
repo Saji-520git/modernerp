@@ -16,6 +16,11 @@ import {
 import { customerPaymentsApi, type CustomerPayment, type CreateCustomerPaymentInput } from '../../services/customerPayments';
 import { inventoryApi } from '../../services/inventory';
 import { exportSaleInvoice, exportSaleReturn } from '../../services/pdfExport';
+import {
+  fillTemplate, openWhatsApp, buildItemsList,
+  DEFAULT_RECEIPT_TEMPLATE,
+} from '../../utils/whatsapp';
+import { useAppSettings } from '../../context/SettingsContext';
 import { useAuthStore } from '../../store/authStore';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
 
@@ -380,6 +385,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
   const [showPayment, setShowPayment] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
+  const { settings, businessName, currencySymbol } = useAppSettings();
 
   const queryClient = useQueryClient();
   const confirmMutation = useMutation({
@@ -432,6 +438,37 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ps.cls}`}>{ps.label}</span>
+            {settings?.whatsappEnabled && sale.customer?.phone && (
+              <button
+                type="button"
+                onClick={() => {
+                  const itemsList = buildItemsList(
+                    (sale.lines ?? []).map((l: SaleLine) => ({
+                      name: l.product?.name || 'Item',
+                      qty: Number(l.qty),
+                      lineTotalCents: l.lineTotalCents,
+                    })),
+                  );
+                  const total = `${currencySymbol} ${(sale.totalCents / 100).toFixed(2)}`;
+                  const message = fillTemplate(
+                    settings.waReceiptTemplate || DEFAULT_RECEIPT_TEMPLATE,
+                    {
+                      customerName:  sale.customer?.name ?? 'Valued Customer',
+                      businessName:  businessName ?? 'Our Store',
+                      invoiceNumber: sale.number ?? '',
+                      date:          new Date(sale.date).toLocaleDateString(),
+                      items:         itemsList || 'See invoice for details',
+                      total,
+                    },
+                  );
+                  openWhatsApp(sale.customer!.phone, message);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition"
+                title="Re-send invoice via WhatsApp"
+              >
+                <span>💬</span> WhatsApp
+              </button>
+            )}
             <button onClick={() => exportSaleInvoice(sale as any)} title="Download PDF"
               className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition">
               <Download className="w-4 h-4" />

@@ -966,6 +966,14 @@ model AppSettings {
   // Returns
   returnPolicy          String   @default("")  // shown in receipt footer
 
+  // WhatsApp messaging
+  whatsappEnabled        Boolean @default(false)
+  whatsappPhone          String?
+  waReceiptTemplate      String?
+  waOutstandingTemplate  String?
+  waPayableTemplate      String?
+  waOfferTemplate        String?
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

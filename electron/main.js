@@ -625,6 +625,17 @@ function createMainWindow() {
   const indexPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
   mainWindow.loadFile(indexPath);
 
+  // Route external links (e.g. WhatsApp wa.me deep-links) to the OS default
+  // handler instead of opening a new Electron window. Everything else keeps
+  // the default in-app behaviour.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('whatsapp:')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+
   mainWindow.once('ready-to-show', () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();

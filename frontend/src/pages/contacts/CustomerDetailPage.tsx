@@ -22,6 +22,12 @@ import {
   type CustomerPayment,
   type CreateCustomerPaymentInput,
 } from '../../services/customerPayments';
+import {
+  fillTemplate, openWhatsApp,
+  DEFAULT_OUTSTANDING_TEMPLATE,
+  DEFAULT_OFFER_TEMPLATE,
+} from '../../utils/whatsapp';
+import { useAppSettings } from '../../context/SettingsContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,11 +88,19 @@ function CustomerModal({
   );
   const [alertPct, setAlertPct]       = useState(initial?.creditAlertPct ?? 80);
   const [settleDays, setSettleDays]   = useState<number | ''>(initial?.creditSettleDays ?? '');
+  const [phoneErr, setPhoneErr]       = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Phone is required for registered customers (mirrors backend validation).
+    const p = phone.trim();
+    if (p.length < 7 || !/^[+\d][\d\s-]*$/.test(p)) {
+      setPhoneErr('A valid phone number is required');
+      return;
+    }
+    setPhoneErr('');
     onSave({
-      name, phone: phone || undefined, email: email || undefined,
+      name, phone: p, email: email || undefined,
       address: address || undefined, creditEnabled,
       creditLimitCents: Math.round(parseFloat(creditLimit || '0') * 100),
       creditAlertPct: alertPct,
@@ -116,10 +130,12 @@ function CustomerModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <label className="block text-xs font-medium text-slate-600 mb-1">Phone *</label>
+                <input required aria-required="true" value={phone}
+                  onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(''); }}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${phoneErr ? 'border-red-400' : 'border-slate-200'}`}
                   placeholder="+94 77 000 0000" />
+                {phoneErr && <p className="text-xs text-red-600 mt-1">{phoneErr}</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
@@ -1174,6 +1190,9 @@ function AccountInfoTab({
   customer: CustomerDetail;
   onEdit: () => void;
 }) {
+  const { settings, businessName, formatMoney } = useAppSettings();
+  const [offerMessage, setOfferMessage] = useState('');
+
   return (
     <div className="space-y-6 max-w-lg">
       {/* Contact details */}
@@ -1206,6 +1225,75 @@ function AccountInfoTab({
           )}
         </div>
       </div>
+
+      {/* WhatsApp actions — only when enabled AND the customer has a phone.
+          Each button opens WhatsApp with the message pre-filled; the user
+          clicks Send inside WhatsApp. Read-only: touches no credit/sales data. */}
+      {settings?.whatsappEnabled && customer.phone && (
+        <div className="bg-slate-50 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">💬</span>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">WhatsApp Actions</h3>
+          </div>
+
+          {/* Send Outstanding */}
+          <button
+            type="button"
+            onClick={() => {
+              // outstandingBalance is CENTS; formatMoney applies /100 + currency symbol.
+              const outstanding = formatMoney(customer.outstandingBalance ?? 0);
+              const message = fillTemplate(
+                settings.waOutstandingTemplate || DEFAULT_OUTSTANDING_TEMPLATE,
+                {
+                  customerName: customer.name ?? 'Customer',
+                  businessName: businessName ?? 'Our Store',
+                  outstanding,
+                },
+              );
+              openWhatsApp(customer.phone!, message);
+            }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition mb-4"
+            title="Open WhatsApp with the outstanding reminder pre-filled."
+          >
+            <span>💬</span>
+            Send Outstanding Reminder
+          </button>
+
+          {/* Send Offer */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Send Custom Offer</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type offer message..."
+                value={offerMessage}
+                onChange={e => setOfferMessage(e.target.value)}
+                maxLength={500}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                type="button"
+                disabled={!offerMessage.trim()}
+                onClick={() => {
+                  const message = fillTemplate(
+                    settings.waOfferTemplate || DEFAULT_OFFER_TEMPLATE,
+                    {
+                      customerName: customer.name ?? 'Customer',
+                      businessName: businessName ?? 'Our Store',
+                      offer: offerMessage.trim(),
+                    },
+                  );
+                  openWhatsApp(customer.phone!, message);
+                  setOfferMessage('');
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition whitespace-nowrap"
+              >
+                💬 Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Credit account */}
       <div className="bg-slate-50 rounded-xl p-5 space-y-3">
