@@ -13,6 +13,17 @@ const receiveCreditSchema = z.object({
   notes:       z.string().optional(),
 });
 
+// Guards the apply-credit endpoint: previously it read req.body raw, so an empty
+// or malformed body produced supplierId=undefined / amountCents=NaN and crashed
+// downstream (500). Now a bad body is a clean 400. Mirrors the required fields
+// the frontend always sends (ApplyCreditSupplierPayload).
+const applyCreditSchema = z.object({
+  supplierId:  z.string().min(1),
+  amountCents: z.number().int().positive(),
+  paymentDate: z.string().min(1),
+  notes:       z.string().optional(),
+});
+
 export const createPayment: RequestHandler = async (req, res) => {
   const userId = req.auth!.userId;
   const payment = await supplierPaymentService.createPayment(
@@ -47,11 +58,12 @@ export const createLumpSumPayment: RequestHandler = async (req, res) => {
 
 export const applyCredit: RequestHandler = async (req, res) => {
   const userId = req.auth!.userId;
+  const body = applyCreditSchema.parse(req.body);
   const result = await supplierPaymentService.applyCreditToPurchases({
-    supplierId:   req.body.supplierId,
-    amountCents:  Number(req.body.amountCents),
-    paymentDate:  req.body.paymentDate,
-    notes:        req.body.notes,
+    supplierId:   body.supplierId,
+    amountCents:  body.amountCents,
+    paymentDate:  body.paymentDate,
+    notes:        body.notes,
     recordedById: userId,
   });
   res.status(201).json(result);
