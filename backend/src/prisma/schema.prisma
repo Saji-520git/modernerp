@@ -220,7 +220,8 @@ model Product {
   defaultSupplierId String?
   defaultSupplier   Supplier? @relation("ProductDefaultSupplier", fields: [defaultSupplierId], references: [id])
 
-  costCents              Int   @default(0)   // last cost
+  costCents              Int   @default(0)   // weighted-average cost (per base unit) — G1
+  lastCostCents          Int   @default(0)   // most-recent purchase cost, per base unit (display/reference) — G1
   priceCents             Int   @default(0)   // selling price
   defaultDiscountCents   Int   @default(0)   // auto-applied discount at POS (cashier can override)
   serviceChargeCents     Int   @default(0)   // auto-added service charge per item at POS
@@ -618,6 +619,7 @@ model StockBatch {
   warehouseId    String
   purchaseLineId String?   // which purchase line created this batch
   qty            Decimal   @db.Decimal(18, 4)
+  unitCostCents  Int       @default(0)   // this batch's own cost, per base unit — G1
   batchNumber    String?   // supplier/manufacturer batch/lot number
   expiryDate     DateTime?
   receivedAt     DateTime  @default(now())
@@ -754,6 +756,9 @@ model PurchaseReceiptLine {
   productId      String
   product        Product         @relation(fields: [productId], references: [id])
   qty            Decimal         @db.Decimal(18, 4)
+  unitCostCents  Int             @default(0)   // actual cost per purchase unit at receipt — G1
+  damagedQty     Decimal         @default(0) @db.Decimal(18, 4)   // damaged/rejected at receipt — G1
+  note           String?         // per-line receiving note — G1
   batchNumber    String?
   expiryDate     DateTime?
   createdAt      DateTime        @default(now())

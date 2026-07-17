@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { computeWAC } from '../../utils/cost.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 
@@ -376,20 +377,38 @@ export const purchaseService = {
           },
         });
 
-        // Update product's last cost + auto-reactivate if inactive
-        // (physical stock means it should be sellable regardless of prior inactive status)
+        // G1: weighted-average cost. Blend this receipt into the product's running
+        // average. Read on-hand qty (all warehouses) + current avg FRESH — the
+        // per-line recomputeStockQty below keeps these correct even when the same
+        // product appears on multiple PO lines. Values read here are pre-receipt.
+        const onHandAgg = await tx.stock.aggregate({
+          where: { productId: line.productId },
+          _sum:  { qty: true },
+        });
+        const existingQty      = Number(onHandAgg._sum.qty ?? 0);
+        const curProd          = await tx.product.findUnique({
+          where:  { id: line.productId },
+          select: { costCents: true },
+        });
+        const existingAvgCents = curProd?.costCents ?? 0;
+        const newAvgCents      = computeWAC(existingQty, existingAvgCents, baseQty.toNumber(), costPerBaseCents);
+
+        // Update product's weighted-average cost + last cost + auto-reactivate if
+        // inactive (physical stock means it should be sellable regardless of prior status).
         await tx.product.update({
           where: { id: line.productId },
-          data: { costCents: costPerBaseCents, isActive: true },
+          data: { costCents: newAvgCents, lastCostCents: costPerBaseCents, isActive: true },
         });
 
-        // Create stock batch row (tracks expiry per batch)
+        // Create stock batch row — stamped with its own per-base-unit cost (G1),
+        // and tracks expiry per batch.
         await (tx as any).stockBatch.create({
           data: {
             productId:      line.productId,
             warehouseId:    purchase.warehouseId,
             purchaseLineId: line.id,
             qty:            baseQty,
+            unitCostCents:  costPerBaseCents,
             expiryDate:     (line as any).expiryDate ?? null,
           },
         });
