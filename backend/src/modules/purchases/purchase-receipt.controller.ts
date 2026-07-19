@@ -10,6 +10,9 @@ import {
 const receiptLineSchema = z.object({
   purchaseLineId: z.string().min(1),
   qty:            z.number().positive(),
+  unitCostCents:  z.number().int().nonnegative().optional(),
+  damagedQty:     z.number().nonnegative().optional(),
+  note:           z.string().max(300).optional(),
   batchNumber:    z.string().optional(),
   expiryDate:     z.string().optional(),
 });

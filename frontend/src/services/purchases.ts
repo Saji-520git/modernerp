@@ -58,6 +58,9 @@ export interface PurchaseReceiptLine {
   purchaseLineId: string;
   productId:      string;
   qty:            number;
+  unitCostCents:  number;         // actual cost at receipt — G2
+  damagedQty:     number;         // damaged/rejected (not stocked) — G2
+  note:           string | null;  // per-line receiving note — G2
   batchNumber:    string | null;
   expiryDate:     string | null;
   product:        { id: string; name: string; sku: string };
@@ -120,7 +123,10 @@ export interface Purchase {
 
 export interface CreateReceiptLineInput {
   purchaseLineId: string;
-  qty:            number;
+  qty:            number;       // good qty received (enters stock)
+  unitCostCents?: number;       // actual cost per purchase unit at receipt — G2
+  damagedQty?:    number;       // damaged/rejected qty (recorded, not stocked) — G2
+  note?:          string;       // per-line receiving note — G2
   batchNumber?:   string;
   expiryDate?:    string;
 }
@@ -195,8 +201,10 @@ export const purchasesApi = {
   updatePurchase: (id: string, payload: Partial<CreatePurchasePayload>): Promise<Purchase> =>
     api.patch(`/purchases/${id}`, payload).then((r) => r.data),
 
-  confirmPurchase: (id: string): Promise<Purchase> =>
-    api.patch(`/purchases/${id}/confirm`).then((r) => r.data),
+  // receiveMode: 'FULL' (default) confirms + receives all stock now; 'AWAIT_GRN'
+  // confirms the order only (stock enters later via GRN).
+  confirmPurchase: (id: string, receiveMode: 'FULL' | 'AWAIT_GRN' = 'FULL'): Promise<Purchase> =>
+    api.patch(`/purchases/${id}/confirm`, { receiveMode }).then((r) => r.data),
 
   cancelPurchase: (id: string): Promise<Purchase> =>
     api.patch(`/purchases/${id}/cancel`).then((r) => r.data),

@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
+import { computeWAC } from '../../utils/cost.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,10 @@ async function generateGRNNumber(): Promise<string> {
 
 export interface ReceiptLineInput {
   purchaseLineId: string;
-  qty:            number;
+  qty:            number;      // GOOD qty received (enters stock). Same unit as the PO line.
+  unitCostCents?: number;      // actual cost per purchase unit at receipt; defaults to the PO line cost — G2
+  damagedQty?:    number;      // damaged/rejected qty — recorded only, NOT added to stock — G2
+  note?:          string;      // per-line receiving note — G2
   batchNumber?:   string;
   expiryDate?:    string; // ISO date string
 }
@@ -147,19 +151,50 @@ export async function createReceipt(
         }
       }
 
-      // 2a. Create receipt line document
+      // G2: actual cost at receipt (defaults to the PO line cost), and its
+      // per-BASE-unit equivalent (stock/batches are held in base units).
+      const receiptUnitCost = rl.unitCostCents ?? poLine.unitCostCents;
+      const factor          = baseQty.isZero() || qtyDec.isZero()
+        ? new Decimal(1)
+        : baseQty.div(qtyDec);
+      const costPerBaseCents = factor.isZero()
+        ? receiptUnitCost
+        : Math.round(receiptUnitCost / factor.toNumber());
+      const damagedQtyDec    = new Decimal((rl.damagedQty ?? 0).toString());
+
+      // 2a. Create receipt line document (with actual cost + damaged + note — G2)
       await tx.purchaseReceiptLine.create({
         data: {
           receiptId:     receipt.id,
           purchaseLineId: rl.purchaseLineId,
           productId:     poLine.productId,
           qty:           qtyDec,
+          unitCostCents: receiptUnitCost,
+          damagedQty:    damagedQtyDec,
+          note:          rl.note ?? null,
           batchNumber:   rl.batchNumber ?? null,
           expiryDate:    rl.expiryDate ? new Date(rl.expiryDate) : null,
         },
       });
 
-      // 2b. Upsert stock (base units)
+      // G2: weighted-average cost — blend this receipt in using on-hand qty read
+      // FRESH (pre-receipt), then update the product's average + last cost.
+      const onHandAgg = await tx.stock.aggregate({
+        where: { productId: poLine.productId },
+        _sum:  { qty: true },
+      });
+      const existingQty      = Number(onHandAgg._sum.qty ?? 0);
+      const curProd          = await tx.product.findUnique({
+        where:  { id: poLine.productId },
+        select: { costCents: true },
+      });
+      const newAvgCents      = computeWAC(existingQty, curProd?.costCents ?? 0, baseQty.toNumber(), costPerBaseCents);
+      await tx.product.update({
+        where: { id: poLine.productId },
+        data:  { costCents: newAvgCents, lastCostCents: costPerBaseCents, isActive: true },
+      });
+
+      // 2b. Upsert stock (base units) — GOOD qty only; damaged does NOT enter stock.
       await tx.stock.upsert({
         where: {
           productId_warehouseId: {
@@ -184,19 +219,20 @@ export async function createReceipt(
         },
       });
 
-      // 2d. Stock batch (for FEFO expiry tracking)
+      // 2d. Stock batch (FEFO expiry tracking) — stamped with its own cost (G2)
       await (tx as any).stockBatch.create({
         data: {
           productId:      poLine.productId,
           warehouseId:    purchase.warehouseId,
           purchaseLineId: rl.purchaseLineId,
           qty:            baseQty,
+          unitCostCents:  costPerBaseCents,
           batchNumber:    rl.batchNumber ?? null,
           expiryDate:     rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
         },
       });
 
-      // 2e. Update PurchaseLine.receivedQty
+      // 2e. Update PurchaseLine.receivedQty (good qty received against the order)
       await tx.purchaseLine.update({
         where: { id: rl.purchaseLineId },
         data:  { receivedQty: { increment: qtyDec } },

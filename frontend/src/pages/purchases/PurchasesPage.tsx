@@ -462,20 +462,26 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
   const [notes, setNotes]       = useState('');
   const [err,   setErr]         = useState('');
 
-  // Per-line receive state: { purchaseLineId → { qty, batchNumber, expiryDate } }
+  // Per-line receive state (G2 adds unitCost + damaged)
   const [lineInputs, setLineInputs] = useState<
-    Record<string, { qty: string; batchNumber: string; expiryDate: string }>
+    Record<string, { qty: string; unitCost: string; damaged: string; batchNumber: string; expiryDate: string }>
   >({});
 
   const lines    = po.lines ?? [];
   const receipts = po.receipts ?? [];
 
-  // Initialise lineInputs from remaining qty
+  // Initialise lineInputs from remaining qty; unit cost defaults to the PO line cost.
   const initForm = () => {
     const init: typeof lineInputs = {};
     for (const l of lines) {
       const remaining = Math.max(0, Number(l.qty) - Number(l.receivedQty ?? 0));
-      init[l.id] = { qty: remaining > 0 ? String(remaining) : '0', batchNumber: '', expiryDate: '' };
+      init[l.id] = {
+        qty:         remaining > 0 ? String(remaining) : '0',
+        unitCost:    ((l.unitCostCents ?? 0) / 100).toFixed(2),
+        damaged:     '',
+        batchNumber: '',
+        expiryDate:  '',
+      };
     }
     setLineInputs(init);
     setNotes('');
@@ -483,7 +489,11 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
     setShowForm(true);
   };
 
-  const updateInput = (lineId: string, field: 'qty' | 'batchNumber' | 'expiryDate', val: string) => {
+  const updateInput = (
+    lineId: string,
+    field: 'qty' | 'unitCost' | 'damaged' | 'batchNumber' | 'expiryDate',
+    val: string,
+  ) => {
     setLineInputs((prev) => ({ ...prev, [lineId]: { ...prev[lineId], [field]: val } }));
   };
 
@@ -497,6 +507,8 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
           receiptLines.push({
             purchaseLineId: l.id,
             qty,
+            unitCostCents: input.unitCost ? Math.round(parseFloat(input.unitCost) * 100) : undefined,
+            damagedQty:    input.damaged  ? parseFloat(input.damaged) : undefined,
             batchNumber:  input.batchNumber || undefined,
             expiryDate:   input.expiryDate  || undefined,
           });
@@ -574,6 +586,10 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                   <tr className="text-slate-400 border-b border-slate-100">
                     <th className="px-3 py-1 text-left font-medium">Product</th>
                     <th className="px-3 py-1 text-right font-medium">Received</th>
+                    {r.lines.some((l) => Number(l.damagedQty) > 0) && (
+                      <th className="px-3 py-1 text-right font-medium">Damaged</th>
+                    )}
+                    <th className="px-3 py-1 text-right font-medium">Unit Cost</th>
                     {r.lines.some((l) => l.batchNumber || l.expiryDate) && (
                       <th className="px-3 py-1 text-left font-medium">Batch / Expiry</th>
                     )}
@@ -584,6 +600,10 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                     <tr key={rl.id} className="border-b border-slate-50">
                       <td className="px-3 py-1.5 text-slate-700">{rl.product.name}</td>
                       <td className="px-3 py-1.5 text-right font-semibold text-slate-700">{Number(rl.qty)}</td>
+                      {r.lines.some((l) => Number(l.damagedQty) > 0) && (
+                        <td className="px-3 py-1.5 text-right text-red-600">{Number(rl.damagedQty) > 0 ? Number(rl.damagedQty) : '—'}</td>
+                      )}
+                      <td className="px-3 py-1.5 text-right text-slate-500">{formatCents(rl.unitCostCents)}</td>
                       {r.lines.some((l) => l.batchNumber || l.expiryDate) && (
                         <td className="px-3 py-1.5 text-slate-400">
                           {rl.batchNumber && <span className="mr-2 font-mono">{rl.batchNumber}</span>}
@@ -623,6 +643,8 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                       <th className="pb-1.5 text-right font-medium">Received</th>
                       <th className="pb-1.5 text-right font-medium">Remaining</th>
                       <th className="pb-1.5 text-right font-medium w-20">Qty Now</th>
+                      <th className="pb-1.5 text-right font-medium w-24 pl-2">Unit Cost</th>
+                      <th className="pb-1.5 text-right font-medium w-20 pl-2">Damaged</th>
                       {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Batch #</th>}
                       {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Expiry Date</th>}
                     </tr>
@@ -631,7 +653,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                     {lines.map((l) => {
                       const received      = Number(l.receivedQty ?? 0);
                       const remaining     = Math.max(0, Number(l.qty) - received);
-                      const input         = lineInputs[l.id] ?? { qty: '0', batchNumber: '', expiryDate: '' };
+                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', damaged: '', batchNumber: '', expiryDate: '' };
                       const isBatch       = l.product.isBatchTracked;
                       const qtyNow        = parseFloat(input.qty) || 0;
                       const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
@@ -668,6 +690,31 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                               disabled={remaining === 0}
                               onChange={(e) => updateInput(l.id, 'qty', e.target.value)}
                               className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                            />
+                          </td>
+                          <td className="py-1.5 pl-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={input.unitCost}
+                              disabled={remaining === 0}
+                              onChange={(e) => updateInput(l.id, 'unitCost', e.target.value)}
+                              title="Actual unit cost for this delivery (defaults to the PO cost)"
+                              className="w-24 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                            />
+                          </td>
+                          <td className="py-1.5 pl-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              value={input.damaged}
+                              placeholder="0"
+                              disabled={remaining === 0}
+                              onChange={(e) => updateInput(l.id, 'damaged', e.target.value)}
+                              title="Damaged / rejected units — recorded but not added to stock"
+                              className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-red-300 disabled:bg-slate-100"
                             />
                           </td>
                           {needsBatchCol && (
@@ -919,7 +966,7 @@ function PurchaseDetailModal({
 }: {
   id: string;
   onClose: () => void;
-  onConfirm: (id: string) => void;
+  onConfirm: (id: string, mode: 'FULL' | 'AWAIT_GRN') => void;
   onCancel: (id: string) => void;
   onEdit?: (po: Purchase) => void;
 }) {
@@ -1079,10 +1126,18 @@ function PurchaseDetailModal({
                   <XCircle className="w-4 h-4" /> Cancel Order
                 </button>
                 <button
-                  onClick={() => onConfirm(id)}
+                  onClick={() => onConfirm(id, 'AWAIT_GRN')}
+                  title="Approve the order now; receive the goods later via GRN (with actual cost + damage)."
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <CheckCircle className="w-4 h-4" /> Confirm Only
+                </button>
+                <button
+                  onClick={() => onConfirm(id, 'FULL')}
+                  title="Confirm and receive all stock now at the PO cost (fast walk-in delivery)."
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700"
                 >
-                  <CheckCircle className="w-4 h-4" /> Confirm & Receive Stock
+                  <CheckCircle className="w-4 h-4" /> Confirm &amp; Receive All
                 </button>
               </>
             )}
@@ -1144,7 +1199,8 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
   });
 
   const confirmMutation = useMutation({
-    mutationFn: (id: string) => purchasesApi.confirmPurchase(id),
+    mutationFn: ({ id, mode }: { id: string; mode: 'FULL' | 'AWAIT_GRN' }) =>
+      purchasesApi.confirmPurchase(id, mode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', detailId] });
@@ -1343,8 +1399,8 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                     {po.status === 'DRAFT' && (
                       <>
                         <button
-                          title="Confirm & receive stock"
-                          onClick={() => confirmMutation.mutate(po.id)}
+                          title="Confirm & receive all stock now (quick). For GRN-later, open the order."
+                          onClick={() => confirmMutation.mutate({ id: po.id, mode: 'FULL' })}
                           disabled={confirmMutation.isPending}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600 hover:text-green-700"
                         >
@@ -1404,7 +1460,7 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
         <PurchaseDetailModal
           id={detailId}
           onClose={() => setDetailId(null)}
-          onConfirm={(id) => confirmMutation.mutate(id)}
+          onConfirm={(id, mode) => confirmMutation.mutate({ id, mode })}
           onCancel={(id) => cancelMutation.mutate(id)}
           onEdit={(po) => { setDetailId(null); onEdit(po); }}
         />

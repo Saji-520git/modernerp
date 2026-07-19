@@ -274,7 +274,11 @@ export const purchaseService = {
 
   // ── Confirm PO → adds stock ────────────────────────────────────────────────
 
-  confirmPurchase: async (id: string, userId?: string) => {
+  // receiveMode: 'FULL' (default) = confirm AND receive all stock now at PO cost
+  // (weighted-average) — the fast walk-in flow, behaviour-identical to before.
+  // 'AWAIT_GRN' = confirm the order only (commitment); no stock/cost/receipt —
+  // goods are received later via GRN with their actual cost + damage.
+  confirmPurchase: async (id: string, userId?: string, receiveMode: 'FULL' | 'AWAIT_GRN' = 'FULL') => {
     const purchase = await (prisma as any).purchase.findFirst({
       where: { id, deletedAt: null },
       include: { lines: true },
@@ -291,6 +295,9 @@ export const purchaseService = {
         data: { status: 'CONFIRMED' },
       });
 
+      // AWAIT_GRN: stop here — no stock, no cost change, receivedQty stays 0,
+      // deliveryStatus stays PENDING. Stock enters later via the GRN receipt.
+      if (receiveMode === 'FULL') {
       // Pre-fetch every line's product once (avoids a findUnique per line inside the loop)
       const lineProductIds = purchase.lines.map((l: any) => l.productId);
       const lineProducts = await tx.product.findMany({
@@ -428,10 +435,12 @@ export const purchaseService = {
           data:  { receivedQty: line.qty },
         });
       }
+      } // end if (receiveMode === 'FULL')
     });
 
-    // ── NEW: create GRN document for backward-compat full delivery ────────────
-    if (userId) {
+    // ── FULL mode: create the GRN document for the auto full delivery.
+    //    AWAIT_GRN records no receipt here — the user files GRN(s) manually.
+    if (receiveMode === 'FULL' && userId) {
       await createFullReceiptRecord(id, purchase.lines, purchase.warehouseId, userId);
     }
 

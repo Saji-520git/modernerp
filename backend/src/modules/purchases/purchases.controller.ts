@@ -33,7 +33,9 @@ export const createPurchase: RequestHandler = async (req, res) => {
 
 export const confirmPurchase: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
-  const result = await purchaseService.confirmPurchase(req.params.id, req.auth.userId);
+  // Default FULL preserves the existing one-step confirm-and-receive behaviour.
+  const receiveMode = req.body?.receiveMode === 'AWAIT_GRN' ? 'AWAIT_GRN' : 'FULL';
+  const result = await purchaseService.confirmPurchase(req.params.id, req.auth.userId, receiveMode);
   res.json(result);
 };
 
