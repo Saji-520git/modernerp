@@ -111,6 +111,7 @@ export interface InventoryItem {
   sku: string;
   totalQty: number;
   costCents: number;
+  lastCostCents: number;
   priceCents: number;
   reorderLevel: number;
   isLowStock: boolean;

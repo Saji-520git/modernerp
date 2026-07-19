@@ -932,8 +932,8 @@ function InventoryTab() {
     pdfHeader(doc, 'Inventory Valuation', warehouseId ? `Warehouse filtered` : 'All warehouses');
     autoTable(doc, {
       startY: 42,
-      head: [['Product', 'SKU', 'Qty', 'Unit Cost', 'Unit Price', 'Cost Value', 'Sale Value', 'Margin']],
-      body: d.items.map((r) => [r.name, r.sku, r.totalQty.toFixed(1), formatMoney(r.costCents), formatMoney(r.priceCents), formatMoney(r.costValueCents), formatMoney(r.saleValueCents), formatMoney(r.potentialMarginCents)]),
+      head: [['Product', 'SKU', 'Qty', 'Avg Cost', 'Last Cost', 'Unit Price', 'Cost Value', 'Sale Value', 'Margin']],
+      body: d.items.map((r) => [r.name, r.sku, r.totalQty.toFixed(1), formatMoney(r.costCents), r.lastCostCents ? formatMoney(r.lastCostCents) : '—', formatMoney(r.priceCents), formatMoney(r.costValueCents), formatMoney(r.saleValueCents), formatMoney(r.potentialMarginCents)]),
       headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 7 },
       bodyStyles: { fontSize: 7.5 },
       theme: 'plain', margin: { left: 12, right: 12 },
@@ -1007,7 +1007,8 @@ function InventoryTab() {
                   <tr>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Product</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Qty</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Unit Cost</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Avg Cost</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Last Cost</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Unit Price</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Cost Value</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Sale Value</th>
@@ -1024,6 +1025,7 @@ function InventoryTab() {
                       </td>
                       <td className="px-4 py-2.5 text-right text-slate-700">{item.totalQty.toFixed(1)}</td>
                       <td className="px-4 py-2.5 text-right text-slate-500">{formatMoney(item.costCents)}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-500">{item.lastCostCents ? formatMoney(item.lastCostCents) : '—'}</td>
                       <td className="px-4 py-2.5 text-right text-slate-500">{formatMoney(item.priceCents)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-amber-700">{formatMoney(item.costValueCents)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{formatMoney(item.saleValueCents)}</td>

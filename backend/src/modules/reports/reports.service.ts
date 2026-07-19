@@ -369,6 +369,7 @@ export const reportsService = {
       name: string;
       sku: string;
       costCents: number;
+      lastCostCents: number;
       priceCents: number;
       reorderLevel: number;
       totalQty: number;
@@ -377,22 +378,22 @@ export const reportsService = {
     const rows: InvRow[] = warehouseId
       ? await prisma.$queryRaw<InvRow[]>`
           SELECT p.id AS "productId", p.name, p.sku,
-            p."costCents", p."priceCents", p."reorderLevel",
+            p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel",
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id AND s."warehouseId" = ${warehouseId}
           WHERE p."isActive" = true
-          GROUP BY p.id, p.name, p.sku, p."costCents", p."priceCents", p."reorderLevel"
+          GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `
       : await prisma.$queryRaw<InvRow[]>`
           SELECT p.id AS "productId", p.name, p.sku,
-            p."costCents", p."priceCents", p."reorderLevel",
+            p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel",
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id
           WHERE p."isActive" = true
-          GROUP BY p.id, p.name, p.sku, p."costCents", p."priceCents", p."reorderLevel"
+          GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `;
 
@@ -402,6 +403,7 @@ export const reportsService = {
       sku: r.sku,
       totalQty: r.totalQty,
       costCents: r.costCents,
+      lastCostCents: r.lastCostCents,
       priceCents: r.priceCents,
       reorderLevel: r.reorderLevel,
       isLowStock: r.totalQty <= r.reorderLevel && r.reorderLevel > 0,
