@@ -1110,7 +1110,8 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-8"></th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Product</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Category / Brand</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Cost</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Avg Cost</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Cost</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Price</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Margin</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Stock</th>
@@ -1165,9 +1166,14 @@ export default function ProductsPage() {
                       </div>
                     </td>
 
-                    {/* Cost */}
+                    {/* Avg Cost (weighted-average) */}
                     <td className="px-4 py-3 text-right text-slate-600 text-xs">
                       {formatCents(p.costCents)}
+                    </td>
+
+                    {/* Last Cost (most recent receipt) */}
+                    <td className="px-4 py-3 text-right text-slate-500 text-xs">
+                      {p.lastCostCents ? formatCents(p.lastCostCents) : '—'}
                     </td>
 
                     {/* Price */}
