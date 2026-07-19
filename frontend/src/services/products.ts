@@ -39,7 +39,8 @@ export interface Product {
     conversionQty: number;
     fromUnit: { shortCode: string };
   }>;
-  costCents: number;
+  costCents: number;           // weighted-average cost per base unit
+  lastCostCents: number;       // most recent receipt cost per base unit — G1
   priceCents: number;
   defaultDiscountCents: number;
   serviceChargeCents: number;

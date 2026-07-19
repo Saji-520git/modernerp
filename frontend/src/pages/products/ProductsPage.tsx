@@ -1307,8 +1307,14 @@ export default function ProductsPage() {
             <div className="px-5 py-4 border-b border-slate-100 space-y-2">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Cost</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Avg Cost</p>
                   <p className="font-medium text-slate-700">{formatCents(drawer.costCents)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Last Cost</p>
+                  <p className="font-medium text-slate-700">
+                    {drawer.lastCostCents ? formatCents(drawer.lastCostCents) : '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Price</p>
@@ -1323,6 +1329,12 @@ export default function ProductsPage() {
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Reorder at</p>
                   <p className="font-medium text-slate-700">{formatStockDisplay(drawer, Number(drawer.reorderLevel))}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Stock Value</p>
+                  <p className="font-semibold text-amber-700">
+                    {formatCents(Math.round(totalStock(drawer) * drawer.costCents))}
+                  </p>
                 </div>
               </div>
 
@@ -1355,17 +1367,27 @@ export default function ProductsPage() {
                           <p className="text-sm font-medium text-slate-700">{s.warehouse.name}</p>
                           <p className="text-[10px] text-slate-400 font-mono">{s.warehouse.code}</p>
                         </div>
-                        <span className={`text-sm font-semibold ${qty === 0 ? 'text-red-500' : low ? 'text-amber-600' : 'text-green-600'}`}>
-                          {formatStockDisplay(drawer, qty)}
-                        </span>
+                        <div className="text-right">
+                          <span className={`text-sm font-semibold ${qty === 0 ? 'text-red-500' : low ? 'text-amber-600' : 'text-green-600'}`}>
+                            {formatStockDisplay(drawer, qty)}
+                          </span>
+                          {qty > 0 && (
+                            <p className="text-[10px] text-amber-600 mt-0.5">{formatCents(Math.round(qty * drawer.costCents))}</p>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
                   <div className="flex items-center justify-between pt-2 mt-1 border-t border-slate-200">
                     <p className="text-xs font-semibold text-slate-500">Total</p>
-                    <p className="text-sm font-bold text-slate-800">
-                      {formatStockDisplay(drawer, totalStock(drawer))}
-                    </p>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-800">
+                        {formatStockDisplay(drawer, totalStock(drawer))}
+                      </p>
+                      <p className="text-[10px] font-semibold text-amber-700 mt-0.5">
+                        {formatCents(Math.round(totalStock(drawer) * drawer.costCents))}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1399,15 +1421,20 @@ export default function ProductsPage() {
                             <div key={b.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-3 py-2">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-mono text-slate-500 text-[10px]">{b.id.slice(-8)}</span>
+                                  <span className="font-mono text-slate-500 text-[10px]">{b.batchNumber ?? b.id.slice(-8)}</span>
                                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusColors[b.status] ?? 'bg-slate-100 text-slate-500'}`}>
                                     {statusLabel[b.status] ?? b.status}
                                   </span>
                                 </div>
-                                <div className="text-slate-500 mt-0.5">
-                                  {b.expiryDate
-                                    ? new Date(b.expiryDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-                                    : 'No expiry'}
+                                <div className="text-slate-500 mt-0.5 flex items-center gap-2">
+                                  <span>
+                                    {b.expiryDate
+                                      ? new Date(b.expiryDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                                      : 'No expiry'}
+                                  </span>
+                                  {b.unitCostCents > 0 && (
+                                    <span className="text-amber-600">@ {formatCents(b.unitCostCents)}</span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 ml-2 flex-shrink-0">

@@ -78,11 +78,13 @@ export async function getBatchSummary(
 // ─── Batch list for a product+warehouse (detail view) ────────────────────────
 
 export interface BatchDetail {
-  id:          string;
-  qty:         number;
-  expiryDate:  Date | null;
-  receivedAt:  Date;
-  status:      'expired' | 'expiring_soon' | 'ok' | 'no_expiry';
+  id:            string;
+  qty:           number;
+  unitCostCents: number;         // this batch's own cost, per base unit — cost visibility
+  batchNumber:   string | null;
+  expiryDate:    Date | null;
+  receivedAt:    Date;
+  status:        'expired' | 'expiring_soon' | 'ok' | 'no_expiry';
 }
 
 export async function getBatchDetail(
@@ -92,8 +94,8 @@ export async function getBatchDetail(
   const batches = await (prisma as any).stockBatch.findMany({
     where: { productId, warehouseId, qty: { gt: 0 } },
     orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
-    select: { id: true, qty: true, expiryDate: true, receivedAt: true },
-  }) as Array<{ id: string; qty: { toNumber: () => number }; expiryDate: Date | null; receivedAt: Date }>;
+    select: { id: true, qty: true, unitCostCents: true, batchNumber: true, expiryDate: true, receivedAt: true },
+  }) as Array<{ id: string; qty: { toNumber: () => number }; unitCostCents: number; batchNumber: string | null; expiryDate: Date | null; receivedAt: Date }>;
 
   const today         = new Date();
   const soonThreshold = new Date(today);
@@ -106,7 +108,7 @@ export async function getBatchDetail(
       else if (b.expiryDate <= soonThreshold) status = 'expiring_soon';
       else                                status = 'ok';
     }
-    return { id: b.id, qty: b.qty.toNumber(), expiryDate: b.expiryDate, receivedAt: b.receivedAt, status };
+    return { id: b.id, qty: b.qty.toNumber(), unitCostCents: b.unitCostCents, batchNumber: b.batchNumber, expiryDate: b.expiryDate, receivedAt: b.receivedAt, status };
   });
 }
 

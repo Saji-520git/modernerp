@@ -7,6 +7,8 @@ export type ExpiryStatus = 'none' | 'ok' | 'expiring' | 'has_expired_batch';
 export interface BatchDetail {
   id: string;
   qty: number;
+  unitCostCents: number;         // this batch's own cost per base unit — cost visibility
+  batchNumber: string | null;
   expiryDate: string | null;
   receivedAt: string;
   status: 'expired' | 'expiring_soon' | 'ok' | 'no_expiry';
