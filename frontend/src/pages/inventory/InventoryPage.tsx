@@ -285,6 +285,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
                   <tr className="text-slate-500">
                     <th className="text-left py-1 font-medium">Received</th>
                     <th className="text-right py-1 font-medium">Qty</th>
+                    <th className="text-right py-1 font-medium">Unit Cost</th>
                     <th className="text-right py-1 font-medium">Expiry Date</th>
                     <th className="text-center py-1 font-medium">Status</th>
                     <th className="text-center py-1 font-medium">Action</th>
@@ -296,6 +297,11 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
                       <tr>
                         <td className="py-1 text-slate-600">{new Date(b.receivedAt).toLocaleDateString()}</td>
                         <td className="py-1 text-right font-medium">{b.qty}</td>
+                        <td className="py-1 text-right text-amber-700">
+                          {b.unitCostCents > 0
+                            ? `Rs. ${(b.unitCostCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : '—'}
+                        </td>
                         <td className={`py-1 text-right ${batchStatusColour(b.status)}`}>
                           {b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                         </td>
@@ -317,7 +323,7 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
                       </tr>
                       {writeOffBatchId === b.id && (
                         <tr className="bg-red-50">
-                          <td colSpan={5} className="px-2 py-2">
+                          <td colSpan={6} className="px-2 py-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <input
                                 type="number" min={1} max={b.qty} step={1}
