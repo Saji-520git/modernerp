@@ -38,6 +38,7 @@ export const updateSettingsSchema = z.object({
   purchasePrefix:        z.string().min(1).max(10).optional(),
   invoiceFooter:         z.string().max(500).nullable().optional(),
   invoiceShowLogo:       z.boolean().optional(),
+  documentTheme:         z.enum(['dark', 'light']).optional(),
 
   // Security
   sessionTimeoutMin:     z.number().int().min(0).optional(),

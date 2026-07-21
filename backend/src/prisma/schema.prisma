@@ -938,6 +938,7 @@ model AppSettings {
   purchasePrefix        String   @default("PO")
   invoiceFooter         String?
   invoiceShowLogo       Boolean  @default(true)
+  documentTheme         String   @default("light")  // PDF theme for invoices/POs/returns/reports: "dark" | "light"
 
   // Security
   sessionTimeoutMin     Int      @default(480)

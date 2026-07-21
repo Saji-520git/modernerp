@@ -37,6 +37,7 @@ export interface AppSettings {
   purchasePrefix: string;
   invoiceFooter: string | null;
   invoiceShowLogo: boolean;
+  documentTheme: 'dark' | 'light';
   // Security
   sessionTimeoutMin: number;
   // Alert thresholds

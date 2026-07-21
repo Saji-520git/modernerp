@@ -102,6 +102,27 @@ const HEADER_ROW : [number,number,number] = [51, 65, 85];    // slate-700 table 
 const BAND_MUTED : [number,number,number] = [148, 163, 184]; // muted text on dark band
 const BAND_ACCENT: [number,number,number] = [199, 210, 254]; // light-indigo document label
 
+// ── Theme palette ─────────────────────────────────────────────────────────────
+// Resolved from settings.documentTheme inside drawDocHeader (runs first in every
+// export); the item table + totals then read the module palette.
+type DocPalette = {
+  band: RGB3; bandText: RGB3; bandMuted: RGB3; bandLabel: RGB3;
+  headerRow: RGB3; headerText: RGB3; totalBg: RGB3; totalText: RGB3;
+  lightBand: boolean;
+};
+type RGB3 = [number, number, number];
+const DOC_DARK: DocPalette = {
+  band: BAND_DARK, bandText: [255, 255, 255], bandMuted: BAND_MUTED, bandLabel: BAND_ACCENT,
+  headerRow: HEADER_ROW, headerText: [255, 255, 255], totalBg: BAND_DARK, totalText: [255, 255, 255],
+  lightBand: false,
+};
+const DOC_LIGHT: DocPalette = {
+  band: [255, 255, 255], bandText: TEXT, bandMuted: LABEL, bandLabel: BRAND,
+  headerRow: [226, 232, 240], headerText: TEXT, totalBg: [241, 245, 249], totalText: TEXT,
+  lightBand: true,
+};
+let PT: DocPalette = DOC_LIGHT;
+
 // Legacy aliases — used only by drawPageHeader / drawTotals for exportSaleReturn
 const BRAND_COLOR : [number,number,number] = BRAND;
 const HEADER_BG   : [number,number,number] = [238, 242, 255]; // indigo-50
@@ -219,11 +240,18 @@ async function drawDocHeader(
   const R = W - 14;
   const BAND_H = 36;
 
-  // ── Dark letterhead band ─────────────────────────────────────────────────────
-  doc.setFillColor(...BAND_DARK);
-  doc.rect(0, 0, W, BAND_H, 'F');
+  // Resolve the theme for this whole document (item table + totals read it).
+  // Default (unset) → light.
+  PT = settings.documentTheme === 'dark' ? DOC_DARK : DOC_LIGHT;
+  const P = PT;
 
-  // Left: business identity (reversed on the dark band)
+  // ── Letterhead band ──────────────────────────────────────────────────────────
+  if (!P.lightBand) {
+    doc.setFillColor(...P.band);
+    doc.rect(0, 0, W, BAND_H, 'F');
+  }
+
+  // Left: business identity
   let textX = L;
   if (logoBase64 && settings.invoiceShowLogo) {
     try {
@@ -233,12 +261,12 @@ async function drawDocHeader(
   }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...P.bandText);
   doc.text(settings.businessName || 'My Business', textX, 16);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(...BAND_MUTED);
+  doc.setTextColor(...P.bandMuted);
   const idLines: string[] = [];
   if (settings.businessAddress) idLines.push(settings.businessAddress.replace(/\n/g, ', '));
   const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join('  ·  ');
@@ -250,14 +278,14 @@ async function drawDocHeader(
   // Right: document type + number + status pill
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.setTextColor(...BAND_ACCENT);
+  doc.setTextColor(...P.bandLabel);
   doc.text(docType.toUpperCase(), R, 14, { align: 'right', charSpace: 0.5 });
 
   doc.setFontSize(15);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...P.bandText);
   doc.text(docNumber, R, 23, { align: 'right' });
 
-  // Status pill
+  // Status pill (coloured fill + white text in both themes)
   const statusRGB: [number,number,number] =
     docStatus === 'CONFIRMED' ? GRN_C :
     docStatus === 'CANCELLED' ? RED_C : [71, 85, 105];
@@ -272,6 +300,13 @@ async function drawDocHeader(
   doc.roundedRect(pillX, pillY, pillW, pillH, 2.75, 2.75, 'F');
   doc.setTextColor(255, 255, 255);
   doc.text(docStatus, pillX + pillW / 2, pillY + 3.9, { align: 'center' });
+
+  // Light theme: a thin accent rule replaces the dark band as the divider.
+  if (P.lightBand) {
+    doc.setDrawColor(...BRAND);
+    doc.setLineWidth(0.7);
+    doc.line(L, BAND_H, R, BAND_H);
+  }
 
   return BAND_H + 6;
 }
@@ -519,8 +554,8 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: HEADER_ROW,
-      textColor: [255, 255, 255] as [number,number,number],
+      fillColor: PT.headerRow,
+      textColor: PT.headerText,
       fontStyle: 'bold',
       fontSize: 10,
     },
@@ -571,7 +606,7 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
       ? [{ label: 'Discount', value: `− ${fmt(fullSale.discountCents)}`, color: RED_C }]
       : []),
     { label: '---',   value: '' },
-    { label: 'TOTAL', value: fmt(fullSale.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
+    { label: 'TOTAL', value: fmt(fullSale.totalCents), bold: true, bg: PT.totalBg, color: PT.totalText },
   ];
 
   if (fullSale.status === 'CONFIRMED') {
@@ -662,8 +697,8 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: HEADER_ROW,
-      textColor: [255, 255, 255] as [number,number,number],
+      fillColor: PT.headerRow,
+      textColor: PT.headerText,
       fontStyle: 'bold',
       fontSize: 10,
     },
@@ -702,7 +737,7 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
       ? [{ label: settings.taxLabel || 'Tax', value: fmt(fullPO.taxCents) }]
       : []),
     { label: '---',   value: '' },
-    { label: 'TOTAL', value: fmt(fullPO.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
+    { label: 'TOTAL', value: fmt(fullPO.totalCents), bold: true, bg: PT.totalBg, color: PT.totalText },
   ];
 
   drawNewTotals(doc, afterTable, poTotRows);
@@ -764,8 +799,8 @@ export async function exportSaleReturn(ret: SaleReturn): Promise<void> {
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: HEADER_ROW,
-      textColor: [255, 255, 255] as [number,number,number],
+      fillColor: PT.headerRow,
+      textColor: PT.headerText,
       fontStyle: 'bold',
       fontSize: 9,
     },
@@ -785,7 +820,7 @@ export async function exportSaleReturn(ret: SaleReturn): Promise<void> {
 
   const afterTable = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
   drawNewTotals(doc, afterTable, [
-    { label: 'TOTAL REFUND', value: fmt(ret.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
+    { label: 'TOTAL REFUND', value: fmt(ret.totalCents), bold: true, bg: PT.totalBg, color: PT.totalText },
   ]);
 
   drawNewFooter(doc, settings);

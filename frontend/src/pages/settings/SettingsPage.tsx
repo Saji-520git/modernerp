@@ -546,6 +546,7 @@ function InvoicePanel({ settings, onSave, isPending, readOnly }: {
     purchasePrefix: settings.purchasePrefix,
     invoiceFooter:  settings.invoiceFooter ?? '',
     invoiceShowLogo: settings.invoiceShowLogo,
+    documentTheme:  (settings.documentTheme ?? 'light') as 'dark' | 'light',
   });
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -560,6 +561,7 @@ function InvoicePanel({ settings, onSave, isPending, readOnly }: {
         purchasePrefix:  f.purchasePrefix,
         invoiceFooter:   f.invoiceFooter || null,
         invoiceShowLogo: f.invoiceShowLogo,
+        documentTheme:   f.documentTheme,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -603,6 +605,37 @@ function InvoicePanel({ settings, onSave, isPending, readOnly }: {
           placeholder="Payment terms and conditions…" />
       </Field>
       <Toggle label="Show company logo on invoices" checked={f.invoiceShowLogo} onChange={v => setF(p => ({ ...p, invoiceShowLogo: v }))} disabled={readOnly} />
+
+      <Field label="PDF Document Theme">
+        <p className="text-xs text-slate-400 mb-2">Applies to invoices, purchase orders, credit notes and all reports.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { value: 'dark',  title: 'Dark band',   desc: 'Slate letterhead, white text' },
+            { value: 'light', title: 'Light',        desc: 'White letterhead, ink-friendly' },
+          ] as const).map(opt => (
+            <label
+              key={opt.value}
+              className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer transition ${
+                f.documentTheme === opt.value ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'
+              } ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              <input
+                type="radio"
+                name="documentTheme"
+                className="mt-0.5"
+                checked={f.documentTheme === opt.value}
+                onChange={() => !readOnly && setF(p => ({ ...p, documentTheme: opt.value }))}
+                disabled={readOnly}
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-700">{opt.title}</span>
+                <span className="block text-xs text-slate-400">{opt.desc}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Field>
+
       <SectionFooter onSave={handleSave} isPending={isPending} success={success} error={error} readOnly={readOnly} />
     </div>
   );

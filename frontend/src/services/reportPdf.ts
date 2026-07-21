@@ -34,6 +34,28 @@ export const FOOT_TEXT:    RGB = [30, 41, 59];
 
 const MARGIN = 12; // mm — left/right page margin, matches invoices
 
+// ── Theme palette ─────────────────────────────────────────────────────────────
+// Resolved from settings.documentTheme inside reportLetterhead (which runs first
+// in every export); styledTable + finalizeReport then read the module palette, so
+// no export call-site needs to know the theme.
+type Palette = {
+  band: RGB; bandText: RGB; bandMuted: RGB; bandLabel: RGB;
+  headerRow: RGB; headerText: RGB;
+  footBg: RGB; footText: RGB;
+  lightBand: boolean;  // true → white letterhead with a rule (ink-friendly)
+};
+const DARK_PALETTE: Palette = {
+  band: BAND_DARK, bandText: [255, 255, 255], bandMuted: BAND_MUTED, bandLabel: BAND_ACCENT,
+  headerRow: HEADER_ROW, headerText: [255, 255, 255],
+  footBg: FOOT_BG, footText: FOOT_TEXT, lightBand: false,
+};
+const LIGHT_PALETTE: Palette = {
+  band: [255, 255, 255], bandText: SLATE, bandMuted: MUTED, bandLabel: BRAND,
+  headerRow: [226, 232, 240], headerText: SLATE,   // slate-200 header, slate text
+  footBg: FOOT_BG, footText: FOOT_TEXT, lightBand: true,
+};
+let PALETTE: Palette = LIGHT_PALETTE;
+
 type Branding = { settings: AppSettings; logo: string | null };
 
 /** Fetch a logo URL as a base64 data URI (same approach as pdfExport). */
@@ -97,11 +119,18 @@ export function reportLetterhead(
   const w = doc.internal.pageSize.getWidth();
   const BAND_H = 30;
 
-  // ── Dark letterhead band ─────────────────────────────────────────────────────
-  doc.setFillColor(...BAND_DARK);
-  doc.rect(0, 0, w, BAND_H, 'F');
+  // Resolve the theme for this whole export (styledTable + finalizeReport read it).
+  // Default (unset) → light.
+  PALETTE = settings.documentTheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+  const P = PALETTE;
 
-  // Left: business identity (reversed on the dark band)
+  // ── Letterhead band ──────────────────────────────────────────────────────────
+  if (!P.lightBand) {
+    doc.setFillColor(...P.band);
+    doc.rect(0, 0, w, BAND_H, 'F');
+  }
+
+  // Left: business identity
   let textX = MARGIN;
   if (logo) {
     try {
@@ -109,14 +138,14 @@ export function reportLetterhead(
       textX = MARGIN + 24;
     } catch { /* corrupt logo → fall back to name only */ }
   }
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...P.bandText);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
   doc.text(settings.businessName || 'My Business', textX, 14);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(...BAND_MUTED);
+  doc.setTextColor(...P.bandMuted);
   const idLines: string[] = [];
   if (settings.businessAddress) idLines.push(settings.businessAddress.replace(/\n/g, ', '));
   const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join('  ·  ');
@@ -126,22 +155,29 @@ export function reportLetterhead(
   for (const line of idLines.slice(0, 2)) { doc.text(line, textX, ly); ly += 4; }
 
   // Right: report title + period + timestamp
-  doc.setTextColor(...BAND_ACCENT);
+  doc.setTextColor(...P.bandLabel);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.text(title.toUpperCase(), w - MARGIN, 13, { align: 'right', charSpace: 0.4 });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...P.bandText);
   if (period) doc.text(period, w - MARGIN, 20, { align: 'right' });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(...BAND_MUTED);
+  doc.setTextColor(...P.bandMuted);
   const stamp = new Date().toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   doc.text(`Generated ${stamp}`, w - MARGIN, 25.5, { align: 'right' });
+
+  // Light theme: a thin accent rule replaces the dark band as the divider.
+  if (P.lightBand) {
+    doc.setDrawColor(...BRAND);
+    doc.setLineWidth(0.6);
+    doc.line(MARGIN, BAND_H, w - MARGIN, BAND_H);
+  }
 
   return BAND_H + 8;
 }
@@ -210,10 +246,10 @@ export function styledTable(doc: jsPDF, opts: StyledTableOpts): void {
     theme,
     margin: { left: MARGIN, right: MARGIN },
     styles: { fontSize: fs, cellPadding: 2, textColor: SLATE, lineColor: HAIRLINE, lineWidth: 0.1 },
-    headStyles: { fillColor: HEADER_ROW, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: fs, halign: 'left' },
+    headStyles: { fillColor: PALETTE.headerRow, textColor: PALETTE.headerText, fontStyle: 'bold', fontSize: fs, halign: 'left' },
     bodyStyles: { fontSize: fs },
     alternateRowStyles: theme === 'striped' ? { fillColor: ZEBRA } : undefined,
-    footStyles: { fillColor: FOOT_BG, textColor: FOOT_TEXT, fontStyle: 'bold', fontSize: fs },
+    footStyles: { fillColor: PALETTE.footBg, textColor: PALETTE.footText, fontStyle: 'bold', fontSize: fs },
     columnStyles: opts.columnStyles,
   });
 }
