@@ -95,6 +95,8 @@ export interface ReceiptLine {
   unitShortCode?: string;
 }
 
+export interface AppliedPromotion { promotionId: string; label: string; discountCents: number; }
+
 export interface Receipt {
   id: string;
   number: string;
@@ -111,6 +113,7 @@ export interface Receipt {
   discountCents: number;
   totalCents: number;
   paidCents: number;
+  promotions?: AppliedPromotion[];  // applied promos (display only)
 }
 
 export interface PosSale {
@@ -203,7 +206,7 @@ export const posApi = {
   }): Promise<ProductsResponse> =>
     api.get('/pos/products', { params }).then((r) => r.data),
 
-  checkout: (payload: CheckoutPayload): Promise<{ receipt: Receipt; warnings?: string[] }> =>
+  checkout: (payload: CheckoutPayload): Promise<{ receipt: Receipt; warnings?: string[]; promotions?: AppliedPromotion[] }> =>
     // Longer timeout than the global default: the bundled offline PostgreSQL
     // can be slow to respond on a cold-start. Only the checkout POST is raised.
     api.post('/pos/checkout', payload, { timeout: 60000 }).then((r) => r.data),

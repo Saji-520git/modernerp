@@ -1388,6 +1388,18 @@ function ReceiptModal({
                 <span className="font-semibold text-slate-800">{value}</span>
               </div>
             ))}
+
+            {receipt.promotions && receipt.promotions.length > 0 && (
+              <div className="pt-2 mt-1 border-t border-slate-200 space-y-1">
+                <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Promotions applied</p>
+                {receipt.promotions.map((pr) => (
+                  <div key={pr.promotionId} className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 truncate mr-2">{pr.label}</span>
+                    <span className="font-medium text-emerald-600">− {formatCents(pr.discountCents)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Buttons */}
@@ -2286,13 +2298,13 @@ export default function POSPage() {
           });
 
           const augLines = [...productLines, ...svcLines];
-          setLastReceipt({ ...data.receipt, lines: augLines });
+          setLastReceipt({ ...data.receipt, lines: augLines, promotions: data.promotions });
         } catch {
           // Augmentation failed — use receipt as-is, never block the popup
-          setLastReceipt(data.receipt);
+          setLastReceipt({ ...data.receipt, promotions: data.promotions });
         }
       } else {
-        setLastReceipt(data.receipt);
+        setLastReceipt({ ...data.receipt, promotions: data.promotions });
       }
       const changeCents = pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0;
       setLastChangeCents(changeCents);
