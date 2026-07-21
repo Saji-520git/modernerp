@@ -96,6 +96,12 @@ const TOTAL_BG   : [number,number,number] = [240, 240, 255]; // #F0F0FF
 const BAL_RED_BG : [number,number,number] = [254, 242, 242]; // #FEF2F2
 const BAL_GRN_BG : [number,number,number] = [240, 253, 244]; // #F0FDF4
 
+// Corporate dark-band palette (shared look with report PDFs)
+const BAND_DARK  : [number,number,number] = [30, 41, 59];    // slate-800 letterhead band
+const HEADER_ROW : [number,number,number] = [51, 65, 85];    // slate-700 table header
+const BAND_MUTED : [number,number,number] = [148, 163, 184]; // muted text on dark band
+const BAND_ACCENT: [number,number,number] = [199, 210, 254]; // light-indigo document label
+
 // Legacy aliases — used only by drawPageHeader / drawTotals for exportSaleReturn
 const BRAND_COLOR : [number,number,number] = BRAND;
 const HEADER_BG   : [number,number,number] = [238, 242, 255]; // indigo-50
@@ -211,87 +217,63 @@ async function drawDocHeader(
   const W = doc.internal.pageSize.getWidth();
   const L = 14;
   const R = W - 14;
+  const BAND_H = 36;
 
-  let leftY  = 14;
-  let rightY = 14;
+  // ── Dark letterhead band ─────────────────────────────────────────────────────
+  doc.setFillColor(...BAND_DARK);
+  doc.rect(0, 0, W, BAND_H, 'F');
 
-  // ── Left: Logo (if enabled) + company name + contact info ───────────────
-  // Logo sits above company name when available
+  // Left: business identity (reversed on the dark band)
+  let textX = L;
   if (logoBase64 && settings.invoiceShowLogo) {
     try {
-      doc.addImage(logoBase64, logoImgFormat(logoBase64), L, leftY, 30, 17);
-      leftY += 20;
-    } catch {
-      // Image decode failed — company name still renders below
-    }
+      doc.addImage(logoBase64, logoImgFormat(logoBase64), L, 9, 22, 18);
+      textX = L + 27;
+    } catch { /* image decode failed → name still renders */ }
   }
-
-  // Company name always renders (14pt bold #111827)
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(17, 24, 39);
-  doc.text(settings.businessName || 'My Business', L, leftY + 6);
-  leftY += 10;
-
-  if (settings.businessAddress) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(107, 114, 128);
-    doc.text(settings.businessAddress, L, leftY);
-    leftY += 5;
-  }
-
-  if (settings.businessPhone) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(107, 114, 128);
-    doc.text(settings.businessPhone, L, leftY);
-    leftY += 5;
-  }
-
-  if (settings.businessEmail) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(107, 114, 128);
-    doc.text(settings.businessEmail, L, leftY);
-    leftY += 5;
-  }
-
-  // ── Right: Document type, number, date, status ────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...BRAND);
-  doc.text(docType, R, rightY + 7, { align: 'right' });
-  rightY += 12;
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(...TEXT);
-  doc.text(docNumber, R, rightY, { align: 'right' });
-  rightY += 7;
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.text(settings.businessName || 'My Business', textX, 16);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...LABEL);
-  doc.text(docDate, R, rightY, { align: 'right' });
-  rightY += 5;
+  doc.setFontSize(8);
+  doc.setTextColor(...BAND_MUTED);
+  const idLines: string[] = [];
+  if (settings.businessAddress) idLines.push(settings.businessAddress.replace(/\n/g, ', '));
+  const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join('  ·  ');
+  if (contact) idLines.push(contact);
+  if (settings.businessRegNo) idLines.push(`Reg: ${settings.businessRegNo}`);
+  let ly = 23;
+  for (const line of idLines.slice(0, 2)) { doc.text(line, textX, ly); ly += 4.2; }
 
+  // Right: document type + number + status pill
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...BAND_ACCENT);
+  doc.text(docType.toUpperCase(), R, 14, { align: 'right', charSpace: 0.5 });
+
+  doc.setFontSize(15);
+  doc.setTextColor(255, 255, 255);
+  doc.text(docNumber, R, 23, { align: 'right' });
+
+  // Status pill
   const statusRGB: [number,number,number] =
     docStatus === 'CONFIRMED' ? GRN_C :
-    docStatus === 'CANCELLED' ? RED_C : LABEL;
+    docStatus === 'CANCELLED' ? RED_C : [71, 85, 105];
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...statusRGB);
-  doc.text(docStatus, R, rightY, { align: 'right' });
-  rightY += 5;
+  doc.setFontSize(7.5);
+  const pillTextW = doc.getTextWidth(docStatus);
+  const pillW = pillTextW + 8;
+  const pillH = 5.5;
+  const pillX = R - pillW;
+  const pillY = 27;
+  doc.setFillColor(...statusRGB);
+  doc.roundedRect(pillX, pillY, pillW, pillH, 2.75, 2.75, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.text(docStatus, pillX + pillW / 2, pillY + 3.9, { align: 'center' });
 
-  // ── Brand separator line ──────────────────────────────────────────────────
-  const sepY = Math.max(leftY, rightY) + 4;
-  doc.setDrawColor(...BRAND);
-  doc.setLineWidth(0.8);
-  doc.line(L, sepY, R, sepY);
-
-  return sepY + 5;
+  return BAND_H + 6;
 }
 
 /**
@@ -418,13 +400,13 @@ function drawNewFooter(doc: jsPDF, settings: AppSettings): void {
   const H = doc.internal.pageSize.getHeight();
   const L = 14;
   const R = W - 14;
+  const total = doc.getNumberOfPages();
 
-  let footerTop = H - 20;
-
-  // Return policy box sits above the footer line
+  // Return policy box — last page only, just above the footer line.
   if (settings.returnPolicy) {
+    doc.setPage(total);
     const boxH = 12;
-    const boxY = footerTop - boxH - 3;
+    const boxY = H - 14 - boxH - 3;
     doc.setFillColor(248, 250, 252);
     doc.rect(L, boxY, R - L, boxH, 'F');
     doc.setDrawColor(...BORD);
@@ -440,36 +422,22 @@ function drawNewFooter(doc: jsPDF, settings: AppSettings): void {
     doc.setFontSize(8);
     const policyLines = doc.splitTextToSize(settings.returnPolicy, R - L - 36) as string[];
     doc.text(policyLines[0] ?? '', L + 31, boxY + 5);
-    footerTop = boxY - 3;
   }
 
-  // Separator
-  doc.setDrawColor(...BORD);
-  doc.setLineWidth(0.3);
-  doc.line(L, footerTop, R, footerTop);
-
-  const lineY = footerTop + 5;
-
-  // Left: "Thank you for your business!"
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...LABEL);
-  doc.text('Thank you for your business!', L, lineY);
-
-  // Center: phone · email
-  const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join(' · ');
-  if (contact) {
+  // Footer line on every page: thank-you · BROcode · page X of Y.
+  const name = settings.businessName || 'My Business';
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(...BORD);
+    doc.setLineWidth(0.3);
+    doc.line(L, H - 12, R, H - 12);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...LABEL);
-    doc.text(contact, W / 2, lineY, { align: 'center' });
+    doc.text(`${name} · Thank you for your business`, L, H - 7);
+    doc.text('BROcode ERP', W / 2, H - 7, { align: 'center' });
+    doc.text(`Page ${p} of ${total}`, R, H - 7, { align: 'right' });
   }
-
-  // Right: "Powered by BROcode ERP"
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...LABEL);
-  doc.text('Powered by BROcode ERP', R, lineY, { align: 'right' });
 }
 
 // ─── 1. Sales Invoice ─────────────────────────────────────────────────────────
@@ -551,7 +519,7 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: BRAND,
+      fillColor: HEADER_ROW,
       textColor: [255, 255, 255] as [number,number,number],
       fontStyle: 'bold',
       fontSize: 10,
@@ -603,7 +571,7 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
       ? [{ label: 'Discount', value: `− ${fmt(fullSale.discountCents)}`, color: RED_C }]
       : []),
     { label: '---',   value: '' },
-    { label: 'TOTAL', value: fmt(fullSale.totalCents), bold: true, bg: TOTAL_BG },
+    { label: 'TOTAL', value: fmt(fullSale.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
   ];
 
   if (fullSale.status === 'CONFIRMED') {
@@ -694,7 +662,7 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: BRAND,
+      fillColor: HEADER_ROW,
       textColor: [255, 255, 255] as [number,number,number],
       fontStyle: 'bold',
       fontSize: 10,
@@ -734,7 +702,7 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
       ? [{ label: settings.taxLabel || 'Tax', value: fmt(fullPO.taxCents) }]
       : []),
     { label: '---',   value: '' },
-    { label: 'TOTAL', value: fmt(fullPO.totalCents), bold: true, bg: TOTAL_BG },
+    { label: 'TOTAL', value: fmt(fullPO.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
   ];
 
   drawNewTotals(doc, afterTable, poTotRows);
@@ -747,64 +715,79 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
 
 // ─── 3. Credit Return Note (unchanged) ───────────────────────────────────────
 
-export function exportSaleReturn(ret: SaleReturn): void {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const pageW = doc.internal.pageSize.getWidth();
+export async function exportSaleReturn(ret: SaleReturn): Promise<void> {
+  const settings = await settingsApi.get().catch(() => ({} as AppSettings));
+  let logoBase64: string | null = null;
+  if (settings.logoUrl && settings.invoiceShowLogo) {
+    logoBase64 = await fetchLogoBase64(settings.logoUrl);
+  }
 
-  const startY = drawPageHeader(
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const fmt = (c: number) => money(c, settings);
+
+  let y = await drawDocHeader(
     doc,
+    settings,
+    logoBase64,
+    'CREDIT NOTE',
     ret.number,
-    'CREDIT RETURN NOTE',
     `Date: ${formatDate(ret.createdAt)}`,
+    'CONFIRMED',
+  );
+
+  y = drawMetaSection(
+    doc,
+    y,
+    'CUSTOMER',
     [
-      `Customer: ${ret.sale.customer?.name ?? 'Walk-in Customer'}`,
-      `Against Invoice: ${ret.sale.number}`,
-      `Warehouse: ${ret.warehouse.name} (${ret.warehouse.code})`,
-      `Processed by: ${ret.createdBy.fullName}`,
+      ret.sale.customer?.name ?? 'Walk-in Customer',
       ...(ret.reason ? [`Reason: ${ret.reason}`] : []),
     ],
-    [],
+    [
+      { label: 'Return No',       value: ret.number },
+      { label: 'Date',            value: formatDate(ret.createdAt) },
+      { label: 'Against Invoice', value: ret.sale.number },
+      { label: 'Warehouse',       value: `${ret.warehouse.name} (${ret.warehouse.code})` },
+      { label: 'Processed by',    value: ret.createdBy.fullName },
+    ],
   );
 
   const lines = (ret.lines as SaleReturnLine[]) ?? [];
   autoTable(doc, {
-    startY,
+    startY: y,
     head: [['Product', 'SKU', 'Return Qty', 'Unit Price', 'Refund Amount']],
     body: lines.map((l) => [
       l.product.name,
       l.product.sku,
       `${Number(l.qty)} ${l.product.unit?.shortCode ?? ''}`.trim(),
-      formatMoney(l.unitPriceCents),
-      formatMoney(l.lineTotalCents),
+      fmt(l.unitPriceCents),
+      fmt(l.lineTotalCents),
     ]),
     headStyles: {
-      fillColor: [234, 88, 12] as [number,number,number],
+      fillColor: HEADER_ROW,
       textColor: [255, 255, 255] as [number,number,number],
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 9,
     },
-    bodyStyles: { fontSize: 8.5, textColor: TEXT_COLOR },
-    alternateRowStyles: { fillColor: [248, 250, 252] as [number,number,number] },
+    bodyStyles: { fontSize: 9, textColor: TEXT },
+    alternateRowStyles: { fillColor: [249, 250, 251] as [number,number,number] },
+    styles: { lineColor: BORD, lineWidth: 0.2 },
     columnStyles: {
-      0: { cellWidth: 60 },
-      2: { halign: 'right' },
+      0: { cellWidth: 'auto', halign: 'left' },
+      1: { cellWidth: 24, halign: 'center', fontSize: 8, textColor: LABEL },
+      2: { halign: 'center' },
       3: { halign: 'right' },
       4: { halign: 'right', fontStyle: 'bold' },
     },
     margin: { left: 14, right: 14 },
-    theme: 'plain',
+    theme: 'grid',
   });
 
-  const afterTable = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
-  drawTotals(doc, afterTable, [
-    { label: 'TOTAL REFUND', value: formatMoney(ret.totalCents), bold: true },
+  const afterTable = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+  drawNewTotals(doc, afterTable, [
+    { label: 'TOTAL REFUND', value: fmt(ret.totalCents), bold: true, bg: BAND_DARK, color: [255, 255, 255] },
   ]);
 
-  const pageH = doc.internal.pageSize.getHeight();
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...LABEL_COLOR);
-  doc.text(`Generated by BROcode ERP · ${new Date().toLocaleString()}`, pageW / 2, pageH - 6, { align: 'center' });
-
+  drawNewFooter(doc, settings);
   doc.save(`${ret.number}.pdf`);
 }

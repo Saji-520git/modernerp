@@ -24,6 +24,13 @@ export const KPI_BG:       RGB = [248, 250, 252];
 export const ACCENT_BG:    RGB = [238, 242, 255];
 export const ACCENT_BORDER:RGB = [199, 210, 254];
 export const ACCENT_TEXT:  RGB = [55, 48, 163];
+// Corporate dark-band palette (shared with document PDFs)
+export const BAND_DARK:    RGB = [30, 41, 59];    // slate-800 letterhead band
+export const HEADER_ROW:   RGB = [51, 65, 85];    // slate-700 table header
+export const BAND_MUTED:   RGB = [148, 163, 184]; // muted text on dark band
+export const BAND_ACCENT:  RGB = [199, 210, 254]; // light-indigo document label
+export const FOOT_BG:      RGB = [241, 245, 249]; // slate-100 totals/foot row
+export const FOOT_TEXT:    RGB = [30, 41, 59];
 
 const MARGIN = 12; // mm — left/right page margin, matches invoices
 
@@ -88,61 +95,55 @@ export function reportLetterhead(
 ): number {
   const { settings, logo, title, period } = opts;
   const w = doc.internal.pageSize.getWidth();
+  const BAND_H = 30;
 
-  // Thin brand band along the very top edge.
-  doc.setFillColor(...BRAND);
-  doc.rect(0, 0, w, 2.5, 'F');
+  // ── Dark letterhead band ─────────────────────────────────────────────────────
+  doc.setFillColor(...BAND_DARK);
+  doc.rect(0, 0, w, BAND_H, 'F');
 
-  // ── Left: identity ─────────────────────────────────────────────────────────
+  // Left: business identity (reversed on the dark band)
   let textX = MARGIN;
   if (logo) {
     try {
-      doc.addImage(logo, logoImgFormat(logo), MARGIN, 10, 24, 16);
-      textX = MARGIN + 28;
+      doc.addImage(logo, logoImgFormat(logo), MARGIN, 7, 20, 16);
+      textX = MARGIN + 24;
     } catch { /* corrupt logo → fall back to name only */ }
   }
-  let ly = 15;
-  doc.setTextColor(...SLATE);
+  doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text(settings.businessName || 'My Business', textX, ly);
+  doc.setFontSize(15);
+  doc.text(settings.businessName || 'My Business', textX, 14);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(...MUTED);
+  doc.setTextColor(...BAND_MUTED);
   const idLines: string[] = [];
   if (settings.businessAddress) idLines.push(settings.businessAddress.replace(/\n/g, ', '));
   const contact = [settings.businessPhone, settings.businessEmail].filter(Boolean).join('  ·  ');
   if (contact) idLines.push(contact);
   if (settings.businessRegNo) idLines.push(`Reg: ${settings.businessRegNo}`);
-  ly += 5;
-  for (const line of idLines) { doc.text(line, textX, ly); ly += 4.2; }
+  let ly = 20;
+  for (const line of idLines.slice(0, 2)) { doc.text(line, textX, ly); ly += 4; }
 
-  // ── Right: report title + period + timestamp ────────────────────────────────
-  doc.setTextColor(...BRAND);
+  // Right: report title + period + timestamp
+  doc.setTextColor(...BAND_ACCENT);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(title, w - MARGIN, 15, { align: 'right' });
+  doc.setFontSize(11);
+  doc.text(title.toUpperCase(), w - MARGIN, 13, { align: 'right', charSpace: 0.4 });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(...MUTED);
-  if (period) doc.text(period, w - MARGIN, 21.5, { align: 'right' });
+  doc.setTextColor(255, 255, 255);
+  if (period) doc.text(period, w - MARGIN, 20, { align: 'right' });
 
   doc.setFontSize(7.5);
-  doc.setTextColor(...FAINT);
+  doc.setTextColor(...BAND_MUTED);
   const stamp = new Date().toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  doc.text(`Generated ${stamp}`, w - MARGIN, 26.5, { align: 'right' });
+  doc.text(`Generated ${stamp}`, w - MARGIN, 25.5, { align: 'right' });
 
-  // ── Divider ─────────────────────────────────────────────────────────────────
-  const dividerY = Math.max(ly + 1, 31);
-  doc.setDrawColor(...BRAND);
-  doc.setLineWidth(0.6);
-  doc.line(MARGIN, dividerY, w - MARGIN, dividerY);
-
-  return dividerY + 8;
+  return BAND_H + 8;
 }
 
 export type KpiTile = { label: string; value: string; accent?: boolean };
@@ -209,10 +210,10 @@ export function styledTable(doc: jsPDF, opts: StyledTableOpts): void {
     theme,
     margin: { left: MARGIN, right: MARGIN },
     styles: { fontSize: fs, cellPadding: 2, textColor: SLATE, lineColor: HAIRLINE, lineWidth: 0.1 },
-    headStyles: { fillColor: BRAND, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: fs, halign: 'left' },
+    headStyles: { fillColor: HEADER_ROW, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: fs, halign: 'left' },
     bodyStyles: { fontSize: fs },
     alternateRowStyles: theme === 'striped' ? { fillColor: ZEBRA } : undefined,
-    footStyles: { fillColor: ACCENT_BG, textColor: ACCENT_TEXT, fontStyle: 'bold', fontSize: fs },
+    footStyles: { fillColor: FOOT_BG, textColor: FOOT_TEXT, fontStyle: 'bold', fontSize: fs },
     columnStyles: opts.columnStyles,
   });
 }
