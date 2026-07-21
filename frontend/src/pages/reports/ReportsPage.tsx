@@ -48,13 +48,32 @@ const PAYMENT_LABELS: Record<string, string> = {
 // ─── Shared UI components ─────────────────────────────────────────────────────
 
 function StatCard({
-  label, value, sub, highlight = false,
-}: { label: string; value: string; sub?: string; highlight?: boolean }) {
+  label, value, sub, highlight = false, accent, trendPct,
+}: {
+  label: string; value: string; sub?: string; highlight?: boolean;
+  accent?: string;      // Tailwind border-l colour class, e.g. 'border-emerald-400'
+  trendPct?: number | null;  // % change vs previous period; renders a ▲/▼ badge
+}) {
   return (
-    <div className={`rounded-xl p-4 ${highlight ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200'}`}>
-      <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${highlight ? 'text-indigo-200' : 'text-slate-500'}`}>{label}</p>
-      <p className={`text-2xl font-bold ${highlight ? 'text-white' : 'text-slate-800'}`}>{value}</p>
-      {sub && <p className={`text-xs mt-0.5 ${highlight ? 'text-indigo-200' : 'text-slate-400'}`}>{sub}</p>}
+    <div
+      className={`relative rounded-xl p-4 shadow-sm ${
+        highlight
+          ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white'
+          : `bg-white border border-slate-200 ${accent ? `border-l-4 ${accent}` : ''}`
+      }`}
+    >
+      <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${highlight ? 'text-indigo-100' : 'text-slate-500'}`}>{label}</p>
+      <p className={`text-2xl font-bold leading-tight ${highlight ? 'text-white' : 'text-slate-800'}`}>{value}</p>
+      {sub && <p className={`text-xs mt-0.5 ${highlight ? 'text-indigo-100' : 'text-slate-400'}`}>{sub}</p>}
+      {trendPct != null && (
+        <span className={`inline-block text-xs font-medium mt-1 ${
+          highlight
+            ? (trendPct >= 0 ? 'text-emerald-200' : 'text-red-200')
+            : (trendPct >= 0 ? 'text-emerald-600' : 'text-red-500')
+        }`}>
+          {trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct)}% vs prev period
+        </span>
+      )}
     </div>
   );
 }
@@ -433,16 +452,13 @@ function SalesTab() {
               : null;
             return (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="rounded-xl p-4 bg-indigo-600 text-white">
-                  <p className="text-xs font-medium uppercase tracking-wide mb-1 text-indigo-200">Total Revenue</p>
-                  <p className="text-2xl font-bold text-white">{formatMoneyShort(data.summary.totalRevenueCents)}</p>
-                  <p className="text-xs mt-0.5 text-indigo-200">{data.summary.orderCount} orders</p>
-                  {revTrend && (
-                    <span className={`text-xs font-medium ${Number(revTrend) >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                      {Number(revTrend) >= 0 ? '▲' : '▼'} {Math.abs(Number(revTrend))}% vs prev period
-                    </span>
-                  )}
-                </div>
+                <StatCard
+                  label="Total Revenue"
+                  value={formatMoneyShort(data.summary.totalRevenueCents)}
+                  sub={`${data.summary.orderCount} orders`}
+                  highlight
+                  trendPct={revTrend != null ? Number(revTrend) : null}
+                />
                 <StatCard label="Avg Order Value" value={formatMoney(data.summary.avgOrderCents)} />
                 <StatCard
                   label="Gross Profit"
@@ -455,7 +471,7 @@ function SalesTab() {
           })()}
 
           {/* Revenue over time — filled so every day in the range shows a bar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-4">
             <SectionHeader title={`Revenue by ${groupBy}`} onPdf={() => exportPdf(data)} />
             <p className="text-sm text-slate-500 mb-3">
               {new Date(from).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -481,7 +497,7 @@ function SalesTab() {
 
           {/* Two-column: warehouse + payment */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Revenue by Warehouse</h3>
               {data.byWarehouse.length === 0
                 ? <p className="text-sm text-slate-400">No data</p>
@@ -492,7 +508,7 @@ function SalesTab() {
                 ))}
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Payment Methods</h3>
               {data.byPayment.length === 0
                 ? <p className="text-sm text-slate-400">No data</p>
@@ -505,7 +521,7 @@ function SalesTab() {
           </div>
 
           {/* Top 10 Products */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-700">Top 10 Products</h3>
               <a
@@ -573,14 +589,14 @@ function PurchasesTab() {
             <StatCard label="Suppliers"       value={String(data.summary.uniqueSuppliers)} sub="unique suppliers" />
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-4">
             <SectionHeader title="Spend Over Time" onPdf={() => exportPdf(data)} />
             <div className="h-48">
               <BarChart data={data.byPeriod} labelKey="period" valueKey="spendCents" color="blue" maxBars={30} />
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Top Suppliers by Spend</h3>
             {data.bySupplier.length === 0
               ? <p className="text-sm text-slate-400">No confirmed purchase orders in this period</p>
@@ -1290,14 +1306,14 @@ function ProfitLossTab() {
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard label="Total Revenue" value={formatMoneyShort(data.summary.revenueCents)} sub={`${data.summary.orderCount} orders`} highlight />
             <StatCard label="COGS" value={formatMoneyShort(data.summary.cogsCents)} sub="Cost of goods sold" />
-            <StatCard label="Gross Profit" value={formatMoneyShort(data.summary.grossProfitCents)} sub={`${data.summary.grossMarginPct}% margin`} />
-            <StatCard label="Total Expenses" value={formatMoneyShort(data.summary.totalExpensesCents)} sub="Operating expenses" />
-            <StatCard label="Net Profit" value={formatMoneyShort(data.summary.netProfitCents)} sub={`${data.summary.netMarginPct}% net margin`} />
+            <StatCard label="Gross Profit" value={formatMoneyShort(data.summary.grossProfitCents)} sub={`${data.summary.grossMarginPct}% margin`} accent="border-emerald-400" />
+            <StatCard label="Total Expenses" value={formatMoneyShort(data.summary.totalExpensesCents)} sub="Operating expenses" accent="border-amber-400" />
+            <StatCard label="Net Profit" value={formatMoneyShort(data.summary.netProfitCents)} sub={`${data.summary.netMarginPct}% net margin`} accent={data.summary.netProfitCents >= 0 ? 'border-emerald-400' : 'border-red-400'} />
             <StatCard label="Orders" value={String(data.summary.orderCount)} sub="Confirmed sales" />
           </div>
 
           {/* P&L waterfall summary */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-4">
             <SectionHeader title="Income Statement Summary" onPdf={() => exportPdf(data)} />
             <div className="space-y-2 max-w-md">
               {[
@@ -1355,7 +1371,7 @@ function ProfitLossTab() {
           </div>
 
           {/* Monthly trend */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-700">Monthly P&L Trend</h3>
               <div className="flex items-center gap-4 text-xs text-slate-500">
