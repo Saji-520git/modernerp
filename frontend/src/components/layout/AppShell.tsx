@@ -10,10 +10,11 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell, CornerUpLeft, Tag, Layers, Ruler,
+  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
+import type { ModuleKey } from '../../config/modules';
 import { alertsApi } from '../../services/alerts';
 import { shiftsApi } from '../../services/shifts';
 
@@ -25,6 +26,7 @@ interface NavItem {
   icon: LucideIcon;
   end?: boolean;
   roles?: Role[];
+  module?: ModuleKey;   // hidden unless this optional feature module is enabled
 }
 
 interface NavGroup {
@@ -62,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/purchases', label: 'Purchases', icon: Truck },
       { to: '/returns', label: 'Sale Returns', icon: RotateCcw },
       { to: '/purchase-returns', label: 'Purch. Returns', icon: CornerUpLeft },
+      { to: '/promotions', label: 'Promotions', icon: Percent, roles: ['ADMIN', 'MANAGER'], module: 'promotions' },
       { to: '/expenses', label: 'Expenses', icon: Receipt },
       { to: '/shifts', label: 'POS Shifts', icon: Clock, roles: ['ADMIN', 'MANAGER'] },
     ],
@@ -134,6 +137,7 @@ export default function AppShell() {
   const userRole = user?.role as Role | undefined;
 
   function isVisible(item: NavItem): boolean {
+    if (item.module && settings?.moduleFlags?.[item.module] !== true) return false;
     if (!item.roles) return true;
     return !!userRole && item.roles.includes(userRole);
   }

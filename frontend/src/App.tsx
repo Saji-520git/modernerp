@@ -30,6 +30,9 @@ import ImportPage from './pages/settings/ImportPage';
 import PurchaseReturnsPage from './pages/purchases/PurchaseReturnsPage';
 import CategoriesPage from './pages/settings/CategoriesPage';
 import BrandsPage from './pages/settings/BrandsPage';
+import PromotionsPage from './pages/promotions/PromotionsPage';
+import { useModule } from './hooks/useModule';
+import type { ModuleKey } from './config/modules';
 import { useAuthStore } from './store/authStore';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
@@ -49,6 +52,14 @@ function ComingSoon({ title }: { title: string }) {
 function Protected({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.accessToken);
   return token ? children : <Navigate to="/login" replace />;
+}
+
+// ─── Optional-module guard ──────────────────────────────────────────────────────
+// Redirects to Dashboard when the feature module is disabled (backend also enforces).
+
+function ModuleGuard({ module, children }: { module: ModuleKey; children: JSX.Element }) {
+  const enabled = useModule(module);
+  return enabled ? children : <Navigate to="/" replace />;
 }
 
 // ─── Cashier guard ────────────────────────────────────────────────────────────
@@ -235,6 +246,13 @@ export default function App() {
           <ErrorBoundary fallbackTitle="Purchase Returns page failed to load">
             <PurchaseReturnsPage />
           </ErrorBoundary>
+        } />
+        <Route path="promotions" element={
+          <ModuleGuard module="promotions">
+            <ErrorBoundary fallbackTitle="Promotions page failed to load">
+              <PromotionsPage />
+            </ErrorBoundary>
+          </ModuleGuard>
         } />
         <Route path="expenses" element={
           <ErrorBoundary fallbackTitle="Expenses page failed to load">
