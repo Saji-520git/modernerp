@@ -43,11 +43,6 @@ function money(cents: number, s?: Pick<AppSettings, 'currencySymbol' | 'currency
   return pos === 'before' ? `${sym} ${n}` : `${n} ${sym}`;
 }
 
-/** Legacy plain formatter used by exportSaleReturn */
-function formatMoney(cents: number): string {
-  return money(cents);
-}
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
@@ -92,7 +87,6 @@ const GRAY    : [number,number,number] = [248, 249, 250];  // #F8F9FA
 const BORD    : [number,number,number] = [229, 231, 235];  // #E5E7EB
 const RED_C   : [number,number,number] = [220, 38, 38];    // #DC2626
 const GRN_C   : [number,number,number] = [22, 163, 74];    // #16A34A
-const TOTAL_BG   : [number,number,number] = [240, 240, 255]; // #F0F0FF
 const BAL_RED_BG : [number,number,number] = [254, 242, 242]; // #FEF2F2
 const BAL_GRN_BG : [number,number,number] = [240, 253, 244]; // #F0FDF4
 
@@ -123,102 +117,7 @@ const DOC_LIGHT: DocPalette = {
 };
 let PT: DocPalette = DOC_LIGHT;
 
-// Legacy aliases — used only by drawPageHeader / drawTotals for exportSaleReturn
-const BRAND_COLOR : [number,number,number] = BRAND;
-const HEADER_BG   : [number,number,number] = [238, 242, 255]; // indigo-50
-const LABEL_COLOR : [number,number,number] = LABEL;
-const TEXT_COLOR  : [number,number,number] = TEXT;
-
-// ─── Legacy helpers (used ONLY by exportSaleReturn — do not remove) ───────────
-
-function drawPageHeader(
-  doc: jsPDF,
-  docNumber: string,
-  docType: string,
-  dateLabel: string,
-  leftInfo: string[],
-  rightInfo: { label: string; value: string }[],
-): number {
-  const pageW = doc.internal.pageSize.getWidth();
-
-  doc.setFillColor(...BRAND_COLOR);
-  doc.rect(0, 0, pageW, 18, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('BROcode ERP', 14, 12);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(docType, pageW - 14, 12, { align: 'right' });
-
-  doc.setTextColor(...TEXT_COLOR);
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text(docNumber, 14, 30);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...LABEL_COLOR);
-  doc.text(dateLabel, 14, 37);
-
-  let y = 46;
-  leftInfo.forEach((line) => {
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...TEXT_COLOR);
-    doc.text(line, 14, y);
-    y += 5.5;
-  });
-
-  let ry = 26;
-  rightInfo.forEach(({ label, value }) => {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...LABEL_COLOR);
-    doc.text(label, pageW - 14, ry, { align: 'right' });
-    ry += 4;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...TEXT_COLOR);
-    doc.text(value, pageW - 14, ry, { align: 'right' });
-    ry += 7;
-  });
-
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.line(14, Math.max(y, ry) + 2, pageW - 14, Math.max(y, ry) + 2);
-
-  return Math.max(y, ry) + 8;
-}
-
-function drawTotals(
-  doc: jsPDF,
-  startY: number,
-  rows: { label: string; value: string; bold?: boolean }[],
-): number {
-  const pageW = doc.internal.pageSize.getWidth();
-  const colX  = pageW - 80;
-  let y = startY;
-
-  rows.forEach(({ label, value, bold }) => {
-    if (bold) {
-      doc.setFillColor(...HEADER_BG);
-      doc.rect(colX - 4, y - 5, 80 + 4, 8, 'F');
-    }
-    doc.setFontSize(9);
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    doc.setTextColor(...(bold ? TEXT_COLOR : LABEL_COLOR));
-    doc.text(label, colX, y);
-    doc.text(value, pageW - 14, y, { align: 'right' });
-    y += 7;
-  });
-
-  return y;
-}
-
-// ─── New design helpers (invoice + PO) ───────────────────────────────────────
+// ─── Document helpers (invoice + PO + return) ────────────────────────────────
 
 /**
  * Draw the two-column header block:
@@ -541,15 +440,19 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
   // ── Items table ───────────────────────────────────────────────────────────
   const lines: SaleLine[] = fullSale.lines ?? [];
 
+  // Hide the Tax column entirely when no line carries tax (keeps the doc clean).
+  const showTax = lines.some(l => l.taxPercent > 0);
+  const discIdx = showTax ? 5 : 4;
+
   autoTable(doc, {
     startY: y,
-    head: [['Product', 'SKU', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Total']],
+    head: [['Product', 'SKU', 'Qty', 'Unit Price', ...(showTax ? ['Tax %'] : []), 'Discount', 'Total']],
     body: lines.map(l => [
       l.product.name,
       l.product.sku,
       `${Number(l.qty)}${l.product.unit?.shortCode ? ' ' + l.product.unit.shortCode : ''}`,
       fmt(l.unitPriceCents),
-      l.taxPercent > 0 ? `${l.taxPercent}%` : '0%',
+      ...(showTax ? [`${l.taxPercent}%`] : []),
       l.discountCents > 0 ? fmt(l.discountCents) : '—',
       fmt(l.lineTotalCents),
     ]),
@@ -575,13 +478,13 @@ export async function exportSaleInvoice(sale: Sale): Promise<void> {
       1: { cellWidth: 22,    halign: 'center', fontSize: 8, textColor: LABEL },
       2: { cellWidth: 16,    halign: 'center'  },
       3: { cellWidth: 26,    halign: 'center'  },
-      4: { cellWidth: 14,    halign: 'center'  },
-      5: { cellWidth: 26,    halign: 'center'  },
-      6: { cellWidth: 28,    halign: 'right', fontStyle: 'bold' },
+      ...(showTax ? { 4: { cellWidth: 14, halign: 'center' as const } } : {}),
+      [discIdx]:     { cellWidth: 26, halign: 'center' as const },
+      [discIdx + 1]: { cellWidth: 28, halign: 'right' as const, fontStyle: 'bold' as const },
     },
     didParseCell: (data) => {
       // Discount column: render in red when an actual discount exists
-      if (data.section === 'body' && data.column.index === 5) {
+      if (data.section === 'body' && data.column.index === discIdx) {
         if ((data.cell.raw as string) !== '—') {
           data.cell.styles.textColor = RED_C as [number,number,number];
         }
@@ -685,15 +588,17 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
   // ── Items table ───────────────────────────────────────────────────────────
   const lines = fullPO.lines ?? [];
 
+  const showTax = lines.some(l => l.taxPercent > 0);
+
   autoTable(doc, {
     startY: y,
-    head: [['Product', 'SKU', 'Qty', 'Unit Cost', 'Tax %', 'Line Total']],
+    head: [['Product', 'SKU', 'Qty', 'Unit Cost', ...(showTax ? ['Tax %'] : []), 'Line Total']],
     body: lines.map(l => [
       l.product.name,
       l.product.sku,
       `${Number(l.qty)}${l.product.unit?.shortCode ? ' ' + l.product.unit.shortCode : ''}`,
       fmt(l.unitCostCents),
-      l.taxPercent > 0 ? `${l.taxPercent}%` : '0%',
+      ...(showTax ? [`${l.taxPercent}%`] : []),
       fmt(l.lineTotalCents),
     ]),
     headStyles: {
@@ -718,8 +623,8 @@ export async function exportPurchaseOrder(po: PdfPurchase): Promise<void> {
       1: { cellWidth: 24,    halign: 'center', fontSize: 8, textColor: LABEL },
       2: { cellWidth: 18,    halign: 'center' },
       3: { cellWidth: 30,    halign: 'center' },
-      4: { cellWidth: 14,    halign: 'center' },
-      5: { cellWidth: 32,    halign: 'right', fontStyle: 'bold' },
+      ...(showTax ? { 4: { cellWidth: 14, halign: 'center' as const } } : {}),
+      [showTax ? 5 : 4]: { cellWidth: 32, halign: 'right' as const, fontStyle: 'bold' as const },
     },
     margin: { left: 14, right: 14 },
     theme: 'grid',
