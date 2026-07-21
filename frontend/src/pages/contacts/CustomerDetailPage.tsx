@@ -1250,7 +1250,7 @@ function AccountInfoTab({
                   outstanding,
                 },
               );
-              openWhatsApp(customer.phone!, message);
+              openWhatsApp(customer.phone!, message, settings?.whatsappOpenMode);
             }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition mb-4"
             title="Open WhatsApp with the outstanding reminder pre-filled."
@@ -1283,7 +1283,7 @@ function AccountInfoTab({
                       offer: offerMessage.trim(),
                     },
                   );
-                  openWhatsApp(customer.phone!, message);
+                  openWhatsApp(customer.phone!, message, settings?.whatsappOpenMode);
                   setOfferMessage('');
                 }}
                 className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition whitespace-nowrap"

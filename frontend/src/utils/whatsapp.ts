@@ -72,6 +72,25 @@ export function buildWALink(phone: string | null | undefined, msg: string): stri
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }
 
+/**
+ * Build a `whatsapp://send?phone=<number>&text=<encoded>` deep link — this opens
+ * the installed WhatsApp Desktop app directly (no browser hop). Shares the same
+ * phone normalisation + message truncation as buildWALink. Returns '' when the
+ * phone cannot be normalised.
+ */
+export function buildWADesktopLink(phone: string | null | undefined, msg: string): string {
+  const link = buildWALink(phone, msg);
+  if (!link) return '';
+  // Reuse buildWALink's normalised number + truncated/encoded text, then swap
+  // the scheme so there is a single source of truth for both behaviours.
+  const number = link.slice('https://wa.me/'.length, link.indexOf('?'));
+  const text   = link.slice(link.indexOf('?text=') + '?text='.length);
+  return `whatsapp://send?phone=${number}&text=${text}`;
+}
+
+/** Where a WhatsApp link should open. */
+export type WAOpenMode = 'app' | 'browser';
+
 /** Replace every `{key}` occurrence in `tpl` with `vars[key]` (empty for nullish). */
 export function fillTemplate(
   tpl: string,
@@ -109,9 +128,19 @@ export function buildItemsList(lines: WAItemLine[]): string {
   return rows.join('\n');
 }
 
-/** Open a WhatsApp chat in a new tab/window. Silent no-op if the link is empty. */
-export function openWhatsApp(phone: string | null | undefined, msg: string): void {
-  const link = buildWALink(phone, msg);
+/**
+ * Open a WhatsApp chat. `mode` decides the target:
+ *   'app'     → whatsapp:// deep link → WhatsApp Desktop app directly (default)
+ *   'browser' → https://wa.me link → default browser → WhatsApp Web
+ * Silent no-op if the phone can't be normalised. In the desktop build, Electron's
+ * setWindowOpenHandler routes both schemes to shell.openExternal.
+ */
+export function openWhatsApp(
+  phone: string | null | undefined,
+  msg: string,
+  mode: WAOpenMode = 'app',
+): void {
+  const link = mode === 'browser' ? buildWALink(phone, msg) : buildWADesktopLink(phone, msg);
   if (!link) return;
   window.open(link, '_blank');
 }

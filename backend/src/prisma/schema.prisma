@@ -979,6 +979,7 @@ model AppSettings {
   waOutstandingTemplate  String?
   waPayableTemplate      String?
   waOfferTemplate        String?
+  whatsappOpenMode       String  @default("app")  // where WhatsApp links open: "app" (desktop) | "browser"
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

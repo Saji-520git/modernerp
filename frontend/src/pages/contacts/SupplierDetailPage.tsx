@@ -601,7 +601,7 @@ function AccountInfoTab({
                   outstanding,
                 },
               );
-              openWhatsApp(supplier.phone!, message);
+              openWhatsApp(supplier.phone!, message, settings?.whatsappOpenMode);
             }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition mb-4"
             title="Open WhatsApp with the balance reminder pre-filled."
@@ -628,7 +628,7 @@ function AccountInfoTab({
                 onClick={() => {
                   // Inline message — suppliers get plain wording, not the offer template.
                   const msg = `Hi ${supplier.name ?? 'there'},\n\n${customMessage.trim()}\n\n— ${businessName ?? 'Our Store'}`;
-                  openWhatsApp(supplier.phone!, msg);
+                  openWhatsApp(supplier.phone!, msg, settings?.whatsappOpenMode);
                   setCustomMessage('');
                 }}
                 className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition whitespace-nowrap"

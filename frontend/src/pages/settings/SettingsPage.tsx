@@ -1084,6 +1084,7 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
     waOutstandingTemplate: settings.waOutstandingTemplate ?? DEFAULT_OUTSTANDING_TEMPLATE,
     waPayableTemplate:     settings.waPayableTemplate     ?? DEFAULT_PAYABLE_TEMPLATE,
     waOfferTemplate:       settings.waOfferTemplate       ?? DEFAULT_OFFER_TEMPLATE,
+    whatsappOpenMode:      (settings.whatsappOpenMode ?? 'app') as 'app' | 'browser',
   });
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -1098,6 +1099,7 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
         waOutstandingTemplate: f.waOutstandingTemplate || null,
         waPayableTemplate:     f.waPayableTemplate || null,
         waOfferTemplate:       f.waOfferTemplate || null,
+        whatsappOpenMode:      f.whatsappOpenMode,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -1125,6 +1127,37 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
             onChange={e => setF(p => ({ ...p, whatsappPhone: e.target.value.replace(/[^\d+]/g, '') }))}
             placeholder="+94771234567" />
           <p className={hint}>Country code + number, e.g. +94771234567. Digits and a leading + only. Reserved for future use (e.g. receipt footer / automated sending) — messages today are sent from whichever WhatsApp account is logged in on this PC.</p>
+        </Field>
+
+        <Field label="Open WhatsApp in">
+          <p className={hint + ' !mt-0 mb-2'}>Where the Send buttons open a chat.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { value: 'app',     title: 'Desktop app', desc: 'Opens WhatsApp Desktop directly' },
+              { value: 'browser', title: 'Browser',     desc: 'Opens WhatsApp Web (wa.me)' },
+            ] as const).map(opt => (
+              <label
+                key={opt.value}
+                className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer transition ${
+                  f.whatsappOpenMode === opt.value ? 'border-green-500 bg-green-50' : 'border-slate-200 hover:border-slate-300'
+                } ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="whatsappOpenMode"
+                  className="mt-0.5"
+                  checked={f.whatsappOpenMode === opt.value}
+                  onChange={() => !readOnly && setF(p => ({ ...p, whatsappOpenMode: opt.value }))}
+                  disabled={readOnly}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-700">{opt.title}</span>
+                  <span className="block text-xs text-slate-400">{opt.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className={hint}>Desktop app requires WhatsApp Desktop installed on this PC.</p>
         </Field>
       </div>
 

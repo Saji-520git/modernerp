@@ -462,7 +462,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
                       total,
                     },
                   );
-                  openWhatsApp(sale.customer!.phone, message);
+                  openWhatsApp(sale.customer!.phone, message, settings?.whatsappOpenMode);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition"
                 title="Re-send invoice via WhatsApp"

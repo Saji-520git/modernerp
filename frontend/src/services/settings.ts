@@ -72,6 +72,7 @@ export interface AppSettings {
   waOutstandingTemplate: string | null;
   waPayableTemplate: string | null;
   waOfferTemplate: string | null;
+  whatsappOpenMode: 'app' | 'browser';
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────

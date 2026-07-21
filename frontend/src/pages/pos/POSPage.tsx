@@ -1428,7 +1428,7 @@ function ReceiptModal({
                       total,
                     },
                   );
-                  openWhatsApp(receipt.customer!.phone, message);
+                  openWhatsApp(receipt.customer!.phone, message, settings?.whatsappOpenMode);
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition"
                 title="Open WhatsApp with the receipt pre-filled. Click Send inside WhatsApp."
