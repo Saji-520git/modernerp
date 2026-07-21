@@ -980,6 +980,7 @@ model AppSettings {
   waPayableTemplate      String?
   waOfferTemplate        String?
   whatsappOpenMode       String  @default("app")  // where WhatsApp links open: "app" (desktop) | "browser"
+  moduleFlags            Json    @default("{}")    // optional feature on/off map: { promotions, stockTake, loyalty, quotations }
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

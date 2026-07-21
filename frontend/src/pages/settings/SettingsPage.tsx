@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Percent, ShoppingCart, FileText,
   ShieldCheck, ChevronRight, Check, AlertCircle,
-  Lock, Eye, Printer, Bell, X, MessageCircle,
+  Lock, Eye, Printer, Bell, X, MessageCircle, LayoutGrid,
 } from 'lucide-react';
 import { settingsApi, type AppSettings } from '../../services/settings';
+import { OPTIONAL_MODULES, MODULE_META } from '../../config/modules';
 import {
   DEFAULT_RECEIPT_TEMPLATE,
   DEFAULT_OUTSTANDING_TEMPLATE,
@@ -1204,10 +1205,72 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
 
 // ─── Section config ────────────────────────────────────────────────────────────
 
-type SectionKey = 'company' | 'tax' | 'pos' | 'invoice' | 'receipt' | 'alerts' | 'whatsapp' | 'permissions' | 'security';
+// ─── Modules panel ───────────────────────────────────────────────────────────
+
+function ModulesPanel({ settings, onSave, isPending, readOnly }: {
+  settings: AppSettings; onSave: (d: Partial<AppSettings>) => Promise<void>;
+  isPending: boolean; readOnly?: boolean;
+}) {
+  const [flags, setFlags] = useState<Record<string, boolean>>({ ...(settings.moduleFlags ?? {}) });
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setSuccess(false); setError(null);
+    try {
+      await onSave({ moduleFlags: flags });
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Save failed');
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-base font-semibold text-slate-800 mb-1">🧩 Optional Modules</p>
+        <p className="text-sm text-slate-500">Turn features on or off for this business. Disabled features are hidden throughout the app and blocked on the server.</p>
+      </div>
+
+      <div className="border-t border-slate-100 pt-4 space-y-3">
+        {OPTIONAL_MODULES.map((key) => {
+          const meta = MODULE_META[key];
+          const Icon = meta.icon;
+          const on   = flags[key] === true;
+          return (
+            <div key={key} className={`flex items-center gap-3 rounded-lg border p-3 transition ${on ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-200'}`}>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${on ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                <Icon size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">{meta.label}</p>
+                <p className="text-xs text-slate-400">{meta.description}</p>
+              </div>
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => setFlags(p => ({ ...p, [key]: !on }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${on ? 'bg-indigo-600' : 'bg-slate-200'} ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                aria-label={`Toggle ${meta.label}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <SectionFooter onSave={handleSave} isPending={isPending} success={success} error={error} readOnly={readOnly} />
+    </div>
+  );
+}
+
+type SectionKey = 'company' | 'tax' | 'pos' | 'invoice' | 'receipt' | 'alerts' | 'whatsapp' | 'modules' | 'permissions' | 'security';
 
 const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; description: string }[] = [
   { key: 'company',     label: 'Company',        icon: Building2,   description: 'Business name, address, logo' },
+  { key: 'modules',     label: 'Modules',        icon: LayoutGrid,  description: 'Turn optional features on or off' },
   { key: 'tax',         label: 'Tax & Currency',  icon: Percent,     description: 'Currency symbol, tax rates' },
   { key: 'pos',         label: 'POS',             icon: ShoppingCart,description: 'Shift, discounts, print' },
   { key: 'invoice',     label: 'Invoice',         icon: FileText,    description: 'Prefixes, due dates, footer' },
@@ -1330,6 +1393,7 @@ export default function SettingsPage() {
             {activeKey === 'receipt'     && <ReceiptPanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'alerts'      && <AlertsPanel      settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'whatsapp'    && <WhatsAppPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
+            {activeKey === 'modules'     && <ModulesPanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'permissions' && <PermissionsPanel />}
             {activeKey === 'security'    && <SecurityPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
           </div>

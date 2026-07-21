@@ -80,6 +80,7 @@ export const updateSettingsSchema = z.object({
   waPayableTemplate:     z.string().max(2000).optional().nullable(),
   waOfferTemplate:       z.string().max(2000).optional().nullable(),
   whatsappOpenMode:      z.enum(['app', 'browser']).optional(),
+  moduleFlags:           z.record(z.string(), z.boolean()).optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

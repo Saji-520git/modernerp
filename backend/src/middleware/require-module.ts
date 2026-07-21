@@ -1,0 +1,23 @@
+import type { RequestHandler } from 'express';
+import { prisma } from '../config/prisma.js';
+import { HttpError } from './error-handler.js';
+import { isModuleEnabled, type ModuleKey } from '../config/modules.js';
+
+/**
+ * Route guard: 403 unless the given optional module is enabled in AppSettings.
+ * Applied on a feature's routers so a disabled module is enforced server-side,
+ * not just hidden in the UI. Async-safe (catches and forwards errors — Express 4
+ * does not propagate async throws on its own).
+ */
+export const requireModule = (key: ModuleKey): RequestHandler =>
+  async (_req, _res, next) => {
+    try {
+      const settings = await prisma.appSettings.findFirst({ select: { moduleFlags: true } });
+      if (!isModuleEnabled(settings?.moduleFlags, key)) {
+        throw new HttpError(403, `Module '${key}' is disabled`);
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
