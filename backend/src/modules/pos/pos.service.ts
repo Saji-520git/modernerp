@@ -5,6 +5,9 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, getUnitPrice } from '../../utils/unit-converter.js';
 import { getBatchSummary, deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { isModuleEnabled } from '../../config/modules.js';
+import { promotionsService } from '../promotions/promotions.service.js';
+import { computePromotions, type AppliedPromo } from '../promotions/promotions.engine.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
@@ -282,10 +285,8 @@ export const posService = {
     //   taxableAmount = cartSubtotal - cartDiscount
     //   effectiveTax  = floor(grossTax × taxableAmount / cartSubtotal)   (proportional scaling)
     //   grandTotal    = taxableAmount + effectiveTax
-    let cartSubtotalCents = 0;
-    let grossTaxCents     = 0;
-
-    const lineData = await Promise.all(
+    // Pass 1 — resolve price + manual (line) discount per line (pre-promotion).
+    const preLines = await Promise.all(
       resolvedItems.map(async (item) => {
         const product = products.find((p) => p.id === item.productId)!;
 
@@ -299,26 +300,58 @@ export const posService = {
           unitPrice = product.priceCents;
         }
 
-        const lineSubtotal  = Math.round(unitPrice * item.qty);
-        const lineDiscount  = Math.min(item.discountCents, lineSubtotal); // cap at line subtotal
-        const lineAfterDisc = lineSubtotal - lineDiscount;
-        const lineTax       = Math.floor(lineAfterDisc * (product.taxPercent / 100));
-
-        cartSubtotalCents += lineAfterDisc;
-        grossTaxCents     += lineTax;
-
-        return {
-          productId:      item.productId,
-          qty:            item.qty,
-          unitPriceCents: unitPrice,
-          taxPercent:     product.taxPercent,
-          discountCents:  lineDiscount,
-          lineTotalCents: lineSubtotal, // gross (unitPrice × qty, before discount)
-          unitId:         item.unitId ?? null,
-          baseQty:        item.baseQty !== item.qty ? item.baseQty : null,
-        };
+        const lineSubtotal   = Math.round(unitPrice * item.qty);
+        const manualDiscount = Math.min(item.discountCents, lineSubtotal); // cap at line subtotal
+        return { item, product, unitPrice, lineSubtotal, manualDiscount, lineAfterManual: lineSubtotal - manualDiscount };
       }),
     );
+
+    // Promotion step — server-authoritative, only when the module is enabled.
+    // Each promo resolves to an additional per-line discount that folds into the
+    // existing math below. Disabled/no-match → zero, i.e. byte-identical to before.
+    const promoEnabled = isModuleEnabled(appSettings?.moduleFlags, 'promotions');
+    let promoLineDiscounts: Record<string, number> = {};
+    const appliedPromos: AppliedPromo[] = [];
+    if (promoEnabled) {
+      const promoLines = preLines.map((pl, idx) => ({
+        lineKey:              String(idx),
+        productId:            pl.item.productId,
+        categoryId:           pl.product.categoryId ?? null,
+        brandId:              pl.product.brandId ?? null,
+        qty:                  pl.item.qty,
+        lineAfterManualCents: pl.lineAfterManual,
+      }));
+      const promoCartSubtotal = preLines.reduce((s, pl) => s + pl.lineAfterManual, 0);
+      const activePromos = await promotionsService.getActiveInputs();
+      const promoResult = computePromotions(promoLines, promoCartSubtotal, activePromos, new Date());
+      promoLineDiscounts = promoResult.lineDiscounts;
+      appliedPromos.push(...promoResult.applied);
+    }
+
+    // Pass 2 — fold promo discount into the line discount, then tax + cart totals.
+    let cartSubtotalCents = 0;
+    let grossTaxCents     = 0;
+
+    const lineData = preLines.map((pl, idx) => {
+      const promoDiscount = promoLineDiscounts[String(idx)] ?? 0;
+      const lineDiscount  = Math.min(pl.manualDiscount + promoDiscount, pl.lineSubtotal); // still capped at line
+      const lineAfterDisc = pl.lineSubtotal - lineDiscount;
+      const lineTax       = Math.floor(lineAfterDisc * (pl.product.taxPercent / 100));
+
+      cartSubtotalCents += lineAfterDisc;
+      grossTaxCents     += lineTax;
+
+      return {
+        productId:      pl.item.productId,
+        qty:            pl.item.qty,
+        unitPriceCents: pl.unitPrice,
+        taxPercent:     pl.product.taxPercent,
+        discountCents:  lineDiscount,
+        lineTotalCents: pl.lineSubtotal, // gross (unitPrice × qty, before discount)
+        unitId:         pl.item.unitId ?? null,
+        baseQty:        pl.item.baseQty !== pl.item.qty ? pl.item.baseQty : null,
+      };
+    });
 
     // Cart-level discount (re-derive from percent if provided, otherwise use cents)
     const computedCartDiscount = cartDiscountPercent > 0
@@ -392,6 +425,18 @@ export const posService = {
           createdBy: { select: { fullName: true } },
         },
       });
+
+      // Record applied promotions (audit trail) + bump usage counters.
+      if (appliedPromos.length > 0) {
+        await tx.salePromotion.createMany({
+          data: appliedPromos.map((a) => ({
+            saleId: created.id, promotionId: a.promotionId, label: a.label, discountCents: a.discountCents,
+          })),
+        });
+        for (const a of appliedPromos) {
+          await tx.promotion.update({ where: { id: a.promotionId }, data: { timesUsed: { increment: 1 } } });
+        }
+      }
 
       // Stock deduction — always in base units.
       // Lock the row first (SELECT FOR UPDATE) so concurrent checkouts for the same
@@ -473,6 +518,7 @@ export const posService = {
 
     return {
       warnings: checkoutWarnings.length > 0 ? checkoutWarnings : undefined,
+      promotions: appliedPromos.length > 0 ? appliedPromos : undefined,
       receipt: {
         id:            sale.id,
         number:        sale.number,
