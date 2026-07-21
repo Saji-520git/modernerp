@@ -20,6 +20,7 @@ import { router as importRouter }           from './import/import.routes.js';
 import { router as attachmentsRouter }       from './attachments/attachment.routes.js';
 import { router as customerPaymentsRouter }  from './customer-payments/customer-payment.routes.js';
 import { router as purchaseReturnsRouter }   from './purchase-returns/purchase-return.routes.js';
+import { router as promotionsRouter }         from './promotions/promotions.routes.js';
 
 export const router: Router = Router();
 
@@ -46,3 +47,4 @@ router.use('/import',            importRouter);
 router.use('/attachments',        attachmentsRouter);
 router.use('/customer-payments',  customerPaymentsRouter);
 router.use('/purchase-returns',   purchaseReturnsRouter);
+router.use('/promotions',         promotionsRouter);

@@ -430,6 +430,7 @@ model Sale {
   returns          SaleReturn[]
   payments         Payment[]
   customerPayments CustomerPayment[]
+  salePromotions   SalePromotion[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -986,4 +987,55 @@ model AppSettings {
   updatedAt             DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ─── Promotions (optional module: "promotions") ───────────────────────────────
+// Scope targets stored as plain ids (no relations) to avoid touching
+// Category/Brand/Product/User. Money always integer cents. Enums are strings for
+// idempotent, enum-free migrations (matches expiredStockPolicy/documentTheme).
+
+model Promotion {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  type             String   @default("PERCENT_OFF") // PERCENT_OFF | AMOUNT_OFF
+  scope            String   @default("ALL")          // ALL | CATEGORY | BRAND | PRODUCT
+  scopeCategoryId  String?
+  scopeBrandId     String?
+  scopeProductId   String?
+  value            Int      @default(0)   // PERCENT_OFF: 0-100 ; AMOUNT_OFF: cents
+  minQty           Decimal? @db.Decimal(18, 4) // condition: min qty of eligible item on a line
+  minCartCents     Int?     // condition: min cart subtotal (cents)
+  startsAt         DateTime?
+  endsAt           DateTime?
+  priority         Int      @default(0)   // higher wins for best-single selection
+  stackable        Boolean  @default(false)
+  maxDiscountCents Int?     // cap per application (cents)
+  active           Boolean  @default(true)
+  usageLimit       Int?     // optional global cap on number of sales it can apply to
+  timesUsed        Int      @default(0)
+  createdById      String?  // plain id, no relation
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  salePromotions   SalePromotion[]
+
+  @@index([active])
+  @@index([scope])
+  @@map("promotions")
+}
+
+model SalePromotion {
+  id            String    @id @default(cuid())
+  saleId        String
+  sale          Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  promotionId   String
+  promotion     Promotion @relation(fields: [promotionId], references: [id])
+  label         String    // snapshot of promo name at time of sale
+  discountCents Int
+  createdAt     DateTime  @default(now())
+
+  @@index([saleId])
+  @@index([promotionId])
+  @@map("sale_promotions")
 }
