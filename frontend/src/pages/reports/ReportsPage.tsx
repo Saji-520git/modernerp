@@ -23,8 +23,10 @@ import {
   type PnlComparisonResult,
 } from '../../services/reports';
 import { inventoryApi } from '../../services/inventory';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import {
+  loadReportBranding, newReportDoc, reportLetterhead, kpiBand,
+  sectionTitle, styledTable, finalizeReport, lastY, money,
+} from '../../services/reportPdf';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -244,26 +246,6 @@ function DateRangePicker({
   );
 }
 
-// ─── PDF helpers ──────────────────────────────────────────────────────────────
-
-const BRAND: [number, number, number] = [79, 70, 229];
-const SLATE: [number, number, number] = [30, 41, 59];
-const MUTED: [number, number, number] = [100, 116, 139];
-
-function pdfHeader(doc: jsPDF, title: string, subtitle: string) {
-  const w = doc.internal.pageSize.getWidth();
-  doc.setFillColor(...BRAND); doc.rect(0, 0, w, 16, 'F');
-  doc.setTextColor(255, 255, 255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('BROcode ERP', 12, 11);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text(title, w - 12, 11, { align: 'right' });
-  doc.setTextColor(...SLATE); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-  doc.text(title, 12, 28);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(...MUTED);
-  doc.text(subtitle, 12, 34);
-  doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(12, 37, w - 12, 37);
-}
-
 // ─── Chart helpers ────────────────────────────────────────────────────────────
 
 /**
@@ -401,26 +383,34 @@ function SalesTab() {
     queryFn: () => reportsApi.sales({ from, to, groupBy }),
   });
 
-  const exportPdf = (d: SalesReportData) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, 'Sales Report', `${from} to ${to}`);
-    autoTable(doc, {
-      startY: 42,
-      head: [['Period', 'Revenue', 'Orders']],
-      body: d.byPeriod.map((r) => [r.period, formatMoney(r.revenueCents), r.orders]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+  const exportPdf = async (d: SalesReportData) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    const s = d.summary;
+    let y = reportLetterhead(doc, { settings, logo, title: 'Sales Report', period: `${from} to ${to}` });
+    y = kpiBand(doc, y, [
+      { label: 'Total Revenue', value: money(s.totalRevenueCents, settings) },
+      { label: 'Orders', value: String(s.orderCount) },
+      { label: 'Avg Order', value: money(s.avgOrderCents, settings) },
+      { label: 'Gross Profit', value: money(s.totalRevenueCents - s.totalCogsCents, settings), accent: true },
+    ]);
+    y = sectionTitle(doc, y, 'Revenue by period');
+    styledTable(doc, {
+      startY: y,
+      head: [['Period', 'Orders', 'Revenue']],
+      body: d.byPeriod.map((r) => [r.period, r.orders, formatMoney(r.revenueCents)]),
+      foot: [['Total', d.byPeriod.reduce((a, r) => a + r.orders, 0), formatMoney(d.byPeriod.reduce((a, r) => a + r.revenueCents, 0))]],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     });
-    const y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
-    autoTable(doc, {
+    y = sectionTitle(doc, lastY(doc) + 8, 'By payment method');
+    styledTable(doc, {
       startY: y,
       head: [['Payment Method', 'Orders', 'Revenue']],
       body: d.byPayment.map((r) => [PAYMENT_LABELS[r.method] ?? r.method, r.count, formatMoney(r.revenueCents)]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Total', d.byPayment.reduce((a, r) => a + r.count, 0), formatMoney(d.byPayment.reduce((a, r) => a + r.revenueCents, 0))]],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     });
+    finalizeReport(doc, settings);
     doc.save(`Sales-Report-${from}-${to}.pdf`);
   };
 
@@ -545,17 +535,25 @@ function PurchasesTab() {
     queryFn: () => reportsApi.purchases({ from, to }),
   });
 
-  const exportPdf = (d: PurchasesReportData) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, 'Purchases Report', `${from} to ${to}`);
-    autoTable(doc, {
-      startY: 42,
+  const exportPdf = async (d: PurchasesReportData) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    const s = d.summary;
+    let y = reportLetterhead(doc, { settings, logo, title: 'Purchases Report', period: `${from} to ${to}` });
+    y = kpiBand(doc, y, [
+      { label: 'Total Spend', value: money(s.totalSpendCents, settings), accent: true },
+      { label: 'Purchase Orders', value: String(s.poCount) },
+      { label: 'Avg PO', value: money(s.avgPoCents, settings) },
+    ]);
+    y = sectionTitle(doc, y, 'Spend by supplier');
+    styledTable(doc, {
+      startY: y,
       head: [['Supplier', 'POs', 'Total Spend']],
       body: d.bySupplier.map((r) => [r.name, r.poCount, formatMoney(r.spendCents)]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Total', d.bySupplier.reduce((a, r) => a + r.poCount, 0), formatMoney(d.bySupplier.reduce((a, r) => a + r.spendCents, 0))]],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     });
+    finalizeReport(doc, settings);
     doc.save(`Purchases-Report-${from}-${to}.pdf`);
   };
 
@@ -610,17 +608,27 @@ function ProductsTab() {
     queryFn: () => reportsApi.products({ from, to }),
   });
 
-  const exportPdf = (d: ProductReportData) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, 'Product Performance', `${from} to ${to}`);
-    autoTable(doc, {
-      startY: 42,
+  const exportPdf = async (d: ProductReportData) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    const rev = d.topByRevenue.reduce((a, r) => a + r.revenueCents, 0);
+    const gp  = d.topByRevenue.reduce((a, r) => a + r.grossProfitCents, 0);
+    let y = reportLetterhead(doc, { settings, logo, title: 'Product Performance', period: `${from} to ${to}` });
+    y = kpiBand(doc, y, [
+      { label: 'Top Products', value: String(d.topByRevenue.length) },
+      { label: 'Revenue (shown)', value: money(rev, settings) },
+      { label: 'Gross Profit (shown)', value: money(gp, settings), accent: true },
+    ]);
+    y = sectionTitle(doc, y, 'Top products by revenue');
+    styledTable(doc, {
+      startY: y,
       head: [['Product', 'SKU', 'Qty Sold', 'Revenue', 'COGS', 'Gross Profit', 'Margin']],
       body: d.topByRevenue.map((r) => [r.name, r.sku, r.qtySold.toFixed(1), formatMoney(r.revenueCents), formatMoney(r.cogsCents), formatMoney(r.grossProfitCents), `${r.marginPct}%`]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 7 },
-      bodyStyles: { fontSize: 7.5 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Total (shown)', '', '', formatMoney(rev), formatMoney(d.topByRevenue.reduce((a, r) => a + r.cogsCents, 0)), formatMoney(gp), '']],
+      columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
+      fontSize: 7.5,
     });
+    finalizeReport(doc, settings);
     doc.save(`Product-Performance-${from}-${to}.pdf`);
   };
 
@@ -728,17 +736,26 @@ function CustomersTab() {
     queryFn: () => reportsApi.customers({ from, to }),
   });
 
-  const exportPdf = (d: CustomerItem[]) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, 'Customer Insights', `${from} to ${to}`);
-    autoTable(doc, {
-      startY: 42,
+  const exportPdf = async (d: CustomerItem[]) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    const spent  = d.reduce((a, c) => a + c.totalSpentCents, 0);
+    const orders = d.reduce((a, c) => a + c.orderCount, 0);
+    let y = reportLetterhead(doc, { settings, logo, title: 'Customer Insights', period: `${from} to ${to}` });
+    y = kpiBand(doc, y, [
+      { label: 'Customers', value: String(d.length) },
+      { label: 'Orders', value: String(orders) },
+      { label: 'Total Spent', value: money(spent, settings), accent: true },
+    ]);
+    y = sectionTitle(doc, y, 'Top customers by spend');
+    styledTable(doc, {
+      startY: y,
       head: [['Customer', 'Orders', 'Total Spent', 'Avg Order', 'Last Order']],
       body: d.map((c) => [c.name, c.orderCount, formatMoney(c.totalSpentCents), formatMoney(c.avgOrderCents), c.lastOrder]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Total', orders, formatMoney(spent), '', '']],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
     });
+    finalizeReport(doc, settings);
     doc.save(`Customer-Report-${from}-${to}.pdf`);
   };
 
@@ -927,17 +944,25 @@ function InventoryTab() {
     queryFn: () => reportsApi.inventory({ warehouseId: warehouseId || undefined }),
   });
 
-  const exportPdf = (d: InventoryReportData) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-    pdfHeader(doc, 'Inventory Valuation', warehouseId ? `Warehouse filtered` : 'All warehouses');
-    autoTable(doc, {
-      startY: 42,
+  const exportPdf = async (d: InventoryReportData) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc('landscape');
+    const t = d.totals;
+    let y = reportLetterhead(doc, { settings, logo, title: 'Inventory Valuation', period: warehouseId ? 'Warehouse filtered' : 'All warehouses' });
+    y = kpiBand(doc, y, [
+      { label: 'Cost Value', value: money(t.totalCostValueCents, settings), accent: true },
+      { label: 'Sale Value', value: money(t.totalSaleValueCents, settings) },
+      { label: 'Potential Margin', value: money(t.totalMarginCents, settings) },
+    ]);
+    styledTable(doc, {
+      startY: y,
       head: [['Product', 'SKU', 'Qty', 'Avg Cost', 'Last Cost', 'Unit Price', 'Cost Value', 'Sale Value', 'Margin']],
       body: d.items.map((r) => [r.name, r.sku, r.totalQty.toFixed(1), formatMoney(r.costCents), r.lastCostCents ? formatMoney(r.lastCostCents) : '—', formatMoney(r.priceCents), formatMoney(r.costValueCents), formatMoney(r.saleValueCents), formatMoney(r.potentialMarginCents)]),
-      headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 7 },
-      bodyStyles: { fontSize: 7.5 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Total', '', '', '', '', '', formatMoney(t.totalCostValueCents), formatMoney(t.totalSaleValueCents), formatMoney(t.totalMarginCents)]],
+      columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+      fontSize: 7.5,
     });
+    finalizeReport(doc, settings);
     doc.save('Inventory-Valuation.pdf');
   };
 
@@ -1200,43 +1225,46 @@ function ProfitLossTab() {
     queryFn: () => reportsApi.profitLoss({ from, to }),
   });
 
-  const exportPdf = (d: ProfitLossData) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, 'Profit & Loss Summary', `${from} to ${to}`);
+  const exportPdf = async (d: ProfitLossData) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
     const s = d.summary;
-    const expenseRows = d.expensesByCategory.map((c) => [`  ${c.name}`, `- ${formatMoney(c.totalCents)}`]);
-    autoTable(doc, {
-      startY: 42,
+    let y = reportLetterhead(doc, { settings, logo, title: 'Profit & Loss Summary', period: `${from} to ${to}` });
+    y = kpiBand(doc, y, [
+      { label: 'Total Revenue', value: money(s.revenueCents, settings) },
+      { label: 'Gross Profit', value: money(s.grossProfitCents, settings) },
+      { label: 'Net Profit', value: money(s.netProfitCents, settings), accent: true },
+    ]);
+    const expenseRows = d.expensesByCategory.map((c) => [`    ${c.name}`, `- ${formatMoney(c.totalCents)}`]);
+    y = sectionTitle(doc, y, 'Statement');
+    styledTable(doc, {
+      startY: y,
+      theme: 'plain',
       body: [
         ['Total Revenue', formatMoney(s.revenueCents)],
         ['Tax Collected', formatMoney(s.taxCents)],
         ['Discounts', `- ${formatMoney(s.discountCents)}`],
         ['COGS (Cost of Goods Sold)', `- ${formatMoney(s.cogsCents)}`],
-        ['= Gross Profit', formatMoney(s.grossProfitCents)],
+        ['Gross Profit', formatMoney(s.grossProfitCents)],
         ['Gross Margin', `${s.grossMarginPct}%`],
-        ['', ''],
         ['Operating Expenses', ''],
         ...expenseRows,
         ['Total Expenses', `- ${formatMoney(s.totalExpensesCents)}`],
-        ['', ''],
-        ['NET PROFIT', formatMoney(s.netProfitCents)],
-        ['Net Margin', `${s.netMarginPct}%`],
       ],
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 80 }, 1: { halign: 'right' } },
-      bodyStyles: { fontSize: 9 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['NET PROFIT', `${formatMoney(s.netProfitCents)}   (${s.netMarginPct}%)`]],
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
+      fontSize: 9,
     });
     if (d.byPeriod.length > 0) {
-      const y2 = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
-      autoTable(doc, {
-        startY: y2,
+      y = sectionTitle(doc, lastY(doc) + 8, 'Monthly breakdown');
+      styledTable(doc, {
+        startY: y,
         head: [['Month', 'Revenue', 'COGS', 'Gross Profit', 'Gross Margin', 'Expenses', 'Net Profit']],
         body: d.byPeriod.map((r) => [new Date(r.period).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), formatMoney(r.revenueCents), formatMoney(r.cogsCents), formatMoney(r.grossProfitCents), `${r.grossMarginPct}%`, formatMoney(r.expensesCents), formatMoney(r.netProfitCents)]),
-        headStyles: { fillColor: BRAND, textColor: [255,255,255], fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
-        theme: 'plain', margin: { left: 12, right: 12 },
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
       });
     }
+    finalizeReport(doc, settings);
     doc.save(`ProfitLoss-${from}-${to}.pdf`);
   };
 

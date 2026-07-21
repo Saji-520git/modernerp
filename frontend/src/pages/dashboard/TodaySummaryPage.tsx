@@ -5,10 +5,12 @@ import {
   ShoppingCart, Package, Wallet, Receipt, AlertTriangle,
   Clock, UserPlus, Sun,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { reportsApi, type TodaySummary } from '../../services/reports';
 import { useAppSettings } from '../../context/SettingsContext';
+import {
+  loadReportBranding, newReportDoc, reportLetterhead, kpiBand,
+  sectionTitle, styledTable, finalizeReport, lastY, money,
+} from '../../services/reportPdf';
 
 // ─── Local constants ──────────────────────────────────────────────────────────
 
@@ -17,30 +19,10 @@ const PAYMENT_LABELS: Record<string, string> = {
   QR_PAY: 'QR Pay', WALLET: 'Wallet', CREDIT: 'Credit', OTHER: 'Other',
 };
 
-const BRAND: [number, number, number] = [79, 70, 229];
-const SLATE: [number, number, number] = [30, 41, 59];
-const MUTED: [number, number, number] = [100, 116, 139];
-
 function prettyDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
-}
-
-// ─── PDF ──────────────────────────────────────────────────────────────────────
-
-function pdfHeader(doc: jsPDF, businessName: string, title: string, subtitle: string) {
-  const w = doc.internal.pageSize.getWidth();
-  doc.setFillColor(...BRAND); doc.rect(0, 0, w, 16, 'F');
-  doc.setTextColor(255, 255, 255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text(businessName, 12, 11);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text(title, w - 12, 11, { align: 'right' });
-  doc.setTextColor(...SLATE); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-  doc.text(title, 12, 28);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(...MUTED);
-  doc.text(subtitle, 12, 34);
-  doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(12, 37, w - 12, 37);
 }
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────────
@@ -79,7 +61,7 @@ function SectionCard({ title, icon, children, right }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TodaySummaryPage() {
-  const { formatMoney, formatMoneyShort, businessName } = useAppSettings();
+  const { formatMoney, formatMoneyShort } = useAppSettings();
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['today-summary'],
@@ -87,71 +69,73 @@ export default function TodaySummaryPage() {
     refetchOnWindowFocus: false,
   });
 
-  const exportPdf = (d: TodaySummary) => {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    pdfHeader(doc, businessName, "Today's Summary", `${prettyDate(d.date)} — generated ${new Date(d.generatedAt).toLocaleTimeString()}`);
+  const exportPdf = async (d: TodaySummary) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    let y = reportLetterhead(doc, {
+      settings, logo, title: "Today's Summary",
+      period: `${prettyDate(d.date)} — generated ${new Date(d.generatedAt).toLocaleTimeString()}`,
+    });
+    y = kpiBand(doc, y, [
+      { label: 'Net Revenue', value: money(d.headline.revenueCents, settings) },
+      { label: 'Orders', value: String(d.headline.orderCount) },
+      { label: 'Gross Profit', value: money(d.headline.grossProfitCents, settings) },
+      { label: 'Net Profit', value: money(d.money.netProfitCents, settings), accent: true },
+    ]);
 
-    // Headline + money
-    autoTable(doc, {
-      startY: 42,
-      head: [['Metric', 'Value']],
+    y = sectionTitle(doc, y, 'Performance');
+    styledTable(doc, {
+      startY: y,
+      theme: 'plain',
       body: [
-        ['Net Revenue',   formatMoney(d.headline.revenueCents)],
-        ['Gross Revenue', formatMoney(d.headline.grossRevenueCents)],
-        ['Returns',       formatMoney(d.headline.returnsCents)],
+        ['Net Revenue',   money(d.headline.revenueCents, settings)],
+        ['Gross Revenue', money(d.headline.grossRevenueCents, settings)],
+        ['Returns',       money(d.headline.returnsCents, settings)],
         ['Orders',        String(d.headline.orderCount)],
         ['Items Sold',    String(d.headline.itemsSold)],
-        ['Avg Order',     formatMoney(d.headline.avgOrderCents)],
-        ['COGS',          formatMoney(d.headline.cogsCents)],
-        ['Gross Profit',  `${formatMoney(d.headline.grossProfitCents)}  (${d.headline.grossMarginPct}%)`],
-        ['Expenses',      formatMoney(d.money.expensesCents)],
-        ['Net Profit',    formatMoney(d.money.netProfitCents)],
+        ['Avg Order',     money(d.headline.avgOrderCents, settings)],
+        ['COGS',          money(d.headline.cogsCents, settings)],
+        ['Gross Profit',  `${money(d.headline.grossProfitCents, settings)}  (${d.headline.grossMarginPct}%)`],
+        ['Expenses',      money(d.money.expensesCents, settings)],
         ['New Customers', String(d.context.newCustomers)],
       ],
-      headStyles: { fillColor: BRAND, textColor: [255, 255, 255], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      theme: 'plain', margin: { left: 12, right: 12 },
+      foot: [['Net Profit', money(d.money.netProfitCents, settings)]],
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
     });
 
-    let y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
     if (d.payments.length) {
-      autoTable(doc, {
+      y = sectionTitle(doc, lastY(doc) + 8, 'By payment method');
+      styledTable(doc, {
         startY: y,
         head: [['Payment Method', 'Orders', 'Revenue']],
-        body: d.payments.map((p) => [PAYMENT_LABELS[p.method] ?? p.method, String(p.count), formatMoney(p.revenueCents)]),
-        headStyles: { fillColor: BRAND, textColor: [255, 255, 255], fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
-        theme: 'plain', margin: { left: 12, right: 12 },
+        body: d.payments.map((p) => [PAYMENT_LABELS[p.method] ?? p.method, String(p.count), money(p.revenueCents, settings)]),
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
     }
 
     if (d.topItems.length) {
-      autoTable(doc, {
+      y = sectionTitle(doc, lastY(doc) + 8, 'Top items');
+      styledTable(doc, {
         startY: y,
         head: [['Top Item', 'Qty', 'Revenue']],
-        body: d.topItems.map((t) => [t.name, String(t.qty), formatMoney(t.revenueCents)]),
-        headStyles: { fillColor: BRAND, textColor: [255, 255, 255], fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
-        theme: 'plain', margin: { left: 12, right: 12 },
+        body: d.topItems.map((t) => [t.name, String(t.qty), money(t.revenueCents, settings)]),
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
       });
-      y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
     }
 
     if (d.alerts.lowStockItems.length || d.alerts.expiringItems.length) {
-      autoTable(doc, {
+      y = sectionTitle(doc, lastY(doc) + 8, 'Alerts');
+      styledTable(doc, {
         startY: y,
         head: [['Alert', 'Item', 'Detail']],
         body: [
           ...d.alerts.lowStockItems.map((i) => ['Low stock', i.name, `${i.totalQty} on hand (reorder ${i.reorderLevel})`]),
           ...d.alerts.expiringItems.map((i) => ['Expiring', i.name, `${i.daysLeft}d left (${i.expiryDate})`]),
         ],
-        headStyles: { fillColor: BRAND, textColor: [255, 255, 255], fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
-        theme: 'plain', margin: { left: 12, right: 12 },
       });
     }
 
+    finalizeReport(doc, settings);
     doc.save(`Today-Summary-${d.date}.pdf`);
   };
 
