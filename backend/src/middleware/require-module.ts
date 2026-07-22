@@ -10,8 +10,12 @@ import { isModuleEnabled, type ModuleKey } from '../config/modules.js';
  * does not propagate async throws on its own).
  */
 export const requireModule = (key: ModuleKey): RequestHandler =>
-  async (_req, _res, next) => {
+  async (req, _res, next) => {
     try {
+      // Super-admin bypasses module gates — they configure every area per client.
+      if (req.auth?.role === 'SUPER_ADMIN' || req.auth?.permissions?.includes('manage_modules')) {
+        return next();
+      }
       const settings = await prisma.appSettings.findFirst({ select: { moduleFlags: true } });
       if (!isModuleEnabled(settings?.moduleFlags, key)) {
         throw new HttpError(403, `Module '${key}' is disabled`);

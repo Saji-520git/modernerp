@@ -6,7 +6,7 @@ import type { Permission } from '../config/permissions.js';
 
 export interface AuthPayload {
   userId: string;
-  role: 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
   permissions: Permission[];
 }
 

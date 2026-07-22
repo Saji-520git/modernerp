@@ -140,8 +140,9 @@ export default function AppShell() {
   const userRole = user?.role as Role | undefined;
 
   function isVisible(item: NavItem): boolean {
+    // Super-admin sees every item — both module gates and role gates are bypassed.
+    if (userRole === 'SUPER_ADMIN') return true;
     if (item.module && settings?.moduleFlags?.[item.module] !== true) return false;
-    if (userRole === 'SUPER_ADMIN') return true;  // super-admin sees every role-gated item
     if (!item.roles) return true;
     return !!userRole && item.roles.includes(userRole);
   }
