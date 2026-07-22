@@ -1,6 +1,8 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { logger } from '../../config/logger.js';
+import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { z } from 'zod';
 
 export const conversionLineSchema = z.object({
@@ -290,6 +292,30 @@ export const productConversionsService = {
           isActive:      true,
         })),
       });
+
+      // ── Direction / reachability validation ─────────────────────────────────
+      // Stock math (convertToBaseUnit) requires every unit to resolve a path TO
+      // the base unit — directly or through a chain. A reversed row (base→unit)
+      // or a disconnected unit would otherwise save fine and only fail later at
+      // the till. Validate against the just-created rows (inside the tx, so a
+      // failure rolls the whole replace back) using the exact runtime resolver.
+      const baseUnitId = product.baseUnitId ?? product.unitId;
+      const referenced = new Set<string>();
+      for (const c of conversions) { referenced.add(c.fromUnitId); referenced.add(c.toUnitId); }
+      referenced.delete(baseUnitId);
+      for (const unitId of referenced) {
+        try {
+          await convertToBaseUnit(productId, unitId, new Decimal(1), tx);
+        } catch {
+          const u = units.find((x) => x.id === unitId);
+          throw new HttpError(
+            400,
+            `Unit "${u?.name ?? unitId}" has no conversion path to the base unit. ` +
+            `Every unit must convert to the base unit (e.g. 1 Box = 24 Piece, with Piece as base) — ` +
+            `check the direction of your conversion rows.`,
+          );
+        }
+      }
 
       return tx.productUnitConversion.findMany({
         where: { productId },
