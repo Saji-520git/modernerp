@@ -21,6 +21,7 @@ import { router as attachmentsRouter }       from './attachments/attachment.rout
 import { router as customerPaymentsRouter }  from './customer-payments/customer-payment.routes.js';
 import { router as purchaseReturnsRouter }   from './purchase-returns/purchase-return.routes.js';
 import { router as promotionsRouter }         from './promotions/promotions.routes.js';
+import { router as stockTakeRouter }          from './stocktake/stocktake.routes.js';
 
 export const router: Router = Router();
 
@@ -48,3 +49,4 @@ router.use('/attachments',        attachmentsRouter);
 router.use('/customer-payments',  customerPaymentsRouter);
 router.use('/purchase-returns',   purchaseReturnsRouter);
 router.use('/promotions',         promotionsRouter);
+router.use('/stock-takes',        stockTakeRouter);

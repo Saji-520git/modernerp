@@ -179,6 +179,7 @@ model Warehouse {
   stockBatches     StockBatch[]
   stockAlerts      StockAlert[]
   purchaseReceipts PurchaseReceipt[]
+  stockTakes       StockTake[]
   purchaseReturns  PurchaseReturn[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -252,6 +253,7 @@ model Product {
   stockBatches    StockBatch[]
   stockAlerts     StockAlert[]
   receiptLines       PurchaseReceiptLine[]
+  stockTakeLines     StockTakeLine[]
   purchaseReturnLines PurchaseReturnLine[]
 
   createdAt DateTime @default(now())
@@ -1039,4 +1041,44 @@ model SalePromotion {
   @@index([saleId])
   @@index([promotionId])
   @@map("sale_promotions")
+}
+
+// ─── Stock-take / Cycle count (optional module: "stockTake") ──────────────────
+// A counting session per warehouse. Confirm reuses inventory.createAdjustment
+// per varianced line (same stock/batch/P&L path) — no new stock math.
+
+model StockTake {
+  id            String    @id @default(cuid())
+  number        String    @unique               // ST-YYYY-NNNN
+  warehouseId   String
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+  status        String    @default("DRAFT")      // DRAFT | COMPLETED | CANCELLED
+  note          String?
+  createdById   String
+  completedById String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  lines         StockTakeLine[]
+
+  @@index([status])
+  @@index([warehouseId])
+  @@map("stock_takes")
+}
+
+model StockTakeLine {
+  id            String    @id @default(cuid())
+  stockTakeId   String
+  stockTake     StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id])
+  systemQty     Decimal   @db.Decimal(18, 4)     // snapshot at count time
+  countedQty    Decimal?  @db.Decimal(18, 4)     // null until counted
+  appliedQty    Decimal?  @db.Decimal(18, 4)     // actual adjustment posted at confirm
+  unitCostCents Int       @default(0)            // snapshot for variance valuation
+  note          String?
+
+  @@index([stockTakeId])
+  @@map("stock_take_lines")
 }
