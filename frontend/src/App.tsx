@@ -33,6 +33,7 @@ import BrandsPage from './pages/settings/BrandsPage';
 import PromotionsPage from './pages/promotions/PromotionsPage';
 import StockTakePage from './pages/stocktake/StockTakePage';
 import LoyaltyPage from './pages/loyalty/LoyaltyPage';
+import QuotationsPage from './pages/quotations/QuotationsPage';
 import { useModule } from './hooks/useModule';
 import type { ModuleKey } from './config/modules';
 import { useAuthStore } from './store/authStore';
@@ -267,6 +268,13 @@ export default function App() {
           <ModuleGuard module="loyalty">
             <ErrorBoundary fallbackTitle="Loyalty page failed to load">
               <LoyaltyPage />
+            </ErrorBoundary>
+          </ModuleGuard>
+        } />
+        <Route path="quotations" element={
+          <ModuleGuard module="quotations">
+            <ErrorBoundary fallbackTitle="Quotations page failed to load">
+              <QuotationsPage />
             </ErrorBoundary>
           </ModuleGuard>
         } />
