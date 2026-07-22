@@ -4,6 +4,7 @@ import { Clock, X, RefreshCw, AlertTriangle, ChevronDown, ChevronUp } from 'luci
 import { shiftsApi, formatShiftDuration, type PosShift, type ShiftWithSales } from '../../services/shifts';
 import { inventoryApi } from '../../services/inventory';
 import { useAuthStore } from '../../store/authStore';
+import { isAdminRole } from '../../utils/roles';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ function ShiftDetailDrawer({
   onClose: () => void;
 }) {
   const { user } = useAuthStore();
-  const isAdmin  = user?.role === 'ADMIN';
+  const isAdmin  = isAdminRole(user?.role);
   const qc       = useQueryClient();
   const [forceNote, setForceNote] = useState('');
   const [forceError, setForceError] = useState<string | null>(null);

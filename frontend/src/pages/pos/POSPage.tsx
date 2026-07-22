@@ -29,6 +29,7 @@ import { useAuthStore } from '../../store/authStore';
 import { usePosStore } from '../../store/posStore';
 import { useModule } from '../../hooks/useModule';
 import { loyaltyApi } from '../../services/loyalty';
+import { isManagerOrAbove } from '../../utils/roles';
 import OpenShiftModal from '../../components/pos/OpenShiftModal';
 import CloseShiftModal from '../../components/pos/CloseShiftModal';
 import ThermalReceipt from '../../components/pos/ThermalReceipt';
@@ -1619,7 +1620,7 @@ export default function POSPage() {
   const shiftOpenedAt = usePosStore(s => s.shiftOpenedAt);
   const qc        = useQueryClient();
 
-  const isAdmin   = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const isAdmin   = isManagerOrAbove(user?.role);
   const canSellOnCredit = user?.permissions?.includes('sell_on_credit') ?? isAdmin;
 
   async function handleLogout() {

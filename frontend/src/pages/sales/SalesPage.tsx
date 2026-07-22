@@ -22,6 +22,7 @@ import {
 } from '../../utils/whatsapp';
 import { useAppSettings } from '../../context/SettingsContext';
 import { useAuthStore } from '../../store/authStore';
+import { isAdminRole, isManagerOrAbove } from '../../utils/roles';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -1070,8 +1071,8 @@ function today(): string {
 
 export default function SalesPage() {
   const { user } = useAuthStore();
-  const isAdminOrManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
-  const isAdmin          = user?.role === 'ADMIN';
+  const isAdminOrManager = isManagerOrAbove(user?.role);
+  const isAdmin          = isAdminRole(user?.role);
 
   // ── Filters state ──
   const [search, setSearch]         = useState('');

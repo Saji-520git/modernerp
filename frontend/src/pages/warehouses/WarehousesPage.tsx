@@ -14,6 +14,7 @@ import {
   type Warehouse, type CreateWarehouseBody,
 } from '../../services/warehouses';
 import { useAuthStore } from '../../store/authStore';
+import { isManagerOrAbove } from '../../utils/roles';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -678,7 +679,7 @@ function WarehouseCard({
 export default function WarehousesPage() {
   const { user }    = useAuthStore();
   const qc          = useQueryClient();
-  const canManage   = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canManage   = isManagerOrAbove(user?.role);
 
   const [search,        setSearch]        = useState('');
   const [typeFilter,    setTypeFilter]    = useState('');
