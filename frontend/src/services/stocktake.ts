@@ -2,18 +2,29 @@ import { api } from './api';
 
 export type StockTakeStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
 
+export interface StockUnitRef {
+  id: string; shortCode: string; name: string; allowDecimal: boolean; type: string;
+}
+
 export interface StockTakeLine {
   id: string;
   productId: string;
-  systemQty: string;              // Prisma Decimal → string
-  countedQty: string | null;
-  appliedQty: string | null;
+  systemQty: string;              // Prisma Decimal → string (BASE units)
+  countedQty: string | null;      // count as entered, in countUnit
+  countUnitId: string | null;
+  appliedQty: string | null;      // posted adjustment (BASE units)
   unitCostCents: number;
   note: string | null;
   product: {
     id: string; name: string; sku: string;
-    unit?:     { shortCode: string } | null;
-    baseUnit?: { shortCode: string } | null;
+    baseUnitId: string | null; unitId: string;
+    unit?:     StockUnitRef | null;
+    baseUnit?: StockUnitRef | null;
+    unitConversions?: Array<{
+      conversionQty: string | number;
+      fromUnit: StockUnitRef;
+      toUnit: { id: string };
+    }>;
   };
 }
 
@@ -39,6 +50,7 @@ export interface CreateStockTakeBody {
 export interface SaveCountLine {
   lineId: string;
   countedQty: number | null;
+  countUnitId?: string | null;  // unit the count was entered in (null = base)
   note?: string | null;
 }
 

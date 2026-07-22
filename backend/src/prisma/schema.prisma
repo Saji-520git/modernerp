@@ -1073,10 +1073,11 @@ model StockTakeLine {
   stockTake     StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
   productId     String
   product       Product   @relation(fields: [productId], references: [id])
-  systemQty     Decimal   @db.Decimal(18, 4)     // snapshot at count time
-  countedQty    Decimal?  @db.Decimal(18, 4)     // null until counted
-  appliedQty    Decimal?  @db.Decimal(18, 4)     // actual adjustment posted at confirm
-  unitCostCents Int       @default(0)            // snapshot for variance valuation
+  systemQty     Decimal   @db.Decimal(18, 4)     // snapshot at count time (BASE units)
+  countedQty    Decimal?  @db.Decimal(18, 4)     // count as entered, in countUnit (null until counted)
+  countUnitId   String?                          // unit the count was entered in (null = base)
+  appliedQty    Decimal?  @db.Decimal(18, 4)     // actual adjustment posted at confirm (BASE units)
+  unitCostCents Int       @default(0)            // snapshot for variance valuation (per base unit)
   note          String?
 
   @@index([stockTakeId])

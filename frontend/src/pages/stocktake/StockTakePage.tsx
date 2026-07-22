@@ -148,6 +148,7 @@ function CountSheet({ id, onBack }: { id: string; onBack: () => void }) {
   const { formatMoney } = useAppSettings();
   const { data: take, isLoading } = useQuery({ queryKey: ['stock-take', id], queryFn: () => stockTakeApi.getById(id) });
   const [counts, setCounts] = useState<Record<string, string>>({});
+  const [units, setUnits] = useState<Record<string, string>>({}); // lineId → chosen count unit
   const [error, setError] = useState<string | null>(null);
 
   const editable = take?.status === 'DRAFT';
@@ -165,14 +166,35 @@ function CountSheet({ id, onBack }: { id: string; onBack: () => void }) {
 
   if (isLoading || !take) return <div className="p-6"><p className="text-slate-400">Loading…</p></div>;
 
+  interface UOpt { id: string; label: string; factor: number; allowDecimal: boolean; type: string }
+  const effBaseId = (l: StockTakeLine) => l.product.baseUnitId ?? l.product.unitId;
+  const unitOptions = (l: StockTakeLine): UOpt[] => {
+    const bId = effBaseId(l);
+    const b = l.product.baseUnit ?? l.product.unit;
+    const opts: UOpt[] = [{ id: bId, label: b?.shortCode ?? 'unit', factor: 1, allowDecimal: b?.allowDecimal ?? true, type: b?.type ?? 'OTHER' }];
+    for (const c of l.product.unitConversions ?? []) {
+      if (c.toUnit.id === bId) {
+        opts.push({ id: c.fromUnit.id, label: c.fromUnit.shortCode, factor: Number(c.conversionQty), allowDecimal: c.fromUnit.allowDecimal, type: c.fromUnit.type });
+      }
+    }
+    return opts;
+  };
+  const selUnitId = (l: StockTakeLine) => units[l.id] ?? l.countUnitId ?? effBaseId(l);
+  const optFor = (l: StockTakeLine): UOpt => { const o = unitOptions(l); return o.find((x) => x.id === selUnitId(l)) ?? o[0]; };
+  const fmtQty = (n: number) => Number(n.toFixed(3)).toString();
+
+  const systemInUnit = (l: StockTakeLine) => num(l.systemQty) / optFor(l).factor;
   const countedVal = (l: StockTakeLine): string => counts[l.id] ?? (l.countedQty ?? '');
-  const variance = (l: StockTakeLine): number | null => {
-    const c = countedVal(l);
-    if (c === '') return null;
-    return Number(c) - num(l.systemQty);
+  const varianceUnit = (l: StockTakeLine): number | null => {
+    const c = countedVal(l); if (c === '') return null;
+    return Number(c) - systemInUnit(l);
+  };
+  const varianceBase = (l: StockTakeLine): number | null => {
+    const c = countedVal(l); if (c === '') return null;
+    return Number(c) * optFor(l).factor - num(l.systemQty);
   };
   const varianceValueCents = take.lines?.reduce((s, l) => {
-    const v = variance(l);
+    const v = varianceBase(l);
     return v == null ? s : s + Math.round(v * l.unitCostCents);
   }, 0) ?? 0;
   const countedCount = take.lines?.filter((l) => countedVal(l) !== '').length ?? 0;
@@ -180,10 +202,9 @@ function CountSheet({ id, onBack }: { id: string; onBack: () => void }) {
   const buildLines = (): SaveCountLine[] =>
     (take.lines ?? []).map((l) => {
       const c = countedVal(l);
-      return { lineId: l.id, countedQty: c === '' ? null : Number(c), note: l.note };
+      const uid = selUnitId(l);
+      return { lineId: l.id, countedQty: c === '' ? null : Number(c), countUnitId: uid === effBaseId(l) ? null : uid, note: l.note };
     });
-
-  const unitShort = (l: StockTakeLine) => l.product.baseUnit?.shortCode ?? l.product.unit?.shortCode ?? '';
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -218,29 +239,45 @@ function CountSheet({ id, onBack }: { id: string; onBack: () => void }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(take.lines ?? []).map((l) => {
-                const v = variance(l);
+                const v = varianceUnit(l);
+                const opts = unitOptions(l);
+                const o = optFor(l);
+                const step = (o.allowDecimal && o.type !== 'COUNT') ? 'any' : '1';
                 return (
                   <tr key={l.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-slate-800">{l.product.name}</p>
                       <p className="text-xs text-slate-400 font-mono">{l.product.sku}</p>
                     </td>
-                    <td className="px-4 py-2.5 text-right text-slate-600">{num(l.systemQty)} {unitShort(l)}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">{fmtQty(systemInUnit(l))} {o.label}</td>
                     <td className="px-4 py-2.5 text-right">
                       {editable ? (
-                        <input
-                          type="number" min={0} step="any"
-                          className="w-24 px-2 py-1 border border-slate-200 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                          value={countedVal(l)}
-                          onChange={(e) => setCounts((p) => ({ ...p, [l.id]: e.target.value }))}
-                          placeholder="—"
-                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <input
+                            type="number" min={0} step={step}
+                            className="w-20 px-2 py-1 border border-slate-200 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            value={countedVal(l)}
+                            onChange={(e) => setCounts((p) => ({ ...p, [l.id]: e.target.value }))}
+                            placeholder="—"
+                          />
+                          {opts.length > 1 ? (
+                            <select
+                              className="px-1.5 py-1 border border-slate-200 rounded text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                              value={selUnitId(l)}
+                              onChange={(e) => setUnits((p) => ({ ...p, [l.id]: e.target.value }))}
+                            >
+                              {opts.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400 w-10">{o.label}</span>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-slate-700">{l.countedQty != null ? num(l.countedQty) : '—'}</span>
+                        <span className="text-slate-700">{l.countedQty != null ? `${num(l.countedQty)} ${o.label}` : '—'}</span>
                       )}
                     </td>
                     <td className={`px-4 py-2.5 text-right font-medium ${v == null ? 'text-slate-300' : v < 0 ? 'text-red-600' : v > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {v == null ? '—' : (v > 0 ? `+${v}` : v)}
+                      {v == null ? '—' : `${v > 0 ? '+' : ''}${fmtQty(v)} ${o.label}`}
                     </td>
                   </tr>
                 );

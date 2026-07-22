@@ -1,7 +1,9 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { inventoryService } from '../inventory/inventory.service.js';
+import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import type { CreateStockTakeInput, SaveCountsInput } from './stocktake.schema.js';
 
 async function generateStockTakeNumber(): Promise<string> {
@@ -15,8 +17,18 @@ const LINE_INCLUDE = {
   product: {
     select: {
       id: true, name: true, sku: true,
-      unit:     { select: { shortCode: true } },
-      baseUnit: { select: { shortCode: true } },
+      baseUnitId: true, unitId: true,
+      unit:     { select: { id: true, shortCode: true, name: true, allowDecimal: true, type: true } },
+      baseUnit: { select: { id: true, shortCode: true, name: true, allowDecimal: true, type: true } },
+      // Direct conversions (fromUnit → base) let the count sheet offer packaging units.
+      unitConversions: {
+        where:  { isActive: true },
+        select: {
+          conversionQty: true,
+          fromUnit: { select: { id: true, shortCode: true, name: true, allowDecimal: true, type: true } },
+          toUnit:   { select: { id: true } },
+        },
+      },
     },
   },
 } as const;
@@ -89,7 +101,7 @@ export const stockTakeService = {
       input.lines.map((l) =>
         prisma.stockTakeLine.updateMany({
           where: { id: l.lineId, stockTakeId: id }, // scope to this take (security)
-          data:  { countedQty: l.countedQty, note: l.note ?? null },
+          data:  { countedQty: l.countedQty, countUnitId: l.countUnitId ?? null, note: l.note ?? null },
         }),
       ),
     );
@@ -108,16 +120,33 @@ export const stockTakeService = {
     if (!st) throw new HttpError(404, 'Stock-take not found');
     if (st.status !== 'DRAFT') throw new HttpError(400, 'Stock-take is already finalised');
 
+    // Effective base unit per product (baseUnitId ?? unitId) — mirrors createAdjustment.
+    const products = await prisma.product.findMany({
+      where:  { id: { in: st.lines.map((l) => l.productId) } },
+      select: { id: true, baseUnitId: true, unitId: true },
+    });
+    const baseUnitOf = new Map(products.map((p) => [p.id, p.baseUnitId ?? p.unitId]));
+
     let adjusted = 0;
     for (const line of st.lines) {
       if (line.countedQty === null) continue; // uncounted → leave stock untouched
+
+      // Convert the entered count (in countUnit) to BASE units for reconciliation.
+      const effBase = baseUnitOf.get(line.productId) ?? null;
+      let countedBase: number;
+      if (line.countUnitId && line.countUnitId !== effBase) {
+        const { baseQty } = await convertToBaseUnit(line.productId, line.countUnitId, new Decimal(line.countedQty.toString()), prisma);
+        countedBase = Number(baseQty);
+      } else {
+        countedBase = Number(line.countedQty);
+      }
 
       const cur = await prisma.stock.findUnique({
         where:  { productId_warehouseId: { productId: line.productId, warehouseId: st.warehouseId } },
         select: { qty: true },
       });
       const fresh = cur ? Number(cur.qty) : 0;
-      const variance = Number(line.countedQty) - fresh;
+      const variance = countedBase - fresh;
 
       if (variance !== 0) {
         await inventoryService.createAdjustment(

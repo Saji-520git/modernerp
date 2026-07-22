@@ -8,9 +8,10 @@ export const createStockTakeSchema = z.object({
 
 export const saveCountsSchema = z.object({
   lines: z.array(z.object({
-    lineId:     z.string(),
-    countedQty: z.number().min(0).nullable(),  // null = not counted yet
-    note:       z.string().max(300).nullable().optional(),
+    lineId:      z.string(),
+    countedQty:  z.number().min(0).nullable(),  // null = not counted yet; in countUnit
+    countUnitId: z.string().nullable().optional(), // unit entered in (null = base)
+    note:        z.string().max(300).nullable().optional(),
   })).min(1),
 });
 
