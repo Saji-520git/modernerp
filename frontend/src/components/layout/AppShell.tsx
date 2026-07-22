@@ -90,7 +90,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'SYSTEM',
     items: [
-      { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'] },
+      { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'], module: 'userManagement' },
       { to: '/settings/import', label: 'Import Products', icon: Upload, roles: ['ADMIN'] },
       { to: '/settings/categories', label: 'Categories', icon: Tag, roles: ['ADMIN', 'MANAGER'] },
       { to: '/settings/brands', label: 'Brands', icon: Layers, roles: ['ADMIN', 'MANAGER'] },

@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import * as ctrl from './users.controller.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
+import { requireModule } from '../../middleware/require-module.js';
 import { asyncHandler as h } from '../../middleware/async-handler.js';
 
 export const router: Router = Router();
 
-router.use(requireAuth);
+// User Management is a per-client module. The client's own admin only reaches it
+// when the super-admin enables 'userManagement'; the super-admin always bypasses.
+router.use(requireAuth, requireModule('userManagement'));
 
 // All user management requires the manage_users permission (ADMIN only by default)
 router.get('/stats', requirePermission('manage_users'), ctrl.stats);

@@ -361,9 +361,11 @@ export default function App() {
 
         {/* SYSTEM */}
         <Route path="users" element={
-          <ErrorBoundary fallbackTitle="User Management failed to load">
-            <UsersPage />
-          </ErrorBoundary>
+          <ModuleGuard module="userManagement">
+            <ErrorBoundary fallbackTitle="User Management failed to load">
+              <UsersPage />
+            </ErrorBoundary>
+          </ModuleGuard>
         } />
         <Route path="settings" element={
           <ErrorBoundary fallbackTitle="Settings failed to load">
