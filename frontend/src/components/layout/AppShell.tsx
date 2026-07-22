@@ -10,7 +10,7 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck,
+  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck, Gift,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -75,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/customers', label: 'Customers', icon: Users },
       { to: '/suppliers', label: 'Suppliers', icon: Building },
+      { to: '/loyalty', label: 'Loyalty', icon: Gift, roles: ['ADMIN', 'MANAGER'], module: 'loyalty' },
     ],
   },
   {

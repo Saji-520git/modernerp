@@ -32,6 +32,7 @@ import CategoriesPage from './pages/settings/CategoriesPage';
 import BrandsPage from './pages/settings/BrandsPage';
 import PromotionsPage from './pages/promotions/PromotionsPage';
 import StockTakePage from './pages/stocktake/StockTakePage';
+import LoyaltyPage from './pages/loyalty/LoyaltyPage';
 import { useModule } from './hooks/useModule';
 import type { ModuleKey } from './config/modules';
 import { useAuthStore } from './store/authStore';
@@ -259,6 +260,13 @@ export default function App() {
           <ModuleGuard module="stockTake">
             <ErrorBoundary fallbackTitle="Stock-take page failed to load">
               <StockTakePage />
+            </ErrorBoundary>
+          </ModuleGuard>
+        } />
+        <Route path="loyalty" element={
+          <ModuleGuard module="loyalty">
+            <ErrorBoundary fallbackTitle="Loyalty page failed to load">
+              <LoyaltyPage />
             </ErrorBoundary>
           </ModuleGuard>
         } />
