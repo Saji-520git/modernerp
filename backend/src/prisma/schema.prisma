@@ -354,7 +354,8 @@ model Purchase {
   date         DateTime   @default(now())
   subtotalCents Int       @default(0)
   taxCents      Int       @default(0)
-  totalCents    Int       @default(0)
+  totalCents    Int       @default(0)   // ordered value (PO commitment) — never the payable
+  receivedValueCents Int  @default(0)   // Σ received (GRN) value — drives the supplier payable
   paidCents     Int       @default(0)
   paymentStatus  PurchasePaymentStatus @default(UNPAID)
   deliveryStatus DeliveryStatus        @default(PENDING)

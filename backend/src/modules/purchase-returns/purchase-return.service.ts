@@ -225,14 +225,14 @@ export const purchaseReturnService = {
       // Load parent purchase current state
       const parentPurchase = await tx.purchase.findUnique({
         where:  { id: ret.purchaseId },
-        select: { totalCents: true, paidCents: true },
+        select: { receivedValueCents: true, paidCents: true },
       });
       if (!parentPurchase) throw new Error('Parent purchase not found');
 
-      // Effective amount still owed (Option B — totalCents itself is never mutated)
+      // Effective amount still owed = delivered value (payable) minus returns.
       const effectiveTotalCents = Math.max(
         0,
-        parentPurchase.totalCents - totalReturnedCents,
+        (parentPurchase.receivedValueCents ?? 0) - totalReturnedCents,
       );
 
       // Derive new payment status (4-branch — Option B).

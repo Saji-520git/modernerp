@@ -631,14 +631,15 @@ export const reportsService = {
         _sum: { totalCents: true, paidCents: true },
       }),
 
-      // 3. Outstanding payables (confirmed purchases not fully paid)
+      // 3. Outstanding payables (confirmed purchases not fully paid) — payable
+      //    follows the delivered value (receivedValueCents), not the ordered total.
       prisma.purchase.aggregate({
         where: {
           status:        'CONFIRMED',
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
           deletedAt:     null,
         },
-        _sum: { totalCents: true, paidCents: true },
+        _sum: { receivedValueCents: true, paidCents: true },
       }),
 
       // 4. Low stock count (application-code filter — no raw SQL)
@@ -759,7 +760,7 @@ export const reportsService = {
 
     const outstandingPayablesCents = Math.max(
       0,
-      (payablesAgg._sum.totalCents ?? 0)
+      (payablesAgg._sum.receivedValueCents ?? 0)
       - (payablesAgg._sum.paidCents ?? 0)
       - payableReturnedCents,
     );

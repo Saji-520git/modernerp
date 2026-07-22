@@ -71,23 +71,25 @@ function SupplierPaymentSection({
   poId,
   supplierId,
   totalCents,
+  payableCents,
   paidCents,
   returnedCents = 0,
   businessName = 'My Business',
 }: {
   poId: string;
   supplierId: string;
-  totalCents: number;
+  totalCents: number;      // ordered value (PO commitment) — reference only
+  payableCents: number;    // delivered value — the amount actually owed
   paidCents: number;
   returnedCents?: number;
   businessName?: string;
 }) {
   const queryClient = useQueryClient();
-  // Option B — subtract confirmed return credit so the displayed outstanding
-  // matches the backend's effectiveOutstanding (never mutates totalCents).
+  // Payable follows the DELIVERED value (payableCents); subtract confirmed return
+  // credit so the displayed outstanding matches the backend's effectiveOutstanding.
   // Clamp at 0: overpaid-after-return shows Rs.0.00, never a negative figure.
-  const effectiveTotalCents = Math.max(0, totalCents - returnedCents);
-  const outstanding = Math.max(0, totalCents - paidCents - returnedCents);
+  const effectiveTotalCents = Math.max(0, payableCents - returnedCents);
+  const outstanding = Math.max(0, payableCents - paidCents - returnedCents);
   // Credit the supplier owes us when returns left the PO overpaid.
   const creditOwed = Math.max(0, paidCents - effectiveTotalCents);
 
@@ -285,7 +287,10 @@ function SupplierPaymentSection({
 
       {/* Summary bar */}
       <div className="text-xs text-slate-600 flex gap-4 mb-2">
-        <span>Total: <strong>{formatCents(totalCents)}</strong></span>
+        <span>Payable: <strong>{formatCents(payableCents)}</strong></span>
+        {payableCents !== totalCents && (
+          <span className="text-amber-600" title="Ordered value differs from delivered value">Ordered: {formatCents(totalCents)}</span>
+        )}
         <span>Paid: <strong className="text-green-600">{formatCents(paidCents)}</strong></span>
         <span>Outstanding: <strong className={outstanding > 0 ? 'text-red-600' : 'text-green-600'}>{formatCents(outstanding)}</strong></span>
       </div>
@@ -470,6 +475,23 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
   const lines    = po.lines ?? [];
   const receipts = po.receipts ?? [];
 
+  // Price variance on RECEIVED goods only: Σ receivedQty × (receiptCost − poCost).
+  // Compared per received line (mapped by purchaseLineId) so a partial delivery
+  // never reads as a variance — only an actual unit-cost difference does.
+  // Informational: the payable itself is the delivered value (receivedValueCents).
+  const poLineById = new Map(lines.map((l) => [l.id, l]));
+  let receivedAtActualCents  = 0;
+  let receivedAtOrderedCents = 0;
+  for (const r of receipts) {
+    for (const rl of r.lines) {
+      const qty    = Number(rl.qty);
+      const poCost = poLineById.get(rl.purchaseLineId)?.unitCostCents ?? rl.unitCostCents;
+      receivedAtActualCents  += Math.round(qty * rl.unitCostCents);
+      receivedAtOrderedCents += Math.round(qty * poCost);
+    }
+  }
+  const costVarianceCents = receivedAtActualCents - receivedAtOrderedCents;
+
   // Initialise lineInputs from remaining qty; unit cost defaults to the PO line cost.
   const initForm = () => {
     const init: typeof lineInputs = {};
@@ -617,6 +639,23 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
               {r.notes && <p className="px-3 py-1.5 text-xs text-slate-400 italic">{r.notes}</p>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Price variance on received goods — surfaces a GRN cost that differs from
+          the ordered price. The payable itself follows the delivered value. */}
+      {receipts.length > 0 && costVarianceCents !== 0 && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-amber-800">Delivered at a different cost than ordered</p>
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              Delivered value {formatCents(receivedAtActualCents)} vs ordered {formatCents(receivedAtOrderedCents)} —
+              the supplier payable follows the delivered value.
+            </p>
+          </div>
+          <span className="text-sm font-bold text-amber-800 shrink-0">
+            {costVarianceCents > 0 ? '+' : '−'}{formatCents(Math.abs(costVarianceCents))}
+          </span>
         </div>
       )}
 
@@ -1085,7 +1124,7 @@ function PurchaseDetailModal({
 
         {/* Supplier Payments section — shown on CONFIRMED POs */}
         {po.status === 'CONFIRMED' && (
-          <SupplierPaymentSection poId={id} supplierId={po.supplier.id} totalCents={po.totalCents} paidCents={(po as any).paidCents ?? 0} returnedCents={(po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)} />
+          <SupplierPaymentSection poId={id} supplierId={po.supplier.id} totalCents={po.totalCents} payableCents={po.receivedValueCents ?? po.totalCents} paidCents={(po as any).paidCents ?? 0} returnedCents={(po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0)} />
         )}
 
         {/* Purchase Returns section — shown on CONFIRMED POs */}

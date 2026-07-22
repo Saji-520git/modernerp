@@ -251,10 +251,31 @@ export async function createReceipt(
       where: { id: purchaseId },
       data:  { deliveryStatus: newStatus as any },
     });
+
+    // Supplier payable follows delivered value — recompute after this receipt.
+    await recomputeReceivedValue(tx, purchaseId);
   }, { timeout: 60_000 });
 
   // Return the new receipt with lines
   return getReceiptById(receiptNumber, true);
+}
+
+// ─── recomputeReceivedValue ───────────────────────────────────────────────────
+// Purchase.receivedValueCents = Σ received value across all GRN receipts, which
+// drives the supplier payable. Received qty × actual unit cost; legacy/auto
+// receipt lines may carry unitCostCents = 0, so fall back to the PO line cost.
+export async function recomputeReceivedValue(tx: any, purchaseId: string): Promise<number> {
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT COALESCE(ROUND(SUM(rl."qty" * COALESCE(NULLIF(rl."unitCostCents", 0), pl."unitCostCents")))::int, 0) AS v
+     FROM "purchase_receipt_lines" rl
+     JOIN "purchase_receipts" r  ON rl."receiptId"      = r."id"
+     JOIN "PurchaseLine"       pl ON rl."purchaseLineId" = pl."id"
+     WHERE r."purchaseId" = $1`,
+    purchaseId,
+  );
+  const v = Number(rows?.[0]?.v ?? 0);
+  await tx.purchase.update({ where: { id: purchaseId }, data: { receivedValueCents: v } });
+  return v;
 }
 
 // ─── createFullReceiptRecord ──────────────────────────────────────────────────
@@ -289,6 +310,7 @@ export async function createFullReceiptRecord(
             purchaseLineId: line.id,
             productId:      line.productId,
             qty:            new Decimal(line.qty.toString()),
+            unitCostCents:  line.unitCostCents ?? 0,   // full delivery = ordered cost
             expiryDate:     (line as any).expiryDate ?? null,
           },
         });
@@ -303,6 +325,9 @@ export async function createFullReceiptRecord(
         where: { id: purchaseId },
         data:  { deliveryStatus: 'DELIVERED' as any },
       });
+
+      // FULL delivery = ordered value; keep the payable in step.
+      await recomputeReceivedValue(tx, purchaseId);
     });
   } catch (err) {
     // Non-fatal: don't fail the whole confirm if receipt creation fails

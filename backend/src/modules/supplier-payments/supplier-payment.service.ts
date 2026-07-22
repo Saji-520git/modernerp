@@ -113,7 +113,7 @@ export const supplierPaymentService = {
     const purchase = await (prisma as any).purchase.findFirst({
       where: { id: data.purchaseId, deletedAt: null },
       select: {
-        id: true, status: true, totalCents: true,
+        id: true, status: true, totalCents: true, receivedValueCents: true,
         paidCents: true, supplierId: true, number: true,
       },
     });
@@ -122,17 +122,18 @@ export const supplierPaymentService = {
       throw new HttpError(400, 'Payments can only be recorded on CONFIRMED purchase orders');
     }
 
-    // Option B — totalCents is never mutated; subtract confirmed return credit to
-    // get the true amount still owed before validating an overpayment.
+    // Payable follows the DELIVERED value (receivedValueCents), not the ordered
+    // PO total; subtract confirmed return credit to get the true amount owed.
     const returnsAgg = await (prisma as any).purchaseReturn.aggregate({
       where: { purchaseId: data.purchaseId, status: 'CONFIRMED', isActive: true },
       _sum: { totalCents: true },
     });
     const returnedCents = returnsAgg._sum.totalCents ?? 0;
+    const payableCents  = purchase.receivedValueCents ?? 0;
 
     const effectiveOutstanding = Math.max(
       0,
-      purchase.totalCents - purchase.paidCents - returnedCents,
+      payableCents - purchase.paidCents - returnedCents,
     );
     if (data.amountCents > effectiveOutstanding) {
       throw new HttpError(
@@ -143,9 +144,9 @@ export const supplierPaymentService = {
 
     const paymentNumber = await generateSPAYNumber();
     const newPaidCents  = purchase.paidCents + data.amountCents;
-    // Derive against effective total (totalCents minus confirmed return credit),
-    // reusing returnedCents computed above for the overpayment guard.
-    const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+    // Derive against effective payable (delivered value minus confirmed return
+    // credit), reusing returnedCents computed above for the overpayment guard.
+    const effectiveTotalCents = Math.max(0, payableCents - returnedCents);
     const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
     return prisma.$transaction(async (tx) => {
@@ -220,7 +221,7 @@ export const supplierPaymentService = {
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         },
         orderBy: [{ date: 'asc' }, { number: 'asc' }],
-        select:  { id: true, number: true, totalCents: true, paidCents: true },
+        select:  { id: true, number: true, totalCents: true, receivedValueCents: true, paidCents: true },
       });
 
       let remaining = amountCents;
@@ -234,7 +235,7 @@ export const supplierPaymentService = {
           _sum:  { totalCents: true },
         });
         const returnedCents       = returnsAgg._sum.totalCents ?? 0;
-        const effectiveTotalCents = Math.max(0, (po.totalCents as number) - returnedCents);
+        const effectiveTotalCents = Math.max(0, ((po.receivedValueCents ?? 0) as number) - returnedCents);
         const outstanding         = Math.max(0, effectiveTotalCents - (po.paidCents as number));
         if (outstanding <= 0) continue;
 
@@ -351,7 +352,7 @@ export const supplierPaymentService = {
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         },
         orderBy: [{ date: 'asc' }, { number: 'asc' }],
-        select:  { id: true, number: true, totalCents: true, paidCents: true },
+        select:  { id: true, number: true, totalCents: true, receivedValueCents: true, paidCents: true },
       });
 
       const allocations: LumpSumSupplierAllocation[] = [];
@@ -364,7 +365,7 @@ export const supplierPaymentService = {
           _sum:  { totalCents: true },
         });
         const returnedCents       = returnsAgg._sum.totalCents ?? 0;
-        const effectiveTotalCents = Math.max(0, (po.totalCents as number) - returnedCents);
+        const effectiveTotalCents = Math.max(0, ((po.receivedValueCents ?? 0) as number) - returnedCents);
         const outstanding         = Math.max(0, effectiveTotalCents - (po.paidCents as number));
         if (outstanding <= 0) continue;
 

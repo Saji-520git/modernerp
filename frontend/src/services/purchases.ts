@@ -107,7 +107,8 @@ export interface Purchase {
   date: string;
   subtotalCents: number;
   taxCents: number;
-  totalCents: number;
+  totalCents: number;          // ordered value (PO commitment)
+  receivedValueCents: number;  // delivered value — the supplier payable
   note: string | null;
   supplier: { id: string; name: string };
   warehouse: { id: string; name: string; code: string };

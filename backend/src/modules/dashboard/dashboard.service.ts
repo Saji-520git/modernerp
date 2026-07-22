@@ -146,10 +146,10 @@ export const dashboardService = {
     const totalReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
     const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents - totalReturnedCents);
 
-    // Month purchases (confirmed POs)
+    // Month purchases (confirmed POs) — actual spend = delivered value.
     const monthPurchasesResult = await prisma.purchase.aggregate({
       where: { status: 'CONFIRMED', date: { gte: monthStart } },
-      _sum: { totalCents: true },
+      _sum: { receivedValueCents: true },
       _count: true,
     });
 
@@ -172,7 +172,7 @@ export const dashboardService = {
       lowStockCount: actualLowStock,
       activeUsers,
       unpaidCents,
-      monthPurchasesCents: monthPurchasesResult._sum.totalCents ?? 0,
+      monthPurchasesCents: monthPurchasesResult._sum.receivedValueCents ?? 0,
       monthPurchaseCount: monthPurchasesResult._count,
       inventoryValueCents,
       trends: {
