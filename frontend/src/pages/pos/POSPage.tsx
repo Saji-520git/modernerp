@@ -1400,6 +1400,24 @@ function ReceiptModal({
                 ))}
               </div>
             )}
+
+            {receipt.loyalty && (receipt.loyalty.earned > 0 || receipt.loyalty.redeemed > 0) && (
+              <div className="pt-2 mt-1 border-t border-slate-200 space-y-1">
+                <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide">Loyalty</p>
+                {receipt.loyalty.redeemed > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Points redeemed</span>
+                    <span className="font-medium text-red-500">− {receipt.loyalty.redeemed.toLocaleString()}</span>
+                  </div>
+                )}
+                {receipt.loyalty.earned > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Points earned</span>
+                    <span className="font-medium text-indigo-600">+ {receipt.loyalty.earned.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Buttons */}
@@ -2298,13 +2316,13 @@ export default function POSPage() {
           });
 
           const augLines = [...productLines, ...svcLines];
-          setLastReceipt({ ...data.receipt, lines: augLines, promotions: data.promotions });
+          setLastReceipt({ ...data.receipt, lines: augLines, promotions: data.promotions, loyalty: data.loyalty });
         } catch {
           // Augmentation failed — use receipt as-is, never block the popup
-          setLastReceipt({ ...data.receipt, promotions: data.promotions });
+          setLastReceipt({ ...data.receipt, promotions: data.promotions, loyalty: data.loyalty });
         }
       } else {
-        setLastReceipt({ ...data.receipt, promotions: data.promotions });
+        setLastReceipt({ ...data.receipt, promotions: data.promotions, loyalty: data.loyalty });
       }
       const changeCents = pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0;
       setLastChangeCents(changeCents);
