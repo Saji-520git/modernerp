@@ -176,6 +176,31 @@ export const productsService = {
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, 'Product not found');
 
+    // ── Base-unit lock ──────────────────────────────────────────────────────
+    // Stock, batches and historical baseQty are all recorded in the product's
+    // base unit. Changing the base unit after any stock/history exists would
+    // silently reinterpret every recorded quantity (e.g. 100 pieces read as 100
+    // boxes). Block it: the base unit is immutable once the product has been
+    // used. (A brand-new product with no history can still set/correct it.)
+    const oldBase = existing.baseUnitId ?? existing.unitId;
+    const newBase =
+      (input.baseUnitId !== undefined ? input.baseUnitId : existing.baseUnitId) ??
+      (input.unitId !== undefined ? input.unitId : existing.unitId);
+    if (newBase !== oldBase) {
+      const [movementCount, stockAgg] = await Promise.all([
+        prisma.stockMovement.count({ where: { productId: id } }),
+        prisma.stock.aggregate({ where: { productId: id }, _sum: { qty: true } }),
+      ]);
+      const onHand = stockAgg._sum.qty != null ? Number(stockAgg._sum.qty) : 0;
+      if (movementCount > 0 || onHand !== 0) {
+        throw new HttpError(
+          409,
+          'Cannot change the base/stock unit: this product already has stock or transaction history. ' +
+          'The base unit is locked to protect recorded quantities. Create a new product instead.',
+        );
+      }
+    }
+
     if (input.sku && input.sku !== existing.sku) {
       const conflict = await prisma.product.findUnique({ where: { sku: input.sku } });
       if (conflict) throw new HttpError(409, `SKU "${input.sku}" is already taken`);

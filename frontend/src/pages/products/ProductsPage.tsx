@@ -798,6 +798,11 @@ export default function ProductsPage() {
     setConversions((prev) => prev.filter((r) => r.key !== key));
   }
 
+  // Base/stock unit is immutable once the product has stock — changing it would
+  // silently reinterpret recorded quantities. Backend enforces this (409); the UI
+  // locks the control to match. (Products with no stock can still set it.)
+  const baseUnitLocked = !!editingProduct && totalStock(editingProduct) > 0;
+
   // ── Computed margin preview ───────────────────────────────────────────────────
 
   const previewMargin = (() => {
@@ -1942,7 +1947,8 @@ export default function ProductsPage() {
                     <select
                       value={form.baseUnitId}
                       onChange={(e) => setForm((f) => ({ ...f, baseUnitId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700"
+                      disabled={baseUnitLocked}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700 ${baseUnitLocked ? 'bg-slate-100 cursor-not-allowed text-slate-500' : ''}`}
                     >
                       <option value="">Same as display</option>
                       {allUnits.map((u) => (
@@ -1950,7 +1956,9 @@ export default function ProductsPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                      Stock is always counted in this unit. For loose items sold by weight, use the smallest unit here (e.g. Gram, not Bottle).
+                      {baseUnitLocked
+                        ? '🔒 Locked — this product already has stock. The base unit protects recorded quantities and cannot be changed. Create a new product if you need a different base unit.'
+                        : 'Stock is always counted in this unit. For loose items sold by weight, use the smallest unit here (e.g. Gram, not Bottle).'}
                     </p>
                   </div>
                   <div>
