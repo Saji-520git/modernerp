@@ -28,6 +28,9 @@ import {
   DEFAULT_OFFER_TEMPLATE,
 } from '../../utils/whatsapp';
 import { useAppSettings } from '../../context/SettingsContext';
+import { useModule } from '../../hooks/useModule';
+import { loyaltyApi } from '../../services/loyalty';
+import { useAuthStore } from '../../store/authStore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1182,6 +1185,84 @@ function ReturnsTab({ customerId }: { customerId: string }) {
   );
 }
 
+// ─── Loyalty card (only when the loyalty module is enabled) ───────────────────
+
+function LoyaltyCard({ customerId }: { customerId: string }) {
+  const enabled = useModule('loyalty');
+  const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const canAdjust = !!user?.permissions?.includes('manage_credit');
+  const [adjOpen, setAdjOpen] = useState(false);
+  const [pts, setPts] = useState('');
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['loyalty-customer', customerId],
+    queryFn: () => loyaltyApi.getCustomer(customerId),
+    enabled,
+  });
+
+  const adjust = useMutation({
+    mutationFn: (p: number) => loyaltyApi.adjust(customerId, p, note || undefined),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['loyalty-customer', customerId] }); setAdjOpen(false); setPts(''); setNote(''); setErr(null); },
+    onError: (e: unknown) => setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed'),
+  });
+
+  if (!enabled) return null;
+
+  const label: Record<string, string> = { EARN: 'Earned', REDEEM: 'Redeemed', ADJUST: 'Adjusted' };
+
+  return (
+    <div className="bg-slate-50 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🎁</span>
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Loyalty Points</h3>
+        </div>
+        {canAdjust && (
+          <button onClick={() => { setAdjOpen((v) => !v); setErr(null); }} className="text-xs text-indigo-600 hover:underline">
+            {adjOpen ? 'Cancel' : 'Adjust'}
+          </button>
+        )}
+      </div>
+
+      <p className="text-3xl font-bold text-indigo-600">{(data?.balance ?? 0).toLocaleString()}<span className="text-sm font-medium text-slate-400 ml-1">points</span></p>
+
+      {adjOpen && (
+        <div className="mt-3 p-3 bg-white rounded-lg border border-slate-200 space-y-2">
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex gap-2">
+            <input type="number" value={pts} onChange={(e) => setPts(e.target.value)} placeholder="+50 or -50"
+              className="w-28 px-2 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason (optional)"
+              className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          </div>
+          <button onClick={() => { const n = parseInt(pts); if (n) adjust.mutate(n); }} disabled={adjust.isPending || !parseInt(pts || '0')}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium disabled:opacity-60">
+            {adjust.isPending ? 'Saving…' : 'Apply adjustment'}
+          </button>
+        </div>
+      )}
+
+      {data && data.transactions.length > 0 && (
+        <div className="mt-4 space-y-1.5">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase">Recent activity</p>
+          {data.transactions.slice(0, 6).map((t) => (
+            <div key={t.id} className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">
+                {label[t.type] ?? t.type}{t.sale?.number ? ` · ${t.sale.number}` : ''}
+                <span className="text-slate-300"> · {new Date(t.createdAt).toLocaleDateString()}</span>
+              </span>
+              <span className={`font-semibold ${t.points >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{t.points > 0 ? `+${t.points}` : t.points}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Account Info Tab ─────────────────────────────────────────────────────────
 
 function AccountInfoTab({
@@ -1225,6 +1306,8 @@ function AccountInfoTab({
           )}
         </div>
       </div>
+
+      <LoyaltyCard customerId={customer.id} />
 
       {/* WhatsApp actions — only when enabled AND the customer has a phone.
           Each button opens WhatsApp with the message pre-filled; the user
