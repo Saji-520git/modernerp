@@ -309,10 +309,14 @@ model Customer {
   // payments that exceeded all outstanding bills. Never negative.
   creditBalanceCents Int    @default(0)
 
+  // Loyalty (optional module "loyalty") — adopts the v2 physical shape.
+  loyaltyPoints Int @default(0)
+
   sales            Sale[]
   posDrafts        PosDraft[]
   customerPayments CustomerPayment[]
   creditLedger     CustomerCreditLedger[]
+  loyaltyTxns      LoyaltyTransaction[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -429,11 +433,16 @@ model Sale {
   deletedAt     DateTime?
   deletedById   String?
   deletedBy     User?      @relation("SaleDeletedBy", fields: [deletedById], references: [id])
+  // Loyalty snapshot (optional module) — adopts v2 physical shape.
+  pointsEarned   Int @default(0)
+  pointsRedeemed Int @default(0)
+
   lines            SaleLine[]
   returns          SaleReturn[]
   payments         Payment[]
   customerPayments CustomerPayment[]
   salePromotions   SalePromotion[]
+  loyaltyTxns      LoyaltyTransaction[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -1082,4 +1091,37 @@ model StockTakeLine {
 
   @@index([stockTakeId])
   @@map("stock_take_lines")
+}
+
+// ─── Loyalty (optional module: "loyalty") ────────────────────────────────────
+// Adopts the existing v2 physical tables (PascalCase, no @@map). The migration
+// is CREATE TABLE / ADD COLUMN IF NOT EXISTS — a no-op where they already exist.
+
+model LoyaltyConfig {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(true)
+  pointsPerAmount Int      @default(100)  // cents of spend to earn 1 point
+  amountPerPoint  Int      @default(100)  // legacy field (kept to match physical)
+  minRedeemPoints Int      @default(100)  // minimum points per redemption
+  pointValueCents Int      @default(100)  // cents value of 1 point on redemption
+  expiryDays      Int?                    // optional points expiry (informational)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LoyaltyTransaction {
+  id            String    @id @default(cuid())
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  saleId        String?
+  sale          Sale?     @relation(fields: [saleId], references: [id])
+  type          String    // EARN | REDEEM | ADJUST
+  points        Int       // signed: + earned, - redeemed
+  balanceBefore Int
+  balanceAfter  Int
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([saleId])
 }

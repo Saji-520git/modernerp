@@ -22,6 +22,7 @@ import { router as customerPaymentsRouter }  from './customer-payments/customer-
 import { router as purchaseReturnsRouter }   from './purchase-returns/purchase-return.routes.js';
 import { router as promotionsRouter }         from './promotions/promotions.routes.js';
 import { router as stockTakeRouter }          from './stocktake/stocktake.routes.js';
+import { router as loyaltyRouter }            from './loyalty/loyalty.routes.js';
 
 export const router: Router = Router();
 
@@ -50,3 +51,4 @@ router.use('/customer-payments',  customerPaymentsRouter);
 router.use('/purchase-returns',   purchaseReturnsRouter);
 router.use('/promotions',         promotionsRouter);
 router.use('/stock-takes',        stockTakeRouter);
+router.use('/loyalty',            loyaltyRouter);
