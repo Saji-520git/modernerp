@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { prisma } from '../config/prisma.js';
 import { HttpError } from './error-handler.js';
 import { isModuleEnabled, type ModuleKey } from '../config/modules.js';
+import { SETTINGS_ID } from '../modules/settings/settings.service.js';
 
 /**
  * Route guard: 403 unless the given optional module is enabled in AppSettings.
@@ -16,7 +17,10 @@ export const requireModule = (key: ModuleKey): RequestHandler =>
       if (req.auth?.role === 'SUPER_ADMIN' || req.auth?.permissions?.includes('manage_modules')) {
         return next();
       }
-      const settings = await prisma.appSettings.findFirst({ select: { moduleFlags: true } });
+      const settings = await prisma.appSettings.findUnique({
+        where: { id: SETTINGS_ID },
+        select: { moduleFlags: true },
+      });
       if (!isModuleEnabled(settings?.moduleFlags, key)) {
         throw new HttpError(403, `Module '${key}' is disabled`);
       }

@@ -10,6 +10,7 @@ import { promotionsService } from '../promotions/promotions.service.js';
 import { computePromotions, type AppliedPromo } from '../promotions/promotions.engine.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
+import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
@@ -176,7 +177,7 @@ export const posService = {
     // 0. Load app settings — resolve expiredStockPolicy
     //    New field (BLOCK/WARN/ALLOW) takes precedence.
     //    Legacy boolean fallback: blockExpiredSales=true→BLOCK, false→ALLOW.
-    const appSettings = await prisma.appSettings.findFirst();
+    const appSettings = await prisma.appSettings.findUnique({ where: { id: SETTINGS_ID } });
     const expiredStockPolicy: 'BLOCK' | 'WARN' | 'ALLOW' = (() => {
       const p = (appSettings as any)?.expiredStockPolicy as string | undefined;
       if (p === 'WARN' || p === 'ALLOW') return p;

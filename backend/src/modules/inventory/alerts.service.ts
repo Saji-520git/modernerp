@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
+import { SETTINGS_ID } from '../settings/settings.service.js';
 
 // ─── Generate + sync alerts from current stock state ──────────────────────────
 
@@ -26,7 +27,7 @@ async function saveAlert(
 }
 
 export async function generateAlerts(): Promise<void> {
-  const settings = await prisma.appSettings.findFirst();
+  const settings = await prisma.appSettings.findUnique({ where: { id: SETTINGS_ID } });
   if (!settings) return;
 
   const now = new Date();

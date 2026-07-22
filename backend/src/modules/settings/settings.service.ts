@@ -2,7 +2,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import type { UpdateSettingsInput, UpdateModulesInput } from './settings.schema.js';
 
-const SETTINGS_ID = 'singleton';
+export const SETTINGS_ID = 'singleton';
 
 export const settingsService = {
 
