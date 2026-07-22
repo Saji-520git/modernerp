@@ -1272,6 +1272,7 @@ function AccountInfoTab({
   onEdit: () => void;
 }) {
   const { settings, businessName, formatMoney } = useAppSettings();
+  const waEnabled = useModule('whatsapp');
   const [offerMessage, setOfferMessage] = useState('');
 
   return (
@@ -1312,7 +1313,7 @@ function AccountInfoTab({
       {/* WhatsApp actions — only when enabled AND the customer has a phone.
           Each button opens WhatsApp with the message pre-filled; the user
           clicks Send inside WhatsApp. Read-only: touches no credit/sales data. */}
-      {settings?.whatsappEnabled && customer.phone && (
+      {waEnabled && settings?.whatsappEnabled && customer.phone && (
         <div className="bg-slate-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">💬</span>

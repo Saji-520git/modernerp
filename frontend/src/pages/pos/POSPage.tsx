@@ -1383,6 +1383,7 @@ function ReceiptModal({
   readOnly?: boolean;
 }) {
   const { settings, businessName, formatMoney } = useAppSettings();
+  const waEnabled = useModule('whatsapp');
 
   if (!settings) return null;
 
@@ -1482,7 +1483,7 @@ function ReceiptModal({
             {/* Send the receipt over WhatsApp — only when enabled AND the
                 customer has a phone. Opens WhatsApp with recipient + message
                 pre-filled; the cashier clicks Send inside WhatsApp. */}
-            {settings?.whatsappEnabled && receipt.customer?.phone && (
+            {waEnabled && settings?.whatsappEnabled && receipt.customer?.phone && (
               <button
                 type="button"
                 onClick={() => {

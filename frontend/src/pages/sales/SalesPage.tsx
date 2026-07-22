@@ -21,6 +21,7 @@ import {
   DEFAULT_RECEIPT_TEMPLATE,
 } from '../../utils/whatsapp';
 import { useAppSettings } from '../../context/SettingsContext';
+import { useModule } from '../../hooks/useModule';
 import { useAuthStore } from '../../store/authStore';
 import { isAdminRole, isManagerOrAbove } from '../../utils/roles';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
@@ -387,6 +388,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   const [showPayment, setShowPayment] = useState(false);
   const [modalErr, setModalErr]       = useState<string | null>(null);
   const { settings, businessName, formatMoney } = useAppSettings();
+  const waEnabled = useModule('whatsapp');
 
   const queryClient = useQueryClient();
   const confirmMutation = useMutation({
@@ -439,7 +441,7 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ps.cls}`}>{ps.label}</span>
-            {settings?.whatsappEnabled && sale.customer?.phone && (
+            {waEnabled && settings?.whatsappEnabled && sale.customer?.phone && (
               <button
                 type="button"
                 onClick={() => {

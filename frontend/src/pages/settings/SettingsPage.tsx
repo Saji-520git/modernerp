@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { settingsApi, type AppSettings } from '../../services/settings';
 import { OPTIONAL_MODULES, MODULE_META } from '../../config/modules';
+import { useModule } from '../../hooks/useModule';
 import {
   DEFAULT_RECEIPT_TEMPLATE,
   DEFAULT_OUTSTANDING_TEMPLATE,
@@ -1290,7 +1291,12 @@ export default function SettingsPage() {
 
   // Module on/off is super-admin only — hide the Modules tab from everyone else.
   const canManageModules = user?.role === 'SUPER_ADMIN' || (user?.permissions?.includes('manage_modules') ?? false);
-  const visibleSections = SECTIONS.filter(s => s.key !== 'modules' || canManageModules);
+  // WhatsApp config tab only when the WhatsApp module is enabled (super-admin bypasses).
+  const waModule = useModule('whatsapp');
+  const visibleSections = SECTIONS.filter(s =>
+    (s.key !== 'modules'  || canManageModules) &&
+    (s.key !== 'whatsapp' || waModule),
+  );
 
   const activeKey: SectionKey = (() => {
     const hash = location.hash.replace('#', '') as SectionKey;

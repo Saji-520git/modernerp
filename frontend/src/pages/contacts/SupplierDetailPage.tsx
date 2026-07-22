@@ -36,6 +36,7 @@ import {
   DEFAULT_PAYABLE_TEMPLATE,
 } from '../../utils/whatsapp';
 import { useAppSettings } from '../../context/SettingsContext';
+import { useModule } from '../../hooks/useModule';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -541,6 +542,7 @@ function AccountInfoTab({
   onEdit: () => void;
 }) {
   const { settings, businessName, formatMoney } = useAppSettings();
+  const waEnabled = useModule('whatsapp');
   const [customMessage, setCustomMessage] = useState('');
 
   return (
@@ -579,7 +581,7 @@ function AccountInfoTab({
           Balance reminder reuses the generic outstanding template; the custom
           message is built inline (supplier tone, NOT the offer template).
           Read-only: touches no purchase/payment/GRN data. */}
-      {settings?.whatsappEnabled && supplier.phone && (
+      {waEnabled && settings?.whatsappEnabled && supplier.phone && (
         <div className="bg-slate-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">💬</span>
