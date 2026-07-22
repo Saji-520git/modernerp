@@ -186,6 +186,17 @@ export const posService = {
       return appSettings?.blockExpiredSales !== false ? 'BLOCK' : 'ALLOW';
     })();
 
+    // Discount policy (server-authoritative — do not trust the client):
+    //   posAllowDiscount        → cashier may key a manual discount at checkout
+    //   posApplyDefaultDiscount → product/unit preset discounts apply
+    // Cart-level discount is always manual, so it is forced to 0 when manual is
+    // off. A per-line discount can be either a preset OR a cashier edit, so it is
+    // only forced to 0 when BOTH are off (the strict "no discounts" configuration);
+    // otherwise it is trusted (preserves presets, and per-line edits when allowed).
+    const posAllowManual  = appSettings?.posAllowDiscount !== false;
+    const posApplyDefault = (appSettings as { posApplyDefaultDiscount?: boolean } | null)?.posApplyDefaultDiscount !== false;
+    const forceZeroLineDiscount = !posAllowManual && !posApplyDefault;
+
     const checkoutWarnings: string[] = [];
 
     // 1. Load products
@@ -304,7 +315,8 @@ export const posService = {
         }
 
         const lineSubtotal   = Math.round(unitPrice * item.qty);
-        const manualDiscount = Math.min(item.discountCents, lineSubtotal); // cap at line subtotal
+        // Strict "no discounts" config → force 0; else cap at line subtotal.
+        const manualDiscount = forceZeroLineDiscount ? 0 : Math.min(item.discountCents, lineSubtotal);
         return { item, product, unitPrice, lineSubtotal, manualDiscount, lineAfterManual: lineSubtotal - manualDiscount };
       }),
     );
@@ -356,10 +368,13 @@ export const posService = {
       };
     });
 
-    // Cart-level discount (re-derive from percent if provided, otherwise use cents)
-    const computedCartDiscount = cartDiscountPercent > 0
-      ? Math.floor(cartSubtotalCents * cartDiscountPercent / 100)
-      : Math.min(cartDiscountCents, cartSubtotalCents);
+    // Cart-level discount (re-derive from percent if provided, otherwise use cents).
+    // Cart discount is always manual → forced to 0 when manual discount is off.
+    const computedCartDiscount = !posAllowManual
+      ? 0
+      : cartDiscountPercent > 0
+        ? Math.floor(cartSubtotalCents * cartDiscountPercent / 100)
+        : Math.min(cartDiscountCents, cartSubtotalCents);
 
     const taxableAmount = cartSubtotalCents - computedCartDiscount;
 

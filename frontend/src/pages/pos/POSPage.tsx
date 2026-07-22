@@ -9,7 +9,7 @@ import {
   CheckCircle, LogOut, Printer, Save, Mail,
   User, CreditCard, Banknote, Building2, Layers,
   ChevronRight, FolderOpen, UserPlus, ChevronDown, QrCode,
-  RotateCcw, Tag,
+  RotateCcw, Tag, Lock,
 } from 'lucide-react';
 import {
   posApi, formatCents, daysUntilExpiry,
@@ -449,6 +449,8 @@ const CartLine = forwardRef<CartLineHandle, {
 }, cartLineRef) {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
+  // Manual discounts off → the per-line discount cell is read-only (presets still show).
+  const discountLocked = cartSettings?.posAllowDiscount === false;
 
   const [editing, setEditing]       = useState(false);
   const [draft, setDraft]           = useState('');
@@ -625,6 +627,17 @@ const CartLine = forwardRef<CartLineHandle, {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
           {item.isServiceCharge ? (
             <span />
+          ) : discountLocked ? (
+            // Manual discount disabled in Settings — show the preset read-only, or a lock.
+            <span
+              title="Manual discounts are turned off in Settings → POS"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: item.itemDiscountCents > 0 ? '#64748b' : '#cbd5e1' }}
+            >
+              <Lock size={11} />
+              {item.itemDiscountCents > 0 && (
+                item.itemDiscountType === 'percent' ? `${item.itemDiscountValue}%` : `₨${item.itemDiscountValue}`
+              )}
+            </span>
           ) : (showDiscount || editing) ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
               <button
@@ -3274,7 +3287,9 @@ export default function POSPage() {
               <span className="font-medium text-slate-700">{formatCents(cartGrossSubtotalCents)}</span>
             </div>
 
-            {/* Cart-level discount — toggle [%][₨] + DiscountInput */}
+            {/* Cart-level discount — toggle [%][₨] + DiscountInput.
+                Hidden entirely when manual discounts are turned off in Settings. */}
+            {appSettings?.posAllowDiscount !== false && (
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1">
                 <span className="text-sm text-slate-500">Discount</span>
@@ -3315,6 +3330,7 @@ export default function POSPage() {
                 />
               </div>
             </div>
+            )}
 
             {/* You Saved — sum of all item discounts + cart discount */}
             {(totalItemDiscountCents + cartDiscountCents) > 0 && (
