@@ -317,6 +317,7 @@ model Customer {
   customerPayments CustomerPayment[]
   creditLedger     CustomerCreditLedger[]
   loyaltyTxns      LoyaltyTransaction[]
+  quotations       Quotation[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1124,4 +1125,54 @@ model LoyaltyTransaction {
 
   @@index([customerId])
   @@index([saleId])
+}
+
+// ─── Quotations (optional module: "quotations") ──────────────────────────────
+// Adopts the existing v2 physical tables. Lines may be product-linked OR free
+// text (productId nullable). createdById/productId kept as plain ids (the
+// migration still creates their physical FKs) to avoid editing User/Product.
+
+model Quotation {
+  id                String    @id @default(cuid())
+  number            String
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id])
+  title             String?
+  status            String    @default("DRAFT") // DRAFT | SENT | ACCEPTED | REJECTED | EXPIRED | CONVERTED
+  validUntil        DateTime?
+  subtotalCents     Int       @default(0)
+  discountCents     Int       @default(0)
+  taxCents          Int       @default(0)
+  totalCents        Int       @default(0)
+  note              String?
+  termsConditions   String?
+  convertedToSaleId String?
+  convertedAt       DateTime?
+  createdById       String    // plain id (physical FK → User)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  lines             QuotationLine[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model QuotationLine {
+  id             String    @id @default(cuid())
+  quotationId    String
+  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId      String?   // plain id (physical FK → Product); null = free-text line
+  description    String
+  qty            Float     @default(1)
+  unitLabel      String    @default("pcs")
+  unitPriceCents Int       @default(0)
+  discountCents  Int       @default(0)
+  totalCents     Int       @default(0)
+  sortOrder      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([quotationId])
 }
