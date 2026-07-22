@@ -99,6 +99,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
 ];
 
 export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
+  SUPER_ADMIN: [...ALL_PERMISSIONS],
   ADMIN: [...ALL_PERMISSIONS],
   MANAGER: [
     'view_products', 'manage_products',
@@ -121,7 +122,7 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
 
 // ─── User types ───────────────────────────────────────────────────────────────
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
 
 export interface User {
   id: string;
@@ -200,6 +201,7 @@ export const usersApi = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   MANAGER: 'Manager',
   CASHIER: 'Cashier',
@@ -207,6 +209,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200',
   ADMIN: 'bg-red-100 text-red-700 ring-1 ring-red-200',
   MANAGER: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200',
   CASHIER: 'bg-purple-100 text-purple-700 ring-1 ring-purple-200',
@@ -214,6 +217,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export const ROLE_AVATAR_BG: Record<UserRole, string> = {
+  SUPER_ADMIN: 'bg-indigo-600',
   ADMIN: 'bg-red-500',
   MANAGER: 'bg-blue-500',
   CASHIER: 'bg-purple-500',
@@ -221,6 +225,7 @@ export const ROLE_AVATAR_BG: Record<UserRole, string> = {
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
+  SUPER_ADMIN: 'Vendor super-admin — controls feature modules per client + full access',
   ADMIN: 'Full access — manage users, all modules, all settings',
   MANAGER: 'Can create/confirm purchases, sales, adjustments. Cannot manage users.',
   CASHIER: 'POS checkout and payment recording only',

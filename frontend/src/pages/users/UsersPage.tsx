@@ -132,6 +132,9 @@ function RoleCard({
   onSelect: () => void;
 }) {
   const borderMap: Record<UserRole, string> = {
+    SUPER_ADMIN: selected
+      ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-300'
+      : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50',
     ADMIN: selected
       ? 'border-red-500 bg-red-50 ring-1 ring-red-300'
       : 'border-slate-200 hover:border-red-300 hover:bg-red-50/50',
@@ -146,6 +149,7 @@ function RoleCard({
       : 'border-slate-200 hover:border-slate-400 hover:bg-slate-50/50',
   };
   const dotColor: Record<UserRole, string> = {
+    SUPER_ADMIN: 'bg-indigo-600',
     ADMIN: 'bg-red-500',
     MANAGER: 'bg-blue-500',
     CASHIER: 'bg-purple-500',
