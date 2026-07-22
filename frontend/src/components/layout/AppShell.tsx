@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import { usePosStore } from '../../store/posStore';
 import {
@@ -108,6 +108,7 @@ export default function AppShell() {
   const { user, logout } = useAuthStore();
   const { businessName, settings } = useAppSettings();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: alertCount } = useQuery({
     queryKey: ['alert-count'],
@@ -157,6 +158,9 @@ export default function AppShell() {
     } catch {
       // If check fails, allow logout
     }
+    // Wipe all cached server data so the next account in this tab starts clean
+    // (prevents the previous user's data lingering in React Query cache).
+    queryClient.clear();
     logout();
     navigate('/login');
   }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShoppingCart, Package, BarChart3, Truck } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false);
   const navigate = useNavigate();
   const setAuth  = useAuthStore((s) => s.setAuth);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const saved = localStorage.getItem('last_login_email');
@@ -27,6 +29,8 @@ export default function LoginPage() {
     try {
       const { data } = await api.post('/auth/login', { email, password });
       localStorage.setItem('last_login_email', email);
+      // Drop any cached data from a prior account in this tab before entering.
+      queryClient.clear();
       setAuth(data.user, data.access, data.refresh);
       navigate('/');
     } catch (err: any) {
