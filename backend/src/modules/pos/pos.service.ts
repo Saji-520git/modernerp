@@ -8,6 +8,8 @@ import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { isModuleEnabled } from '../../config/modules.js';
 import { promotionsService } from '../promotions/promotions.service.js';
 import { computePromotions, type AppliedPromo } from '../promotions/promotions.engine.js';
+import { loyaltyService } from '../loyalty/loyalty.service.js';
+import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ export const posService = {
     canSellOnCredit: boolean,
     canManageCredit: boolean,
   ) {
-    const { warehouseId, customerId, paymentMethod, cartDiscountCents = 0, cartDiscountPercent = 0, cashAmountCents, note, items, draftId, isStaffSale = false } = input;
+    const { warehouseId, customerId, paymentMethod, cartDiscountCents = 0, cartDiscountPercent = 0, cashAmountCents, note, items, draftId, isStaffSale = false, redeemPoints = 0 } = input;
 
     // Split payment (cash + credit): recorded as CREDIT with the cash portion paid up-front.
     // The remainder becomes the customer's outstanding balance.
@@ -368,9 +370,34 @@ export const posService = {
     // Gross subtotal = Σ (unitPrice × qty) across all lines, before any discounts
     const grossSubtotalCents = lineData.reduce((s, l) => s + l.lineTotalCents, 0);
     const subtotalCents = grossSubtotalCents;
-    const discountCents = computedCartDiscount;
     const taxCents      = effectiveTaxCents;
-    const totalCents    = taxableAmount + effectiveTaxCents;
+    let   discountCents = computedCartDiscount;
+    let   totalCents    = taxableAmount + effectiveTaxCents;
+
+    // ── Loyalty: redeem points as a discount + compute points earned ──────────
+    // Only when the module is enabled AND a customer is attached. Walk-in / off /
+    // config-disabled → redeemedPoints = earnedPoints = 0 → byte-identical to before.
+    const loyaltyEnabled = isModuleEnabled(appSettings?.moduleFlags, 'loyalty');
+    let redeemedPoints = 0;
+    let earnedPoints   = 0;
+    if (loyaltyEnabled && customerId) {
+      const cfg = await loyaltyService.getConfig();
+      if (cfg.isEnabled) {
+        const rates = {
+          isEnabled: cfg.isEnabled, pointsPerAmount: cfg.pointsPerAmount,
+          pointValueCents: cfg.pointValueCents, minRedeemPoints: cfg.minRedeemPoints,
+        };
+        if (redeemPoints > 0) {
+          const cust = await prisma.customer.findUnique({ where: { id: customerId }, select: { loyaltyPoints: true } });
+          const plan = planRedemption(redeemPoints, cust?.loyaltyPoints ?? 0, totalCents, rates);
+          if (plan.error) throw new HttpError(400, plan.error);
+          redeemedPoints = plan.points;
+          discountCents += plan.discountCents;
+          totalCents    -= plan.discountCents;
+        }
+        earnedPoints = pointsForAmount(totalCents, rates); // earn on the net amount paid
+      }
+    }
     // Split (cash + credit): cash portion paid now; otherwise full credit = 0 paid, all else = paid in full.
     const isSplitCredit = splitCashCents > 0;
     const paidCents     = isSplitCredit
@@ -413,6 +440,8 @@ export const posService = {
           discountCents,
           totalCents,
           paidCents,
+          pointsEarned:   earnedPoints,
+          pointsRedeemed: redeemedPoints,
           ...(splitPaymentStatus ? { paymentStatus: splitPaymentStatus } : {}),
           note: isStaffSale ? `[Staff Sale]${note ? ` ${note}` : ''}` : (note ?? null),
           createdById: userId,
@@ -436,6 +465,11 @@ export const posService = {
         for (const a of appliedPromos) {
           await tx.promotion.update({ where: { id: a.promotionId }, data: { timesUsed: { increment: 1 } } });
         }
+      }
+
+      // Loyalty ledger — redeem then earn, update customer balance (module-gated).
+      if (customerId && (redeemedPoints > 0 || earnedPoints > 0)) {
+        await loyaltyService.recordForSale(tx, { customerId, saleId: created.id, redeemedPoints, earnedPoints });
       }
 
       // Stock deduction — always in base units.
@@ -519,6 +553,9 @@ export const posService = {
     return {
       warnings: checkoutWarnings.length > 0 ? checkoutWarnings : undefined,
       promotions: appliedPromos.length > 0 ? appliedPromos : undefined,
+      loyalty: (redeemedPoints > 0 || earnedPoints > 0)
+        ? { earned: earnedPoints, redeemed: redeemedPoints }
+        : undefined,
       receipt: {
         id:            sale.id,
         number:        sale.number,

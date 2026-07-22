@@ -21,6 +21,7 @@ export const checkoutSchema = z.object({
   items:               z.array(checkoutLineSchema).min(1, 'Cart must have at least one item'),
   draftId:             z.string().cuid().optional(), // delete this draft after successful checkout
   isStaffSale:         z.boolean().optional().default(false), // tag this sale as a staff purchase
+  redeemPoints:        z.number().int().min(0).default(0),    // loyalty points to redeem (module-gated)
 });
 
 // ─── Product search ───────────────────────────────────────────────────────────
