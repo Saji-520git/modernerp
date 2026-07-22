@@ -20,6 +20,14 @@ function guardModuleGrant(auth: { role?: string; permissions?: string[] } | unde
     throw new HttpError(403, 'Only a super-admin can grant module management');
   }
 }
+// A super-admin account may only be modified by another super-admin — prevents a
+// client admin from demoting/deactivating/altering the vendor super-admin.
+async function guardProtectedTarget(auth: { role?: string; permissions?: string[] } | undefined, targetId: string): Promise<void> {
+  const target = await usersService.getOne(targetId);
+  if (target.role === 'SUPER_ADMIN' && !isSuperAdmin(auth)) {
+    throw new HttpError(403, 'Only a super-admin can modify a super-admin account');
+  }
+}
 
 export const stats: RequestHandler = async (_req, res) => {
   res.json(await usersService.stats());
@@ -44,21 +52,25 @@ export const update: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = updateUserSchema.parse(req.body);
   guardModuleGrant(req.auth, input.permissions);
+  await guardProtectedTarget(req.auth, req.params.id);
   res.json(await usersService.update(req.params.id, input, req.auth.userId));
 };
 
 export const changePassword: RequestHandler = async (req, res) => {
   const input = changePasswordSchema.parse(req.body);
+  await guardProtectedTarget(req.auth, req.params.id);
   res.json(await usersService.changePassword(req.params.id, input));
 };
 
 export const toggleActive: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
+  await guardProtectedTarget(req.auth, req.params.id);
   res.json(await usersService.toggleActive(req.params.id, req.auth.userId));
 };
 
 export const updatePermissions: RequestHandler = async (req, res) => {
   const input = updatePermissionsSchema.parse(req.body);
   guardModuleGrant(req.auth, input.permissions);
+  await guardProtectedTarget(req.auth, req.params.id);
   res.json(await usersService.updatePermissions(req.params.id, input));
 };
