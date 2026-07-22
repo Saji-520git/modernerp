@@ -26,6 +26,7 @@ export interface AppSettings {
   // POS
   posRequireShift: boolean;
   posAllowDiscount: boolean;
+  posApplyDefaultDiscount: boolean;
   posMaxDiscountPct: number;
   posPrintReceipt: boolean;
   posReceiptFooter: string | null;

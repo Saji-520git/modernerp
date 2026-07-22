@@ -425,6 +425,7 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
   const [f, setF] = useState({
     posRequireShift:     settings.posRequireShift,
     posAllowDiscount:    settings.posAllowDiscount,
+    posApplyDefaultDiscount: settings.posApplyDefaultDiscount ?? true,
     posMaxDiscountPct:   settings.posMaxDiscountPct,
     posPrintReceipt:     settings.posPrintReceipt,
     expiredStockPolicy:  (settings.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW',
@@ -442,6 +443,7 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
       await onSave({
         posRequireShift:    f.posRequireShift,
         posAllowDiscount:   f.posAllowDiscount,
+        posApplyDefaultDiscount: f.posApplyDefaultDiscount,
         posMaxDiscountPct:  f.posMaxDiscountPct,
         posPrintReceipt:    f.posPrintReceipt,
         expiredStockPolicy: f.expiredStockPolicy,
@@ -464,7 +466,9 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
     <div className="space-y-4">
       <div className="space-y-1">
         <Toggle label="Require shift to sell (cashiers must open a shift first)" checked={f.posRequireShift} onChange={v => setF(p => ({ ...p, posRequireShift: v }))} disabled={readOnly} />
-        <Toggle label="Allow discounts at checkout" checked={f.posAllowDiscount} onChange={v => setF(p => ({ ...p, posAllowDiscount: v }))} disabled={readOnly} />
+        <Toggle label="Apply preset (default) discounts automatically" checked={f.posApplyDefaultDiscount} onChange={v => setF(p => ({ ...p, posApplyDefaultDiscount: v }))} disabled={readOnly} />
+        <p className="text-xs text-slate-400 mt-1 mb-1">When on, each cart line is pre-filled with the product's / unit's preset discount. Turn off for fixed list-price selling.</p>
+        <Toggle label="Allow manual discount at checkout" checked={f.posAllowDiscount} onChange={v => setF(p => ({ ...p, posAllowDiscount: v }))} disabled={readOnly} />
         {f.posAllowDiscount && (
           <div className="pl-0 pt-1">
             <Field label="Maximum Discount %">

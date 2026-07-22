@@ -939,7 +939,8 @@ model AppSettings {
 
   // POS
   posRequireShift       Boolean  @default(true)
-  posAllowDiscount      Boolean  @default(true)
+  posAllowDiscount      Boolean  @default(true)   // cashier may key a manual discount at checkout
+  posApplyDefaultDiscount Boolean @default(true)  // auto-apply product/unit preset discounts at POS
   posMaxDiscountPct     Float    @default(100)
   posPrintReceipt       Boolean  @default(true)
   posReceiptFooter      String?

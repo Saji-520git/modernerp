@@ -171,7 +171,11 @@ function getUnitOptions(product: PosProduct): UnitOption[] {
 function discountSeedFromOption(
   opt: UnitOption,
   product: PosProduct,
+  applyDefaults: boolean,
 ): { itemDiscountType: 'amount' | 'percent'; itemDiscountValue: number } {
+  // Global "apply preset/default discounts" off → seed every line at zero;
+  // the cashier can still key a manual discount when posAllowDiscount is on.
+  if (!applyDefaults) return { itemDiscountType: 'amount', itemDiscountValue: 0 };
   if (opt.discountType && opt.discountValue != null && opt.discountValue > 0) {
     const type  = opt.discountType as 'amount' | 'percent';
     const value = type === 'amount' ? opt.discountValue / 100 : opt.discountValue;
@@ -2033,7 +2037,7 @@ export default function POSPage() {
         : baseOpt.priceCents;
       // Seed the line discount from the selected unit (per-unit override) or the
       // product-level default. Cashier can override afterward.
-      const seed         = discountSeedFromOption(baseOpt, product);
+      const seed         = discountSeedFromOption(baseOpt, product, appSettings?.posApplyDefaultDiscount !== false);
       const lineSubtotal = 1 * priceToUse;
       const seedDiscountCents = seed.itemDiscountType === 'percent'
         ? Math.floor(lineSubtotal * seed.itemDiscountValue / 100)
@@ -2470,7 +2474,7 @@ export default function POSPage() {
       const opt = getUnitOptions(i.product).find(o => o.unitId === unitId);
       if (!opt) return i;
       const newUnitPrice   = isStaffSale ? i.unitPriceCents : opt.priceCents;
-      const seed           = discountSeedFromOption(opt, i.product);
+      const seed           = discountSeedFromOption(opt, i.product, appSettings?.posApplyDefaultDiscount !== false);
       const newLineSubtotal = i.qty * newUnitPrice;
       const newDiscountCents = seed.itemDiscountType === 'percent'
         ? Math.floor(newLineSubtotal * seed.itemDiscountValue / 100)

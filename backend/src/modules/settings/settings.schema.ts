@@ -26,6 +26,7 @@ export const updateSettingsSchema = z.object({
   // POS
   posRequireShift:       z.boolean().optional(),
   posAllowDiscount:      z.boolean().optional(),
+  posApplyDefaultDiscount: z.boolean().optional(),
   posMaxDiscountPct:     z.number().min(0).max(100).optional(),
   posPrintReceipt:       z.boolean().optional(),
   posReceiptFooter:      z.string().max(300).nullable().optional(),
