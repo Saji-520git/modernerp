@@ -83,6 +83,7 @@ export interface CheckoutPayload {
   items: CheckoutLine[];
   draftId?: string; // delete this draft after checkout
   isStaffSale?: boolean; // tag sale as staff purchase (requires staffSalesEnabled setting)
+  redeemPoints?: number; // loyalty points to redeem (module-gated)
 }
 
 export interface ReceiptLine {

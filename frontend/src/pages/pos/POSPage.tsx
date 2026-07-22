@@ -27,6 +27,8 @@ import {
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { usePosStore } from '../../store/posStore';
+import { useModule } from '../../hooks/useModule';
+import { loyaltyApi } from '../../services/loyalty';
 import OpenShiftModal from '../../components/pos/OpenShiftModal';
 import CloseShiftModal from '../../components/pos/CloseShiftModal';
 import ThermalReceipt from '../../components/pos/ThermalReceipt';
@@ -962,7 +964,8 @@ function CancelConfirmModal({
 // ─── PaymentDialog ────────────────────────────────────────────────────────────
 
 function PaymentDialog({
-  totalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
+  totalCents: rawTotalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
+  loyaltyEnabled, customerPoints, pointValueCents, minRedeemPoints, redeemPoints, setRedeemPoints,
 }: {
   totalCents: number;
   onConfirm: (method: AllPaymentMethods, receivedCents?: number, cashAmountCents?: number) => void;
@@ -970,13 +973,27 @@ function PaymentDialog({
   isPending: boolean;
   customer: CustomerOption | null;
   canSellOnCredit: boolean;
+  loyaltyEnabled: boolean;
+  customerPoints: number;
+  pointValueCents: number;
+  minRedeemPoints: number;
+  redeemPoints: number;
+  setRedeemPoints: (n: number) => void;
 }) {
+  // Loyalty redemption reduces the payable total (points × value, capped at total).
+  const canRedeem = loyaltyEnabled && !!customer && customerPoints >= Math.max(1, minRedeemPoints);
+  const validRedeem = canRedeem && redeemPoints >= minRedeemPoints && redeemPoints <= customerPoints;
+  const redeemDiscountCents = validRedeem ? Math.min(redeemPoints * pointValueCents, rawTotalCents) : 0;
+  const totalCents = rawTotalCents - redeemDiscountCents;
+
   const [activeTab, setActiveTab]     = useState<PayTab>('CASH');
   const [tabsFocused, setTabsFocused] = useState(true);
   const [received, setReceived]       = useState(() => (totalCents / 100).toFixed(2));
   const [splitCash, setSplitCash]     = useState('');
   const [splitSecondary, setSplitSecondary] = useState<'CARD' | 'BANK_TRANSFER' | 'QR_PAY' | 'CREDIT'>('CARD');
   const [creditNote, setCreditNote]   = useState('');
+  // Keep the cash-tendered field in step with the (redemption-adjusted) total.
+  useEffect(() => { setReceived((totalCents / 100).toFixed(2)); }, [totalCents]);
 
   const tabRefs    = useRef<(HTMLButtonElement | null)[]>([]);
   const amountRef  = useRef<HTMLInputElement>(null);
@@ -1115,7 +1132,37 @@ function PaymentDialog({
           <div className="bg-indigo-600 rounded-2xl px-5 py-4 text-center">
             <p className="text-indigo-200 text-xs font-semibold uppercase tracking-widest mb-1">Amount Due</p>
             <p className="text-white font-black text-3xl">{formatCents(totalCents)}</p>
+            {redeemDiscountCents > 0 && (
+              <p className="text-indigo-200 text-xs mt-1">
+                <span className="line-through opacity-70">{formatCents(rawTotalCents)}</span>
+                {' '}· {redeemPoints.toLocaleString()} pts redeemed
+              </p>
+            )}
           </div>
+
+          {/* Loyalty redemption */}
+          {canRedeem && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-indigo-700">🎁 Redeem points</span>
+                <span className="text-xs text-indigo-500">{customerPoints.toLocaleString()} available · 1 pt = {formatCents(pointValueCents)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={customerPoints}
+                  value={redeemPoints || ''}
+                  placeholder="0"
+                  onChange={(e) => setRedeemPoints(Math.max(0, Math.min(customerPoints, parseInt(e.target.value) || 0)))}
+                  className="w-24 px-2 py-1.5 border border-indigo-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+                <span className="text-xs text-slate-500">points</span>
+                <button type="button" onClick={() => setRedeemPoints(customerPoints)} className="text-xs text-indigo-600 hover:underline ml-auto">Redeem max</button>
+              </div>
+              {redeemPoints > 0 && redeemPoints < minRedeemPoints && (
+                <p className="text-xs text-amber-600 mt-1.5">Minimum {minRedeemPoints.toLocaleString()} points to redeem</p>
+              )}
+            </div>
+          )}
 
           {/* Method tabs — 6 columns */}
           <div className="grid grid-cols-6 gap-1">
@@ -1663,6 +1710,17 @@ export default function POSPage() {
 
   // Dialog visibility
   const [showPayment,         setShowPayment]         = useState(false);
+  // Loyalty redemption (module-gated). redeemPoints is applied at checkout.
+  const loyaltyOn = useModule('loyalty');
+  const [redeemPoints, setRedeemPoints] = useState(0);
+  const { data: loyaltyConfig } = useQuery({ queryKey: ['loyalty-config'], queryFn: loyaltyApi.getConfig, enabled: loyaltyOn });
+  const { data: customerLoyalty } = useQuery({
+    queryKey: ['loyalty-customer', customer?.id],
+    queryFn: () => loyaltyApi.getCustomer(customer!.id),
+    enabled: loyaltyOn && !!customer,
+  });
+  // Reset redemption whenever the customer changes.
+  useEffect(() => { setRedeemPoints(0); }, [customer?.id]);
   const [showReceipt,         setShowReceipt]         = useState(false);
   const [showHoldModal,       setShowHoldModal]       = useState(false);
   const [showCancelConfirm,   setShowCancelConfirm]   = useState(false);
@@ -2326,6 +2384,7 @@ export default function POSPage() {
       }
       const changeCents = pendingReceivedCents > 0 ? Math.max(0, pendingReceivedCents - data.receipt.totalCents) : 0;
       setLastChangeCents(changeCents);
+      setRedeemPoints(0); // consumed by this sale
       // v1.0.72 — persist a pointer to this completed sale so "Last Receipt"
       // can re-open/reprint it even after a page reload.
       const saleInfo: LastSaleInfo = { id: data.receipt.id, number: data.receipt.number, changeCents };
@@ -2436,6 +2495,10 @@ export default function POSPage() {
       cartDiscountCents,
       cartDiscountPercent: cartDiscountType === 'percent' ? cartDiscountValue : 0,
       isStaffSale:         isStaffSale && isAdmin,
+      ...(loyaltyOn && customer && redeemPoints > 0
+          && redeemPoints >= (loyaltyConfig?.minRedeemPoints ?? 1)
+          && redeemPoints <= (customerLoyalty?.balance ?? 0)
+          ? { redeemPoints } : {}),
       // Split payment: cash portion paid now, remainder is credit/outstanding
       ...(cashAmountCents && cashAmountCents > 0 ? { cashAmountCents } : {}),
       items: cart
@@ -2459,7 +2522,7 @@ export default function POSPage() {
         }),
     } satisfies Parameters<typeof posApi.checkout>[0];
     checkoutMutation.mutate(payload);
-  }, [warehouseId, cart, customer, cartDiscountCents, cartDiscountType, cartDiscountValue, isStaffSale, isAdmin, checkoutMutation]);
+  }, [warehouseId, cart, customer, cartDiscountCents, cartDiscountType, cartDiscountValue, isStaffSale, isAdmin, checkoutMutation, loyaltyOn, redeemPoints]);
 
   const newSale = useCallback(() => {
     receiptPendingRef.current = false;   // v1.0.43 — cashier acknowledged the receipt
@@ -3360,6 +3423,12 @@ export default function POSPage() {
           isPending={checkoutMutation.isPending}
           customer={customer}
           canSellOnCredit={canSellOnCredit}
+          loyaltyEnabled={loyaltyOn && (loyaltyConfig?.isEnabled ?? false)}
+          customerPoints={customerLoyalty?.balance ?? 0}
+          pointValueCents={loyaltyConfig?.pointValueCents ?? 0}
+          minRedeemPoints={loyaltyConfig?.minRedeemPoints ?? 0}
+          redeemPoints={redeemPoints}
+          setRedeemPoints={setRedeemPoints}
         />
       )}
 
