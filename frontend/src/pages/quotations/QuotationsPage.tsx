@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, Plus, Pencil, Trash2, X, Check, AlertCircle, ArrowRightCircle } from 'lucide-react';
+import { FileText, Plus, Pencil, Trash2, X, Check, AlertCircle, ArrowRightCircle, Download } from 'lucide-react';
 import {
   quotationsApi, QUOTATION_STATUS_COLORS,
   type Quotation, type QuotationInput, type QuotationStatus,
 } from '../../services/quotations';
+import { exportQuotationPdf } from '../../services/quotationPdf';
 import { productsApi } from '../../services/products';
 import { salesApi } from '../../services/sales';
 import { posApi } from '../../services/pos';
@@ -75,6 +76,7 @@ export default function QuotationsPage() {
                       <td className="px-4 py-3 text-slate-500">{q.validUntil ? new Date(q.validUntil).toLocaleDateString() : '—'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => exportQuotationPdf(q)} title="Download PDF" className="p-1.5 text-slate-400 hover:text-slate-700 rounded"><Download size={15} /></button>
                           {q.status !== 'CONVERTED' && (
                             <button onClick={() => setConvertId(q.id)} title="Convert to sale" className="p-1.5 text-slate-400 hover:text-green-600 rounded"><ArrowRightCircle size={16} /></button>
                           )}
@@ -120,7 +122,7 @@ function QuotationModal({ quote, onClose, onSaved, onStatus }: {
   const [discount, setDiscount] = useState(toRs(quote?.discountCents ?? 0));
   const [tax, setTax] = useState(toRs(quote?.taxCents ?? 0));
   const [lines, setLines] = useState<EditLine[]>(
-    quote?.lines.length
+    quote?.lines?.length
       ? quote.lines.map((l) => ({ productId: l.productId, description: l.description, qty: String(l.qty), unitLabel: l.unitLabel, unitPrice: toRs(l.unitPriceCents), discount: toRs(l.discountCents) }))
       : [blankLine()],
   );
@@ -257,6 +259,7 @@ function QuotationModal({ quote, onClose, onSaved, onStatus }: {
             ))}
           </div>
           <div className="flex items-center gap-2">
+            {isEdit && <button onClick={() => exportQuotationPdf(quote!)} className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"><Download size={14} /> PDF</button>}
             <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Close</button>
             {!readOnly && (
               <button onClick={submit} disabled={save.isPending} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">

@@ -44,7 +44,11 @@ export const quotationsService = {
     prisma.quotation.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
-      include: { customer: { select: { id: true, name: true } }, _count: { select: { lines: true } } },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, email: true, address: true } },
+        lines: { orderBy: { sortOrder: 'asc' } },
+        _count: { select: { lines: true } },
+      },
     }),
 
   getById: async (id: string) => {
