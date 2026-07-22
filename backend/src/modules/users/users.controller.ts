@@ -29,17 +29,17 @@ async function guardProtectedTarget(auth: { role?: string; permissions?: string[
   }
 }
 
-export const stats: RequestHandler = async (_req, res) => {
-  res.json(await usersService.stats());
+export const stats: RequestHandler = async (req, res) => {
+  res.json(await usersService.stats(isSuperAdmin(req.auth)));
 };
 
 export const list: RequestHandler = async (req, res) => {
   const input = listUsersSchema.parse(req.query);
-  res.json(await usersService.list(input));
+  res.json(await usersService.list(input, isSuperAdmin(req.auth)));
 };
 
 export const getOne: RequestHandler = async (req, res) => {
-  res.json(await usersService.getOne(req.params.id));
+  res.json(await usersService.getOne(req.params.id, isSuperAdmin(req.auth)));
 };
 
 export const create: RequestHandler = async (req, res) => {

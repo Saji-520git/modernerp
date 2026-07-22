@@ -31,7 +31,7 @@ const SALT_ROUNDS = 12; // 2^12 = 4096 iterations — GPU-resistant, ~300 ms on 
 export const usersService = {
   // ── List users ─────────────────────────────────────────────────────────────
 
-  list: async (input: ListUsersInput) => {
+  list: async (input: ListUsersInput, viewerIsSuper = true) => {
     const { search, role, isActive, page, pageSize } = input;
 
     const where = {
@@ -43,6 +43,8 @@ export const usersService = {
           { email: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
+      // Only a super-admin may see super-admin accounts.
+      ...(!viewerIsSuper && { NOT: { role: 'SUPER_ADMIN' as const } }),
     };
 
     const [total, data] = await prisma.$transaction([
@@ -61,9 +63,11 @@ export const usersService = {
 
   // ── Get one user ───────────────────────────────────────────────────────────
 
-  getOne: async (id: string) => {
+  getOne: async (id: string, viewerIsSuper = true) => {
     const user = await prisma.user.findUnique({ where: { id }, select: SAFE_SELECT });
     if (!user) throw new HttpError(404, 'User not found');
+    // Hide super-admin accounts from non-super viewers (404 = don't reveal existence).
+    if (!viewerIsSuper && user.role === 'SUPER_ADMIN') throw new HttpError(404, 'User not found');
     return user;
   },
 
@@ -206,14 +210,17 @@ export const usersService = {
 
   // ── Summary stats ──────────────────────────────────────────────────────────
 
-  stats: async () => {
+  stats: async (viewerIsSuper = true) => {
+    // Non-super viewers don't see super-admin accounts in the counts either.
+    const base = viewerIsSuper ? {} : { NOT: { role: 'SUPER_ADMIN' as const } };
     const [total, active] = await prisma.$transaction([
-      prisma.user.count(),
-      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: base }),
+      prisma.user.count({ where: { ...base, isActive: true } }),
     ]);
     // groupBy requires orderBy in Prisma 5 — run separately to avoid $transaction typing issues
     const byRole = await prisma.user.groupBy({
       by: ['role'],
+      where: base,
       _count: { _all: true },
       orderBy: { role: 'asc' },
     });
