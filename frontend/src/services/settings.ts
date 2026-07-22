@@ -84,4 +84,8 @@ export const settingsApi = {
 
   update: (data: Partial<AppSettings>): Promise<AppSettings> =>
     api.patch<AppSettings>('/settings', data).then((r) => r.data),
+
+  // Super-admin only (manage_modules). The general update() no longer accepts moduleFlags.
+  updateModules: (moduleFlags: Record<string, boolean>): Promise<AppSettings> =>
+    api.patch<AppSettings>('/settings/modules', { moduleFlags }).then((r) => r.data),
 };

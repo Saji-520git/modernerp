@@ -1207,30 +1207,27 @@ function WhatsAppPanel({ settings, onSave, isPending, readOnly }: {
 
 // ─── Modules panel ───────────────────────────────────────────────────────────
 
-function ModulesPanel({ settings, onSave, isPending, readOnly }: {
-  settings: AppSettings; onSave: (d: Partial<AppSettings>) => Promise<void>;
-  isPending: boolean; readOnly?: boolean;
+function ModulesPanel({ settings, readOnly }: {
+  settings: AppSettings; readOnly?: boolean;
 }) {
+  const qc = useQueryClient();
   const [flags, setFlags] = useState<Record<string, boolean>>({ ...(settings.moduleFlags ?? {}) });
   const [success, setSuccess] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  const handleSave = async () => {
-    setSuccess(false); setError(null);
-    try {
-      await onSave({ moduleFlags: flags });
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (e: unknown) {
-      setError((e as { message?: string })?.message ?? 'Save failed');
-    }
-  };
+  const mutation = useMutation({
+    mutationFn: (fl: Record<string, boolean>) => settingsApi.updateModules(fl),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['app-settings'] }); setSuccess(true); setTimeout(() => setSuccess(false), 3000); },
+    onError: (e: unknown) => setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Save failed'),
+  });
+
+  const handleSave = () => { setSuccess(false); setError(null); mutation.mutate(flags); };
 
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-base font-semibold text-slate-800 mb-1">🧩 Optional Modules</p>
-        <p className="text-sm text-slate-500">Turn features on or off for this business. Disabled features are hidden throughout the app and blocked on the server.</p>
+        <p className="text-base font-semibold text-slate-800 mb-1">🛡️ Optional Modules — Super Admin</p>
+        <p className="text-sm text-slate-500">Enable or disable optional features for this client. Disabled features are hidden throughout the app and blocked on the server.</p>
       </div>
 
       <div className="border-t border-slate-100 pt-4 space-y-3">
@@ -1261,7 +1258,7 @@ function ModulesPanel({ settings, onSave, isPending, readOnly }: {
         })}
       </div>
 
-      <SectionFooter onSave={handleSave} isPending={isPending} success={success} error={error} readOnly={readOnly} />
+      <SectionFooter onSave={handleSave} isPending={mutation.isPending} success={success} error={error} readOnly={readOnly} />
     </div>
   );
 }
@@ -1291,9 +1288,13 @@ export default function SettingsPage() {
 
   const readOnly = user?.role === 'CASHIER' || user?.role === 'STAFF';
 
+  // Module on/off is super-admin only — hide the Modules tab from everyone else.
+  const canManageModules = user?.role === 'SUPER_ADMIN' || (user?.permissions?.includes('manage_modules') ?? false);
+  const visibleSections = SECTIONS.filter(s => s.key !== 'modules' || canManageModules);
+
   const activeKey: SectionKey = (() => {
     const hash = location.hash.replace('#', '') as SectionKey;
-    return SECTIONS.find(s => s.key === hash) ? hash : 'company';
+    return visibleSections.find(s => s.key === hash) ? hash : 'company';
   })();
 
   const { data: settings, isLoading } = useQuery({
@@ -1313,7 +1314,7 @@ export default function SettingsPage() {
   const handleSave = (data: Partial<AppSettings>): Promise<void> =>
     mutation.mutateAsync(data).then(() => undefined);
 
-  const activeSection = SECTIONS.find(s => s.key === activeKey)!;
+  const activeSection = visibleSections.find(s => s.key === activeKey)!;
   const ActiveIcon    = activeSection.icon;
 
   // Skeleton while loading
@@ -1344,7 +1345,7 @@ export default function SettingsPage() {
           </div>
         )}
         <nav className="p-2 space-y-0.5">
-          {SECTIONS.map(s => {
+          {visibleSections.map(s => {
             const Icon   = s.icon;
             const active = activeKey === s.key;
             return (
@@ -1393,7 +1394,7 @@ export default function SettingsPage() {
             {activeKey === 'receipt'     && <ReceiptPanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'alerts'      && <AlertsPanel      settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
             {activeKey === 'whatsapp'    && <WhatsAppPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
-            {activeKey === 'modules'     && <ModulesPanel     settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
+            {activeKey === 'modules'     && <ModulesPanel     settings={settings} readOnly={readOnly} />}
             {activeKey === 'permissions' && <PermissionsPanel />}
             {activeKey === 'security'    && <SecurityPanel    settings={settings} onSave={handleSave} isPending={mutation.isPending} readOnly={readOnly} />}
           </div>

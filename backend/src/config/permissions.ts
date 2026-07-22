@@ -38,16 +38,25 @@ export const ALL_PERMISSIONS = [
   // Shifts
   'manage_shifts',       // Can open and close own shift
   'view_all_shifts',     // Can view shifts for all users
+  // Super-admin only — never granted to a client role by default
+  'manage_modules',      // Enable/disable optional feature modules per client
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
 
 // ─── Role defaults ─────────────────────────────────────────────────────────────
 
-export type AppRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
+export type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
+
+// Everything a client's own top role (ADMIN) may hold — all permissions EXCEPT
+// the super-admin-only module control.
+const ADMIN_PERMISSIONS: Permission[] = ALL_PERMISSIONS.filter((p) => p !== 'manage_modules');
 
 export const ROLE_DEFAULTS: Record<AppRole, Permission[]> = {
-  ADMIN: [...ALL_PERMISSIONS],
+  // Vendor/super-admin: everything, including module on/off (per client).
+  SUPER_ADMIN: [...ALL_PERMISSIONS],
+
+  ADMIN: ADMIN_PERMISSIONS,
 
   MANAGER: [
     'view_products', 'manage_products',
@@ -184,7 +193,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'view_all_shifts',  label: 'View All Shifts',  description: 'View shift history for all users' },
     ],
   },
+  {
+    label: 'Super Admin',
+    icon: '🛡️',
+    permissions: [
+      { key: 'manage_modules', label: 'Manage Modules', description: 'Super-admin only: enable/disable optional feature modules per client' },
+    ],
+  },
 ];
+
+/** True for the vendor super-admin permission that clients must never self-grant. */
+export const SUPER_ADMIN_PERMISSIONS: Permission[] = ['manage_modules'];
 
 // ─── Helper ────────────────────────────────────────────────────────────────────
 

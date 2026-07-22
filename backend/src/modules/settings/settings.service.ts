@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
-import type { UpdateSettingsInput } from './settings.schema.js';
+import type { UpdateSettingsInput, UpdateModulesInput } from './settings.schema.js';
 
 const SETTINGS_ID = 'singleton';
 
@@ -20,6 +20,16 @@ export const settingsService = {
       data:  input,
     });
     logger.info({ fields: Object.keys(input) }, 'Settings updated');
+    return result;
+  },
+
+  /** Super-admin only: set the optional feature module on/off map. */
+  updateModules: async (input: UpdateModulesInput) => {
+    const result = await prisma.appSettings.update({
+      where: { id: SETTINGS_ID },
+      data:  { moduleFlags: input.moduleFlags },
+    });
+    logger.info({ moduleFlags: input.moduleFlags }, 'Module flags updated (super-admin)');
     return result;
   },
 

@@ -80,7 +80,13 @@ export const updateSettingsSchema = z.object({
   waPayableTemplate:     z.string().max(2000).optional().nullable(),
   waOfferTemplate:       z.string().max(2000).optional().nullable(),
   whatsappOpenMode:      z.enum(['app', 'browser']).optional(),
-  moduleFlags:           z.record(z.string(), z.boolean()).optional(),
+  // moduleFlags intentionally NOT here — module on/off is super-admin only
+  // (dedicated PATCH /settings/modules guarded by manage_modules).
 });
+
+export const updateModulesSchema = z.object({
+  moduleFlags: z.record(z.string(), z.boolean()),
+});
+export type UpdateModulesInput = z.infer<typeof updateModulesSchema>;
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

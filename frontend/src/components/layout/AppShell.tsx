@@ -18,7 +18,7 @@ import type { ModuleKey } from '../../config/modules';
 import { alertsApi } from '../../services/alerts';
 import { shiftsApi } from '../../services/shifts';
 
-type Role = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
 
 interface NavItem {
   to: string;
@@ -138,6 +138,7 @@ export default function AppShell() {
 
   function isVisible(item: NavItem): boolean {
     if (item.module && settings?.moduleFlags?.[item.module] !== true) return false;
+    if (userRole === 'SUPER_ADMIN') return true;  // super-admin sees every role-gated item
     if (!item.roles) return true;
     return !!userRole && item.roles.includes(userRole);
   }
