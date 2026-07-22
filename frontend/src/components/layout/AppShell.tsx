@@ -10,7 +10,7 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent,
+  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -54,6 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/inventory', label: 'Stock Overview', icon: Warehouse, end: true },
       { to: '/warehouses', label: 'Warehouses', icon: Building2 },
+      { to: '/stock-take', label: 'Stock-take', icon: ClipboardCheck, roles: ['ADMIN', 'MANAGER'], module: 'stockTake' },
       { to: '/alerts', label: 'Stock Alerts', icon: Bell },
     ],
   },
