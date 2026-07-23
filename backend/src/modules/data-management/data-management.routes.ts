@@ -12,6 +12,7 @@ export const router: Router = Router();
 router.use(requireAuth, requireModule('dataManagement'), requirePermission('clear_data'));
 
 router.get('/summary',         h(ctrl.summary));
+router.get('/backup',          h(ctrl.backup));   // full JSON snapshot (download)
 router.post('/clear-entities', h(ctrl.clearEntities));
 
 // Tiered factory reset — preview (read-only) + execute (destructive, password-gated).

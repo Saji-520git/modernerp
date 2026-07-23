@@ -46,4 +46,15 @@ export const dataManagementApi = {
     api.get<ResetPreview>('/data-management/reset/preview', { params: { preset } }).then((r) => r.data),
   resetExecute: (preset: ResetPreset, password: string, confirm: string) =>
     api.post<{ success: boolean; preset: ResetPreset }>('/data-management/reset/execute', { preset, password, confirm }).then((r) => r.data),
+  downloadBackup: async () => {
+    const res = await api.get('/data-management/backup', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brocode-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

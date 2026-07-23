@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Database, AlertTriangle, Trash2, Loader2, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Database, AlertTriangle, Trash2, Loader2, CheckCircle2, ShieldAlert, Download } from 'lucide-react';
 import { dataManagementApi, type ClearableEntity, type ClearReport, type ResetPreset, type ResetPreview } from '../../services/dataManagement';
 import { productsApi } from '../../services/products';
 import { suppliersApi, customersApi } from '../../services/contacts';
@@ -25,18 +25,19 @@ export default function DataManagementPage() {
 
   const { data: summary } = useQuery({ queryKey: ['data-summary'], queryFn: dataManagementApi.summary });
 
-  const { data: rows = [], isFetching } = useQuery({
+  const { data: rows = [], isFetching, isError } = useQuery({
     queryKey: ['data-mgmt-list', tab, search],
     queryFn: async (): Promise<Row[]> => {
+      // pageSize capped at 100 by the list endpoints — request the max.
       if (tab === 'product') {
-        const r = await productsApi.list({ search: search || undefined, pageSize: 200 });
+        const r = await productsApi.list({ search: search || undefined, isActive: 'all', pageSize: 100 });
         return r.data.map((p) => ({ id: p.id, name: p.name, sub: p.sku }));
       }
       if (tab === 'supplier') {
-        const r = await suppliersApi.list({ search: search || undefined, pageSize: 200 });
+        const r = await suppliersApi.list({ search: search || undefined, pageSize: 100 });
         return r.data.map((s) => ({ id: s.id, name: s.name, sub: s.phone ?? undefined }));
       }
-      const r = await customersApi.list({ search: search || undefined, pageSize: 200 });
+      const r = await customersApi.list({ search: search || undefined, pageSize: 100 });
       return r.data.map((c) => ({ id: c.id, name: c.name, sub: c.phone ?? undefined }));
     },
   });
@@ -52,6 +53,13 @@ export default function DataManagementPage() {
   const [resetPw, setResetPw]           = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetErr, setResetErr]         = useState('');
+
+  const [downloading, setDownloading] = useState(false);
+  const handleBackup = async () => {
+    setDownloading(true);
+    try { await dataManagementApi.downloadBackup(); }
+    finally { setDownloading(false); }
+  };
 
   const openReset = async (preset: ResetPreset) => {
     setResetErr(''); setResetPw(''); setResetConfirm(''); setResetPreview(null); setResetPreset(preset);
@@ -177,7 +185,10 @@ export default function DataManagementPage() {
           {isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin ml-auto" />}
         </div>
         <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
-          {rows.length === 0 && !isFetching && (
+          {isError && (
+            <p className="text-sm text-red-500 text-center py-8">Failed to load {tab}s. Please try again.</p>
+          )}
+          {rows.length === 0 && !isFetching && !isError && (
             <p className="text-sm text-slate-400 text-center py-8">No {tab}s found.</p>
           )}
           {rows.map((r) => (
@@ -198,8 +209,13 @@ export default function DataManagementPage() {
         </div>
         <p className="text-xs text-red-600 mb-3">
           Bulk-wipes data by preset. This permanently deletes history (unlike selective clear above).
-          Back up your database first. Super-admin, settings & warehouses are always kept.
+          Download a backup first. Super-admin, settings & warehouses are always kept.
         </p>
+        <button onClick={handleBackup} disabled={downloading}
+          className="inline-flex items-center gap-1.5 mb-3 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50">
+          {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          Download backup (JSON)
+        </button>
         <div className="grid gap-2 sm:grid-cols-3">
           {RESET_PRESETS.map((r) => (
             <button key={r.key} onClick={() => openReset(r.key)}
@@ -231,7 +247,12 @@ export default function DataManagementPage() {
                   {resetPreview.willClear.products && <li className="text-red-700">Products <b>{resetPreview.willClear.products.products}</b> + categories/brands/units</li>}
                   {resetPreview.willClear.users && <li className="text-red-700">Non-super users <b>{resetPreview.willClear.users.nonSuperUsers}</b></li>}
                 </ul>
-                <p className="text-[11px] text-green-700 mb-3">Kept: super-admin, settings, warehouses{resetPreview.keeps.products ? ', products' : ''}{resetPreview.keeps.contacts ? ', customers & suppliers' : ''}.</p>
+                <p className="text-[11px] text-green-700 mb-2">Kept: super-admin, settings, warehouses{resetPreview.keeps.products ? ', products' : ''}{resetPreview.keeps.contacts ? ', customers & suppliers' : ''}.</p>
+                <button onClick={handleBackup} disabled={downloading}
+                  className="inline-flex items-center gap-1.5 mb-3 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50">
+                  {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  Download backup first
+                </button>
                 <input type="password" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} placeholder="Your password"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-red-500" />
                 <input value={resetConfirm} onChange={(e) => setResetConfirm(e.target.value)} placeholder="Type RESET to confirm"

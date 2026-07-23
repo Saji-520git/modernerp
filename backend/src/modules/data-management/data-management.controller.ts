@@ -3,9 +3,18 @@ import { z } from 'zod';
 import { HttpError } from '../../middleware/error-handler.js';
 import { dataManagementService } from './data-management.service.js';
 import { resetService } from './data-management.reset.js';
+import { backupService } from './data-management.backup.js';
 
 export const summary: RequestHandler = async (_req, res) => {
   res.json(await dataManagementService.summary());
+};
+
+export const backup: RequestHandler = async (_req, res) => {
+  const data = await backupService.exportAll();
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="brocode-backup-${stamp}.json"`);
+  res.send(JSON.stringify(data));
 };
 
 const clearSchema = z.object({
