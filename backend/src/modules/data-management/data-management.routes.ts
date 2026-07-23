@@ -13,3 +13,7 @@ router.use(requireAuth, requireModule('dataManagement'), requirePermission('clea
 
 router.get('/summary',         h(ctrl.summary));
 router.post('/clear-entities', h(ctrl.clearEntities));
+
+// Tiered factory reset — preview (read-only) + execute (destructive, password-gated).
+router.get('/reset/preview',   h(ctrl.resetPreview));
+router.post('/reset/execute',  h(ctrl.resetExecute));
