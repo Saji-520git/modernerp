@@ -8,16 +8,17 @@ import {
   updatePermissionsSchema,
 } from './users.schema.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { SUPER_ADMIN_PERMISSIONS } from '../../config/permissions.js';
 
-// Only a super-admin may grant the super-admin-only 'manage_modules' permission.
-// (The role enum already excludes SUPER_ADMIN, so role-level escalation is blocked
-// at validation; this closes the custom-permission path.)
+// Only a super-admin may grant the super-admin-only permissions (manage_modules,
+// clear_data). The role enum already excludes SUPER_ADMIN, so role-level
+// escalation is blocked at validation; this closes the custom-permission path.
 function isSuperAdmin(auth?: { role?: string; permissions?: string[] }): boolean {
   return auth?.role === 'SUPER_ADMIN' || !!auth?.permissions?.includes('manage_modules');
 }
 function guardModuleGrant(auth: { role?: string; permissions?: string[] } | undefined, permissions?: readonly string[] | null): void {
-  if (permissions && permissions.includes('manage_modules') && !isSuperAdmin(auth)) {
-    throw new HttpError(403, 'Only a super-admin can grant module management');
+  if (permissions && permissions.some((p) => (SUPER_ADMIN_PERMISSIONS as readonly string[]).includes(p)) && !isSuperAdmin(auth)) {
+    throw new HttpError(403, 'Only a super-admin can grant super-admin permissions');
   }
 }
 // A super-admin account may only be modified by another super-admin — prevents a

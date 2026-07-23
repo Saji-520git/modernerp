@@ -24,6 +24,7 @@ import { router as promotionsRouter }         from './promotions/promotions.rout
 import { router as stockTakeRouter }          from './stocktake/stocktake.routes.js';
 import { router as loyaltyRouter }            from './loyalty/loyalty.routes.js';
 import { router as quotationsRouter }         from './quotations/quotations.routes.js';
+import { router as dataManagementRouter }     from './data-management/data-management.routes.js';
 
 export const router: Router = Router();
 
@@ -54,3 +55,4 @@ router.use('/promotions',         promotionsRouter);
 router.use('/stock-takes',        stockTakeRouter);
 router.use('/loyalty',            loyaltyRouter);
 router.use('/quotations',         quotationsRouter);
+router.use('/data-management',    dataManagementRouter);

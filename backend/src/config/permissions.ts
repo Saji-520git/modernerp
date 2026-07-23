@@ -40,6 +40,7 @@ export const ALL_PERMISSIONS = [
   'view_all_shifts',     // Can view shifts for all users
   // Super-admin only — never granted to a client role by default
   'manage_modules',      // Enable/disable optional feature modules per client
+  'clear_data',          // Bulk-clear / reset system data (Data Management module)
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
@@ -49,8 +50,9 @@ export type Permission = (typeof ALL_PERMISSIONS)[number];
 export type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
 
 // Everything a client's own top role (ADMIN) may hold — all permissions EXCEPT
-// the super-admin-only module control.
-const ADMIN_PERMISSIONS: Permission[] = ALL_PERMISSIONS.filter((p) => p !== 'manage_modules');
+// the super-admin-only controls (module on/off + destructive data clearing).
+const SUPER_ADMIN_ONLY: Permission[] = ['manage_modules', 'clear_data'];
+const ADMIN_PERMISSIONS: Permission[] = ALL_PERMISSIONS.filter((p) => !SUPER_ADMIN_ONLY.includes(p));
 
 export const ROLE_DEFAULTS: Record<AppRole, Permission[]> = {
   // Vendor/super-admin: everything, including module on/off (per client).
@@ -198,12 +200,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     icon: '🛡️',
     permissions: [
       { key: 'manage_modules', label: 'Manage Modules', description: 'Super-admin only: enable/disable optional feature modules per client' },
+      { key: 'clear_data',     label: 'Clear System Data', description: 'Super-admin only: bulk-clear / reset system data' },
     ],
   },
 ];
 
-/** True for the vendor super-admin permission that clients must never self-grant. */
-export const SUPER_ADMIN_PERMISSIONS: Permission[] = ['manage_modules'];
+/** True for the vendor super-admin permissions that clients must never self-grant. */
+export const SUPER_ADMIN_PERMISSIONS: Permission[] = ['manage_modules', 'clear_data'];
 
 // ─── Helper ────────────────────────────────────────────────────────────────────
 

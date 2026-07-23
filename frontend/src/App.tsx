@@ -16,6 +16,7 @@ import CustomerDetailPage from './pages/contacts/CustomerDetailPage';
 import SupplierDetailPage from './pages/contacts/SupplierDetailPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
+import DataManagementPage from './pages/data-management/DataManagementPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import TodaySummaryPage from './pages/dashboard/TodaySummaryPage';
 import SettingsPage from './pages/settings/SettingsPage';
@@ -364,6 +365,13 @@ export default function App() {
           <ModuleGuard module="userManagement">
             <ErrorBoundary fallbackTitle="User Management failed to load">
               <UsersPage />
+            </ErrorBoundary>
+          </ModuleGuard>
+        } />
+        <Route path="data-management" element={
+          <ModuleGuard module="dataManagement">
+            <ErrorBoundary fallbackTitle="Data Management failed to load">
+              <DataManagementPage />
             </ErrorBoundary>
           </ModuleGuard>
         } />

@@ -10,7 +10,7 @@ import {
   Users, Building,
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload,
-  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck, Gift, ScrollText,
+  Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck, Gift, ScrollText, Database,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -91,6 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'SYSTEM',
     items: [
       { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'], module: 'userManagement' },
+      { to: '/data-management', label: 'Data Management', icon: Database, roles: [], module: 'dataManagement' },
       { to: '/settings/import', label: 'Import Products', icon: Upload, roles: ['ADMIN'] },
       { to: '/settings/categories', label: 'Categories', icon: Tag, roles: ['ADMIN', 'MANAGER'] },
       { to: '/settings/brands', label: 'Brands', icon: Layers, roles: ['ADMIN', 'MANAGER'] },
