@@ -241,15 +241,19 @@ function PurchaseViewModal({ poId, onClose }: { poId: string; onClose: () => voi
               </div>
 
               {(() => {
-                // Option B — totalCents is never mutated; subtract confirmed return
-                // credit from the displayed balance only.
+                // Amount owed follows the delivered value (payable); subtract confirmed
+                // return credit from the displayed balance.
                 const returnedCents = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
-                const balanceDue = Math.max(0, po.totalCents - po.paidCents - returnedCents);
+                const payable = po.receivedValueCents ?? po.totalCents;
+                const balanceDue = Math.max(0, payable - po.paidCents - returnedCents);
                 return (
               <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
                 <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{fmtCents(po.subtotalCents)}</span></div>
+                {payable !== po.totalCents && (
+                  <div className="flex justify-between text-xs text-slate-400"><span>Ordered</span><span>{fmtCents(po.totalCents)}</span></div>
+                )}
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800">
-                  <span>Total</span><span>{fmtCents(po.totalCents)}</span>
+                  <span>{payable !== po.totalCents ? 'Payable' : 'Total'}</span><span>{fmtCents(payable)}</span>
                 </div>
                 <div className="flex justify-between text-green-600 font-medium">
                   <span>Paid</span><span>{fmtCents(po.paidCents)}</span>
@@ -367,7 +371,8 @@ function PurchasesTab({
                 {po._count?.lines ?? '—'}
               </td>
               <td className="px-4 py-3 text-right font-medium text-slate-800 whitespace-nowrap">
-                {fmtCents(po.totalCents)}
+                {/* Amount owed follows the delivered value (payable) for confirmed POs. */}
+                {fmtCents(po.status === 'CONFIRMED' ? (po.receivedValueCents ?? po.totalCents) : po.totalCents)}
               </td>
               <td className="px-4 py-3 text-right font-medium text-emerald-600 whitespace-nowrap">
                 {fmtCents(po.paidCents)}
@@ -377,10 +382,9 @@ function PurchasesTab({
                   {po.paymentStatus}
                 </span>
                 {(() => {
-                  // Option B — supplier owes credit when payments exceed the
-                  // return-adjusted total (never mutates totalCents).
+                  // Supplier owes credit when payments exceed the return-adjusted payable.
                   const returnedCents = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
-                  const hasCredit = po.paidCents > Math.max(0, po.totalCents - returnedCents);
+                  const hasCredit = po.paidCents > Math.max(0, (po.receivedValueCents ?? po.totalCents) - returnedCents);
                   return hasCredit ? (
                     <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">
                       Credit
@@ -706,11 +710,11 @@ function RecordSupplierPaymentModal({
   const [notes, setNotes]           = useState('');
   const [error, setError]           = useState('');
 
-  // Option B — confirmed return credit reduces what is still owed on a PO.
+  // Amount still owed on a PO = delivered value (payable) − paid − confirmed returns.
   // Mirrors the balance-due calc used in the PO list above and the backend's
-  // effectiveOutstanding; never mutates totalCents.
-  const poOutstanding = (p: { totalCents: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
-    p.totalCents - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+  // effectiveOutstanding.
+  const poOutstanding = (p: { totalCents: number; receivedValueCents?: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
+    (p.receivedValueCents ?? p.totalCents) - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
 
   const selectedPurchase = outstandingPurchases.find((p) => p.id === purchaseId);
   const outstanding = selectedPurchase ? poOutstanding(selectedPurchase) : 0;

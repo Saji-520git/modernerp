@@ -504,13 +504,13 @@ export const supplierPaymentService = {
 
       const purchase = await (tx as any).purchase.findUnique({
         where:  { id: payment.purchaseId },
-        select: { paidCents: true, totalCents: true },
+        select: { paidCents: true, receivedValueCents: true },
       });
 
       const newPaidCents  = Math.max(0, purchase.paidCents - payment.amountCents);
-      // Re-derive against effective total (subtract confirmed return credit).
+      // Re-derive against effective payable (delivered value minus confirmed return credit).
       const returnedCents       = await getReturnedCents(payment.purchaseId);
-      const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+      const effectiveTotalCents = Math.max(0, (purchase.receivedValueCents ?? 0) - returnedCents);
       const paymentStatus       = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
       await (tx as any).purchase.update({
@@ -532,7 +532,7 @@ export const supplierPaymentService = {
     const purchase = await (prisma as any).purchase.findFirst({
       where: { id: data.purchaseId, deletedAt: null },
       select: {
-        id: true, status: true, totalCents: true,
+        id: true, status: true, totalCents: true, receivedValueCents: true,
         paidCents: true, supplierId: true, number: true,
       },
     });
@@ -544,8 +544,8 @@ export const supplierPaymentService = {
     });
     const returnedCents = returnsAgg._sum.totalCents ?? 0;
 
-    // 2. Calculate credit owed to us
-    const effectiveTotalCents = Math.max(0, purchase.totalCents - returnedCents);
+    // 2. Calculate credit owed to us (against the payable = delivered value)
+    const effectiveTotalCents = Math.max(0, (purchase.receivedValueCents ?? 0) - returnedCents);
     const creditOwed          = Math.max(0, purchase.paidCents - effectiveTotalCents);
 
     // 3. Validate amount

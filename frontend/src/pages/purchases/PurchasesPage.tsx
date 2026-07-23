@@ -1429,7 +1429,8 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                   {new Date(po.date).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-right font-medium text-slate-800">
-                  {formatCents(po.totalCents)}
+                  {/* Amount owed = delivered value (payable) for confirmed POs; ordered for drafts. */}
+                  {formatCents(po.status === 'CONFIRMED' ? (po.receivedValueCents ?? po.totalCents) : po.totalCents)}
                 </td>
                 <td className="px-4 py-3 text-right text-green-700">
                   {po.status === 'CONFIRMED' ? formatCents(po.paidCents ?? 0) : '—'}
@@ -1439,8 +1440,9 @@ function OrdersTab({ onNewOrder, onEdit }: { onNewOrder: () => void; onEdit: (po
                     ? (() => {
                         const ret = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
                         const paid = po.paidCents ?? 0;
-                        const effTotal = Math.max(0, po.totalCents - ret);
-                        const out = Math.max(0, po.totalCents - paid - ret);
+                        const payable = po.receivedValueCents ?? po.totalCents;
+                        const effTotal = Math.max(0, payable - ret);
+                        const out = Math.max(0, payable - paid - ret);
                         const credit = Math.max(0, paid - effTotal);
                         return (
                           <span className="inline-flex items-center justify-end gap-1.5">

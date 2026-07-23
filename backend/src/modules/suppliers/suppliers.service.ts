@@ -74,11 +74,12 @@ export const suppliersService = {
 
     const purchasesAgg = await (prisma as any).purchase.aggregate({
       where: { supplierId: id, status: 'CONFIRMED', deletedAt: null },
-      _sum: { totalCents: true, paidCents: true },
+      // Amount owed follows the delivered value (payable), not the ordered total.
+      _sum: { receivedValueCents: true, paidCents: true },
       _max: { date: true },
     });
 
-    const totalPurchaseAmount = purchasesAgg._sum.totalCents ?? 0;
+    const totalPurchaseAmount = purchasesAgg._sum.receivedValueCents ?? 0;
     const totalPaid           = purchasesAgg._sum.paidCents  ?? 0;
     const lastOrderDate       = purchasesAgg._max.date ?? null;
 
