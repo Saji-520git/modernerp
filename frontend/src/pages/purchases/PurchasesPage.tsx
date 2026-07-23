@@ -469,7 +469,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   // Per-line receive state (G2 adds unitCost + damaged)
   const [lineInputs, setLineInputs] = useState<
-    Record<string, { qty: string; unitCost: string; damaged: string; batchNumber: string; expiryDate: string }>
+    Record<string, { qty: string; unitCost: string; damaged: string; damagedAccepted: boolean; damagedCost: string; batchNumber: string; expiryDate: string }>
   >({});
 
   const lines    = po.lines ?? [];
@@ -501,6 +501,8 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
         qty:         remaining > 0 ? String(remaining) : '0',
         unitCost:    ((l.unitCostCents ?? 0) / 100).toFixed(2),
         damaged:     '',
+        damagedAccepted: false,
+        damagedCost: '',
         batchNumber: '',
         expiryDate:  '',
       };
@@ -513,7 +515,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   const updateInput = (
     lineId: string,
-    field: 'qty' | 'unitCost' | 'damaged' | 'batchNumber' | 'expiryDate',
+    field: 'qty' | 'unitCost' | 'damaged' | 'damagedCost' | 'batchNumber' | 'expiryDate',
     val: string,
   ) => {
     setLineInputs((prev) => ({ ...prev, [lineId]: { ...prev[lineId], [field]: val } }));
@@ -526,11 +528,15 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
         const input = lineInputs[l.id];
         const qty   = parseFloat(input?.qty ?? '0');
         if (qty > 0) {
+          const damagedQty = input.damaged ? parseFloat(input.damaged) : 0;
+          const accepted   = damagedQty > 0 && input.damagedAccepted;
           receiptLines.push({
             purchaseLineId: l.id,
             qty,
             unitCostCents: input.unitCost ? Math.round(parseFloat(input.unitCost) * 100) : undefined,
-            damagedQty:    input.damaged  ? parseFloat(input.damaged) : undefined,
+            damagedQty:    damagedQty > 0 ? damagedQty : undefined,
+            damagedAccepted: accepted || undefined,
+            damagedUnitCostCents: accepted && input.damagedCost ? Math.round(parseFloat(input.damagedCost) * 100) : undefined,
             batchNumber:  input.batchNumber || undefined,
             expiryDate:   input.expiryDate  || undefined,
           });
@@ -623,7 +629,20 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                       <td className="px-3 py-1.5 text-slate-700">{rl.product.name}</td>
                       <td className="px-3 py-1.5 text-right font-semibold text-slate-700">{Number(rl.qty)}</td>
                       {r.lines.some((l) => Number(l.damagedQty) > 0) && (
-                        <td className="px-3 py-1.5 text-right text-red-600">{Number(rl.damagedQty) > 0 ? Number(rl.damagedQty) : '—'}</td>
+                        <td className="px-3 py-1.5 text-right text-red-600">
+                          {Number(rl.damagedQty) > 0 ? (
+                            <span className="inline-flex items-center gap-1 justify-end">
+                              {Number(rl.damagedQty)}
+                              {rl.damagedAccepted ? (
+                                <span className="text-[10px] text-green-700 bg-green-50 border border-green-200 rounded px-1">
+                                  accepted{rl.damagedUnitCostCents != null ? ` @ ${formatCents(rl.damagedUnitCostCents)}` : ''}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-1">rejected</span>
+                              )}
+                            </span>
+                          ) : '—'}
+                        </td>
                       )}
                       <td className="px-3 py-1.5 text-right text-slate-500">{formatCents(rl.unitCostCents)}</td>
                       {r.lines.some((l) => l.batchNumber || l.expiryDate) && (
@@ -692,7 +711,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                     {lines.map((l) => {
                       const received      = Number(l.receivedQty ?? 0);
                       const remaining     = Math.max(0, Number(l.qty) - received);
-                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', damaged: '', batchNumber: '', expiryDate: '' };
+                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', damaged: '', damagedAccepted: false, damagedCost: '', batchNumber: '', expiryDate: '' };
                       const isBatch       = l.product.isBatchTracked;
                       const qtyNow        = parseFloat(input.qty) || 0;
                       const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
@@ -752,9 +771,38 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                               placeholder="0"
                               disabled={remaining === 0}
                               onChange={(e) => updateInput(l.id, 'damaged', e.target.value)}
-                              title="Damaged / rejected units — recorded but not added to stock"
+                              title="Damaged units — recorded but not added to stock"
                               className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-red-300 disabled:bg-slate-100"
                             />
+                            {/* Damaged disposition (G3): reject = unpaid, or accept at a negotiated cost */}
+                            {parseFloat(input.damaged || '0') > 0 && (
+                              <div className="mt-1 flex items-center gap-1 flex-wrap justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setLineInputs((p) => ({ ...p, [l.id]: { ...p[l.id], damagedAccepted: false } }))}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${!input.damagedAccepted ? 'bg-red-100 text-red-700 border-red-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                                  title="Reject damaged — not paid, not stocked"
+                                >Reject</button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLineInputs((p) => ({ ...p, [l.id]: { ...p[l.id], damagedAccepted: true } }))}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${input.damagedAccepted ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                                  title="Accept damaged — pay a negotiated cost"
+                                >Accept</button>
+                                {input.damagedAccepted && (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={input.damagedCost}
+                                    placeholder="Rs./unit"
+                                    onChange={(e) => updateInput(l.id, 'damagedCost', e.target.value)}
+                                    title="Cost per accepted damaged unit (defaults to the good cost)"
+                                    className="w-16 border border-green-300 rounded px-1 py-0.5 text-right text-[10px] focus:outline-none focus:ring-1 focus:ring-green-400"
+                                  />
+                                )}
+                              </div>
+                            )}
                           </td>
                           {needsBatchCol && (
                             <td className="py-1.5 pl-2">

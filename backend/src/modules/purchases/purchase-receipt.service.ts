@@ -20,7 +20,9 @@ export interface ReceiptLineInput {
   purchaseLineId: string;
   qty:            number;      // GOOD qty received (enters stock). Same unit as the PO line.
   unitCostCents?: number;      // actual cost per purchase unit at receipt; defaults to the PO line cost — G2
-  damagedQty?:    number;      // damaged/rejected qty — recorded only, NOT added to stock — G2
+  damagedQty?:    number;      // damaged qty — recorded only, NOT added to stock — G2
+  damagedAccepted?:     boolean; // accept damaged (pay for it) vs reject (unpaid, default) — G3
+  damagedUnitCostCents?: number; // negotiated cost per damaged unit when accepted — G3
   note?:          string;      // per-line receiving note — G2
   batchNumber?:   string;
   expiryDate?:    string; // ISO date string
@@ -161,8 +163,14 @@ export async function createReceipt(
         ? receiptUnitCost
         : Math.round(receiptUnitCost / factor.toNumber());
       const damagedQtyDec    = new Decimal((rl.damagedQty ?? 0).toString());
+      // Damaged pricing (G3): accept only makes sense with damaged qty > 0.
+      const damagedAccepted  = (rl.damagedAccepted ?? false) && damagedQtyDec.greaterThan(0);
+      // Cost per accepted damaged unit — defaults to the good receipt cost.
+      const damagedUnitCost  = damagedAccepted
+        ? (rl.damagedUnitCostCents ?? receiptUnitCost)
+        : null;
 
-      // 2a. Create receipt line document (with actual cost + damaged + note — G2)
+      // 2a. Create receipt line document (with actual cost + damaged + note — G2/G3)
       await tx.purchaseReceiptLine.create({
         data: {
           receiptId:     receipt.id,
@@ -171,6 +179,8 @@ export async function createReceipt(
           qty:           qtyDec,
           unitCostCents: receiptUnitCost,
           damagedQty:    damagedQtyDec,
+          damagedAccepted,
+          damagedUnitCostCents: damagedUnitCost,
           note:          rl.note ?? null,
           batchNumber:   rl.batchNumber ?? null,
           expiryDate:    rl.expiryDate ? new Date(rl.expiryDate) : null,
@@ -262,11 +272,19 @@ export async function createReceipt(
 
 // ─── recomputeReceivedValue ───────────────────────────────────────────────────
 // Purchase.receivedValueCents = Σ received value across all GRN receipts, which
-// drives the supplier payable. Received qty × actual unit cost; legacy/auto
-// receipt lines may carry unitCostCents = 0, so fall back to the PO line cost.
+// drives the supplier payable:
+//   good qty × good cost
+//   + (damaged accepted ? damaged qty × damaged cost : 0)   ← reject = unpaid
+// Good cost falls back to the PO line cost when a legacy/auto line has cost 0;
+// damaged cost falls back to the good cost when accepted without a set price.
 export async function recomputeReceivedValue(tx: any, purchaseId: string): Promise<number> {
   const rows = await tx.$queryRawUnsafe(
-    `SELECT COALESCE(ROUND(SUM(rl."qty" * COALESCE(NULLIF(rl."unitCostCents", 0), pl."unitCostCents")))::int, 0) AS v
+    `SELECT COALESCE(ROUND(SUM(
+        rl."qty" * COALESCE(NULLIF(rl."unitCostCents", 0), pl."unitCostCents")
+        + CASE WHEN rl."damagedAccepted"
+               THEN rl."damagedQty" * COALESCE(rl."damagedUnitCostCents", NULLIF(rl."unitCostCents", 0), pl."unitCostCents")
+               ELSE 0 END
+     ))::int, 0) AS v
      FROM "purchase_receipt_lines" rl
      JOIN "purchase_receipts" r  ON rl."receiptId"      = r."id"
      JOIN "PurchaseLine"       pl ON rl."purchaseLineId" = pl."id"

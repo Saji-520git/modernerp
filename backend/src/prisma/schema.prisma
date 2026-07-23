@@ -773,6 +773,8 @@ model PurchaseReceiptLine {
   qty            Decimal         @db.Decimal(18, 4)
   unitCostCents  Int             @default(0)   // actual cost per purchase unit at receipt — G1
   damagedQty     Decimal         @default(0) @db.Decimal(18, 4)   // damaged/rejected at receipt — G1
+  damagedAccepted    Boolean     @default(false)   // accept damaged (pay for it) vs reject (unpaid) — G3
+  damagedUnitCostCents Int?                        // negotiated cost per damaged unit when accepted — G3
   note           String?         // per-line receiving note — G1
   batchNumber    String?
   expiryDate     DateTime?
