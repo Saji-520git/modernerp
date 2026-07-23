@@ -105,10 +105,22 @@ export async function createReceipt(
     // 2. Process each receipt line
     for (const rl of lines) {
       const poLine   = lineMap.get(rl.purchaseLineId)!;
-      const qtyDec   = new Decimal(rl.qty.toString());
+      // Option B: `qty` is the TOTAL received; damaged is a subset of it; the
+      // GOOD qty (total − damaged) is what enters stock and is charged at the
+      // good unit cost. Accepted damaged is charged separately (see payable calc).
+      const qtyDec        = new Decimal(rl.qty.toString());
+      const damagedQtyDec = new Decimal((rl.damagedQty ?? 0).toString());
+      if (damagedQtyDec.greaterThan(qtyDec)) {
+        throw new HttpError(
+          400,
+          `Damaged qty (${damagedQtyDec.toNumber()}) cannot exceed received qty (${qtyDec.toNumber()})`,
+        );
+      }
+      const goodQtyDec = qtyDec.minus(damagedQtyDec);
 
-      // Resolve base qty for stock operations
-      let baseQty: Decimal;
+      // Resolve the TOTAL received in base units → gives the purchase→base factor
+      // (qtyDec > 0 always), from which the GOOD base qty is derived for stock.
+      let baseTotal: Decimal;
       if (poLine.unitId) {
         const product = await tx.product.findUnique({
           where:  { id: poLine.productId },
@@ -122,33 +134,30 @@ export async function createReceipt(
             qtyDec,
             tx as any,
           );
-          baseQty = result.baseQty;
+          baseTotal = result.baseQty;
         } else {
-          baseQty = qtyDec;
+          baseTotal = qtyDec;
         }
       } else {
-        baseQty = qtyDec;
+        baseTotal = qtyDec;
       }
+      // base-per-purchase-unit factor, then the GOOD qty in base units (enters stock).
+      const factor   = qtyDec.isZero() ? new Decimal(1) : baseTotal.div(qtyDec);
+      const baseGood = goodQtyDec.mul(factor);
 
       // CHUNK 23c (v1.0.73): enforce integer for COUNT products on GRN receipt.
-      // Receipt lines DO have unit conversion (poLine.unitId can differ from the
-      // base unit), so the check fires on POST-conversion baseQty per line.
-      // Resolves count-ness from `baseUnit ?? unit` — matches the codebase
-      // convention and protects null-baseUnit products (43% of ACM data).
-      // Mirrors chunk 23a (confirmPurchase). baseQty is a Prisma Decimal;
-      // Number.isInteger(Decimal) is always false, so coerce via .toNumber().
-      // The check sits inside the $transaction: an in-tx throw rolls back the
-      // just-created GRN header + any prior lines safely (no partial write).
+      // Checked on the GOOD base qty — what actually enters stock. An in-tx throw
+      // rolls back the just-created GRN header + any prior lines (no partial write).
       const receiptLineMeta = receiptProductMetaMap.get(poLine.productId);
       const receiptUnitMeta = receiptLineMeta?.baseUnit ?? receiptLineMeta?.unit;
       if (
         receiptUnitMeta &&
         (receiptUnitMeta.type === 'COUNT' || receiptUnitMeta.allowDecimal === false)
       ) {
-        if (!Number.isInteger(baseQty.toNumber())) {
+        if (!Number.isInteger(baseGood.toNumber())) {
           throw new HttpError(
             400,
-            `Quantity for count-only products must be a whole number; got ${baseQty.toNumber()}`,
+            `Quantity for count-only products must be a whole number; got ${baseGood.toNumber()}`,
           );
         }
       }
@@ -156,13 +165,9 @@ export async function createReceipt(
       // G2: actual cost at receipt (defaults to the PO line cost), and its
       // per-BASE-unit equivalent (stock/batches are held in base units).
       const receiptUnitCost = rl.unitCostCents ?? poLine.unitCostCents;
-      const factor          = baseQty.isZero() || qtyDec.isZero()
-        ? new Decimal(1)
-        : baseQty.div(qtyDec);
       const costPerBaseCents = factor.isZero()
         ? receiptUnitCost
         : Math.round(receiptUnitCost / factor.toNumber());
-      const damagedQtyDec    = new Decimal((rl.damagedQty ?? 0).toString());
       // Damaged pricing (G3): accept only makes sense with damaged qty > 0.
       const damagedAccepted  = (rl.damagedAccepted ?? false) && damagedQtyDec.greaterThan(0);
       // Cost per accepted damaged unit — defaults to the good receipt cost.
@@ -198,7 +203,7 @@ export async function createReceipt(
         where:  { id: poLine.productId },
         select: { costCents: true },
       });
-      const newAvgCents      = computeWAC(existingQty, curProd?.costCents ?? 0, baseQty.toNumber(), costPerBaseCents);
+      const newAvgCents      = computeWAC(existingQty, curProd?.costCents ?? 0, baseGood.toNumber(), costPerBaseCents);
       await tx.product.update({
         where: { id: poLine.productId },
         data:  { costCents: newAvgCents, lastCostCents: costPerBaseCents, isActive: true },
@@ -212,8 +217,8 @@ export async function createReceipt(
             warehouseId: purchase.warehouseId,
           },
         },
-        create: { productId: poLine.productId, warehouseId: purchase.warehouseId, qty: baseQty },
-        update: { qty: { increment: baseQty } },
+        create: { productId: poLine.productId, warehouseId: purchase.warehouseId, qty: baseGood },
+        update: { qty: { increment: baseGood } },
       });
 
       // 2c. Stock movement
@@ -222,7 +227,7 @@ export async function createReceipt(
           productId:   poLine.productId,
           warehouseId: purchase.warehouseId,
           type:        'PURCHASE_IN',
-          qty:         baseQty,
+          qty:         baseGood,
           refType:     'PurchaseReceipt',
           refId:       receipt.id,
           note:        `GRN ${receiptNumber}`,
@@ -235,17 +240,18 @@ export async function createReceipt(
           productId:      poLine.productId,
           warehouseId:    purchase.warehouseId,
           purchaseLineId: rl.purchaseLineId,
-          qty:            baseQty,
+          qty:            baseGood,
           unitCostCents:  costPerBaseCents,
           batchNumber:    rl.batchNumber ?? null,
           expiryDate:     rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
         },
       });
 
-      // 2e. Update PurchaseLine.receivedQty (good qty received against the order)
+      // 2e. Update PurchaseLine.receivedQty (GOOD qty received against the order —
+      // damaged units don't fulfil the order, so only good counts toward delivery).
       await tx.purchaseLine.update({
         where: { id: rl.purchaseLineId },
-        data:  { receivedQty: { increment: qtyDec } },
+        data:  { receivedQty: { increment: goodQtyDec } },
       });
     }
 
@@ -280,7 +286,7 @@ export async function createReceipt(
 export async function recomputeReceivedValue(tx: any, purchaseId: string): Promise<number> {
   const rows = await tx.$queryRawUnsafe(
     `SELECT COALESCE(ROUND(SUM(
-        rl."qty" * COALESCE(NULLIF(rl."unitCostCents", 0), pl."unitCostCents")
+        (rl."qty" - rl."damagedQty") * COALESCE(NULLIF(rl."unitCostCents", 0), pl."unitCostCents")
         + CASE WHEN rl."damagedAccepted"
                THEN rl."damagedQty" * COALESCE(rl."damagedUnitCostCents", NULLIF(rl."unitCostCents", 0), pl."unitCostCents")
                ELSE 0 END

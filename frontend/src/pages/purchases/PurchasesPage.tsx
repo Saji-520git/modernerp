@@ -484,10 +484,12 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
   let receivedAtOrderedCents = 0;
   for (const r of receipts) {
     for (const rl of r.lines) {
-      const qty    = Number(rl.qty);
+      const good   = Math.max(0, Number(rl.qty) - Number(rl.damagedQty ?? 0));
+      const dmg    = rl.damagedAccepted ? Number(rl.damagedQty ?? 0) : 0;
+      const dmgCost = rl.damagedUnitCostCents ?? rl.unitCostCents;
       const poCost = poLineById.get(rl.purchaseLineId)?.unitCostCents ?? rl.unitCostCents;
-      receivedAtActualCents  += Math.round(qty * rl.unitCostCents);
-      receivedAtOrderedCents += Math.round(qty * poCost);
+      receivedAtActualCents  += Math.round(good * rl.unitCostCents + dmg * dmgCost);
+      receivedAtOrderedCents += Math.round(good * poCost);
     }
   }
   const costVarianceCents = receivedAtActualCents - receivedAtOrderedCents;
@@ -529,6 +531,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
         const qty   = parseFloat(input?.qty ?? '0');
         if (qty > 0) {
           const damagedQty = input.damaged ? parseFloat(input.damaged) : 0;
+          if (damagedQty > qty) throw new Error(`${l.product.name}: damaged (${damagedQty}) cannot exceed received (${qty})`);
           const accepted   = damagedQty > 0 && input.damagedAccepted;
           receiptLines.push({
             purchaseLineId: l.id,
@@ -700,7 +703,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                       <th className="pb-1.5 text-right font-medium">Ordered</th>
                       <th className="pb-1.5 text-right font-medium">Received</th>
                       <th className="pb-1.5 text-right font-medium">Remaining</th>
-                      <th className="pb-1.5 text-right font-medium w-20">Qty Now</th>
+                      <th className="pb-1.5 text-right font-medium w-24">Received now</th>
                       <th className="pb-1.5 text-right font-medium w-24 pl-2">Unit Cost</th>
                       <th className="pb-1.5 text-right font-medium w-20 pl-2">Damaged</th>
                       {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Batch #</th>}
@@ -713,8 +716,16 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                       const remaining     = Math.max(0, Number(l.qty) - received);
                       const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', damaged: '', damagedAccepted: false, damagedCost: '', batchNumber: '', expiryDate: '' };
                       const isBatch       = l.product.isBatchTracked;
-                      const qtyNow        = parseFloat(input.qty) || 0;
+                      const qtyNow        = parseFloat(input.qty) || 0;   // TOTAL received now
                       const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
+                      // Live preview: good = received − damaged; payable = good×cost + accepted damaged.
+                      const damagedNow    = parseFloat(input.damaged) || 0;
+                      const goodNow       = Math.max(0, qtyNow - damagedNow);
+                      const goodCostC     = input.unitCost ? Math.round(parseFloat(input.unitCost) * 100) : (l.unitCostCents ?? 0);
+                      const acceptedNow   = damagedNow > 0 && input.damagedAccepted;
+                      const dmgCostC      = acceptedNow ? (input.damagedCost ? Math.round(parseFloat(input.damagedCost) * 100) : goodCostC) : 0;
+                      const linePayable   = Math.round(goodNow * goodCostC + (acceptedNow ? damagedNow * dmgCostC : 0));
+                      const damagedExceeds = damagedNow > qtyNow;
                       return (
                         <tr key={l.id} className={`border-b border-slate-100 ${remaining === 0 ? 'opacity-40' : ''}`}>
                           <td className="py-1.5 text-slate-700 font-medium">
@@ -738,17 +749,25 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                           <td className={`py-1.5 text-right font-semibold ${remaining > 0 ? 'text-amber-700' : 'text-green-600'}`}>
                             {remaining}
                           </td>
-                          <td className="py-1.5 pl-2">
+                          <td className="py-1.5 pl-2 align-top">
                             <input
                               type="number"
                               min="0"
-                              max={remaining}
                               step="0.001"
                               value={input.qty}
                               disabled={remaining === 0}
                               onChange={(e) => updateInput(l.id, 'qty', e.target.value)}
-                              className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                              title="Total units the supplier delivered (including any damaged)"
+                              className="w-24 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
                             />
+                            {qtyNow > 0 && (
+                              <div className="mt-1 text-[10px] text-slate-500 whitespace-nowrap">
+                                Good <b className="text-slate-700">{goodNow}</b> · Pay <b className="text-indigo-700">{formatCents(linePayable)}</b>
+                              </div>
+                            )}
+                            {damagedExceeds && (
+                              <div className="mt-0.5 text-[10px] text-red-600 whitespace-nowrap">Damaged &gt; received</div>
+                            )}
                           </td>
                           <td className="py-1.5 pl-2">
                             <input
