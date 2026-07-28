@@ -14,6 +14,7 @@ router.use(requireAuth, requireModule('dataManagement'), requirePermission('clea
 router.get('/summary',         h(ctrl.summary));
 router.get('/backup',          h(ctrl.backup));   // full JSON snapshot (download)
 router.post('/clear-entities', h(ctrl.clearEntities));
+router.post('/zero-stock',     h(ctrl.zeroStock));   // audited bulk stock → 0
 
 // Tiered factory reset — preview (read-only) + execute (destructive, password-gated).
 router.get('/reset/preview',   h(ctrl.resetPreview));

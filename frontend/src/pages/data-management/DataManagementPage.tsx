@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Database, AlertTriangle, Trash2, Loader2, CheckCircle2, ShieldAlert, Download } from 'lucide-react';
+import { Database, AlertTriangle, Trash2, Loader2, CheckCircle2, ShieldAlert, Download, Boxes } from 'lucide-react';
 import { dataManagementApi, type ClearableEntity, type ClearReport, type ResetPreset, type ResetPreview } from '../../services/dataManagement';
 import { productsApi } from '../../services/products';
 import { suppliersApi, customersApi } from '../../services/contacts';
@@ -53,6 +53,25 @@ export default function DataManagementPage() {
   const [resetPw, setResetPw]           = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetErr, setResetErr]         = useState('');
+
+  // ── Bulk zero-stock (audited) ────────────────────────────────────────────────
+  const [showZero, setShowZero]       = useState(false);
+  const [zeroConfirm, setZeroConfirm] = useState('');
+  const [zeroAll, setZeroAll]         = useState(false);
+  const [zeroBusy, setZeroBusy]       = useState(false);
+  const [zeroErr, setZeroErr]         = useState('');
+  const [zeroResult, setZeroResult]   = useState<{ productsZeroed: number; movements: number } | null>(null);
+  const runZero = async () => {
+    setZeroBusy(true); setZeroErr('');
+    try {
+      const res = await dataManagementApi.zeroStock(
+        zeroAll ? { all: true, confirm: zeroConfirm } : { productIds: [...selected], confirm: zeroConfirm },
+      );
+      setZeroResult(res); setShowZero(false); setZeroConfirm(''); setZeroAll(false); setSelected(new Set());
+    } catch (e) {
+      setZeroErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to zero stock');
+    } finally { setZeroBusy(false); }
+  };
 
   const [downloading, setDownloading] = useState(false);
   const handleBackup = async () => {
@@ -202,6 +221,15 @@ export default function DataManagementPage() {
       <div className="flex items-center gap-2 mb-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${tab}s…`}
           className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        {tab === 'product' && (
+          <button
+            disabled={selected.size === 0}
+            onClick={() => { setShowZero(true); setZeroResult(null); setZeroAll(false); setZeroConfirm(''); setZeroErr(''); }}
+            title="Set on-hand stock to 0 (recorded as an adjustment)"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+            <Boxes className="w-4 h-4" /> Zero stock {selected.size > 0 ? `(${selected.size})` : ''}
+          </button>
+        )}
         <button
           disabled={selected.size === 0}
           onClick={() => { setShowConfirm(true); setReport(null); }}
@@ -209,6 +237,9 @@ export default function DataManagementPage() {
           <Trash2 className="w-4 h-4" /> Clear {selected.size > 0 ? `(${selected.size})` : ''}
         </button>
       </div>
+      {zeroResult && (
+        <p className="text-xs text-green-700 mb-2 font-medium">✓ Stock zeroed for {zeroResult.productsZeroed} product{zeroResult.productsZeroed !== 1 ? 's' : ''} ({zeroResult.movements} adjustment{zeroResult.movements !== 1 ? 's' : ''} recorded).</p>
+      )}
 
       {/* List */}
       <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -341,6 +372,40 @@ export default function DataManagementPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Zero-stock modal */}
+      {showZero && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Boxes className="w-6 h-6 text-amber-600" />
+              <h3 className="font-bold text-lg text-slate-900">Zero stock</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-3">
+              Sets on-hand stock to <b>0</b> for {zeroAll ? <b>ALL products</b> : <>{selected.size} selected product{selected.size > 1 ? 's' : ''}</>}.
+              Recorded as an <b>adjustment</b> (history kept — not a silent wipe). Type <b>ZERO</b> to confirm.
+            </p>
+            <label className="flex items-center gap-2 text-sm text-slate-600 mb-3">
+              <input type="checkbox" checked={zeroAll} onChange={(e) => setZeroAll(e.target.checked)} />
+              Apply to ALL products (ignore selection)
+            </label>
+            <input value={zeroConfirm} onChange={(e) => setZeroConfirm(e.target.value)} placeholder="Type ZERO to confirm"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+            {zeroErr && <p className="text-xs text-red-600 mb-2">{zeroErr}</p>}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowZero(false); setZeroConfirm(''); }}
+                className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+              <button
+                disabled={zeroConfirm !== 'ZERO' || zeroBusy || (!zeroAll && selected.size === 0)}
+                onClick={runZero}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                {zeroBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Boxes className="w-4 h-4" />}
+                Zero now
+              </button>
+            </div>
           </div>
         </div>
       )}

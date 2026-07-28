@@ -65,4 +65,42 @@ export const dataManagementService = {
     }
     return report;
   },
+
+  // ── Audited bulk zero-stock ───────────────────────────────────────────────────
+  // Sets on-hand stock to 0 for the given products (or ALL when productIds is null)
+  // by recording a signed ADJUSTMENT movement per product×warehouse — history is
+  // preserved (it's a correction, not a silent wipe and not a financial write-off).
+  // Batches for the affected products are cleared so FEFO stays consistent.
+  async zeroStock(productIds: string[] | null) {
+    const where: { qty: { gt: number }; productId?: { in: string[] } } = { qty: { gt: 0 } };
+    if (productIds && productIds.length) where.productId = { in: productIds };
+
+    const rows = await prisma.stock.findMany({
+      where,
+      select: { id: true, productId: true, warehouseId: true, qty: true },
+    });
+    if (rows.length === 0) return { productsZeroed: 0, movements: 0 };
+
+    const affected = new Set<string>();
+    await prisma.$transaction(async (tx) => {
+      for (const s of rows) {
+        const q = Number(s.qty);
+        await tx.stockMovement.create({
+          data: {
+            productId:   s.productId,
+            warehouseId: s.warehouseId,
+            type:        'ADJUSTMENT',
+            qty:         -q,                 // signed: removing on-hand stock
+            refType:     'DataManagement',
+            note:        'Bulk zero stock',
+          },
+        });
+        await tx.stock.update({ where: { id: s.id }, data: { qty: 0 } });
+        affected.add(s.productId);
+      }
+      await tx.stockBatch.deleteMany({ where: { productId: { in: [...affected] } } });
+    }, { timeout: 120_000 });
+
+    return { productsZeroed: affected.size, movements: rows.length };
+  },
 };

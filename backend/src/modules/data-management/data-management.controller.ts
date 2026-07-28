@@ -28,6 +28,20 @@ export const clearEntities: RequestHandler = async (req, res) => {
   res.json(await dataManagementService.clearEntities(input.type, input.ids));
 };
 
+const zeroStockSchema = z.object({
+  productIds: z.array(z.string().min(1)).max(5000).optional(), // omitted/empty ⇒ ALL products
+  all:        z.boolean().optional(),
+  confirm:    z.string(),
+});
+
+export const zeroStock: RequestHandler = async (req, res) => {
+  const input = zeroStockSchema.parse(req.body);
+  if (input.confirm !== 'ZERO') throw new HttpError(400, 'Type ZERO to confirm');
+  const ids = input.all ? null : (input.productIds ?? null);
+  if (!input.all && (!ids || ids.length === 0)) throw new HttpError(400, 'Select products or choose all');
+  res.json(await dataManagementService.zeroStock(ids));
+};
+
 const presetEnum = z.enum(['transactions', 'keepProducts', 'full']);
 
 export const resetPreview: RequestHandler = async (req, res) => {
