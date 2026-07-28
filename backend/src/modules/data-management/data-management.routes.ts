@@ -18,3 +18,7 @@ router.post('/clear-entities', h(ctrl.clearEntities));
 // Tiered factory reset — preview (read-only) + execute (destructive, password-gated).
 router.get('/reset/preview',   h(ctrl.resetPreview));
 router.post('/reset/execute',  h(ctrl.resetExecute));
+
+// Restore from a backup JSON — preview (read-only) + execute (wipe+import, password-gated).
+router.post('/restore/preview', h(ctrl.restorePreview));
+router.post('/restore/execute', h(ctrl.restoreExecute));
