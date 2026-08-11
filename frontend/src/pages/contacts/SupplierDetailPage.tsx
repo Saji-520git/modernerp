@@ -870,8 +870,8 @@ function LumpSumSupplierPaymentModal({
     queryFn: () => purchasesApi.listPurchases({ supplierId, pageSize: 100 }),
   });
 
-  const poOutstanding = (p: { totalCents: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
-    Math.max(0, p.totalCents - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0));
+  const poOutstanding = (p: { totalCents: number; receivedValueCents?: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
+    Math.max(0, (p.receivedValueCents ?? p.totalCents) - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0));
 
   const outstandingPurchases = React.useMemo(() => {
     const rows = (purchasesData?.data ?? []).filter(
@@ -1093,8 +1093,8 @@ function ApplyCreditSupplierModal({
     queryFn: () => purchasesApi.listPurchases({ supplierId, pageSize: 100 }),
   });
 
-  const poOutstanding = (p: { totalCents: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
-    Math.max(0, p.totalCents - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0));
+  const poOutstanding = (p: { totalCents: number; receivedValueCents?: number; paidCents: number; purchaseReturns?: { totalCents: number }[] }) =>
+    Math.max(0, (p.receivedValueCents ?? p.totalCents) - p.paidCents - (p.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0));
 
   const outstandingPurchases = React.useMemo(() => {
     const rows = (purchasesData?.data ?? []).filter(

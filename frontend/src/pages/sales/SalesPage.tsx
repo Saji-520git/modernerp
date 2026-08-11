@@ -28,10 +28,14 @@ import AttachmentPanel from '../../components/common/AttachmentPanel';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function paymentStatusLabel(sale: { status: string; paidCents: number; totalCents: number }) {
+function paymentStatusLabel(sale: { status: string; paidCents: number; totalCents: number; returns?: { totalCents: number }[] }) {
   if (sale.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-slate-100 text-slate-500' };
   if (sale.status === 'DRAFT')     return { label: 'Draft',     cls: 'bg-amber-100 text-amber-700' };
-  const balance = sale.totalCents - sale.paidCents;
+  // Option B — totalCents is never mutated; net confirmed returns before
+  // deriving the displayed payment status.
+  const returnedCents  = (sale.returns ?? []).reduce((s, r) => s + r.totalCents, 0);
+  const effectiveTotal = Math.max(0, sale.totalCents - returnedCents);
+  const balance = effectiveTotal - sale.paidCents;
   if (balance <= 0)     return { label: 'Paid',     cls: 'bg-green-100 text-green-700' };
   if (sale.paidCents > 0) return { label: 'Partial', cls: 'bg-blue-100 text-blue-700' };
   return { label: 'Due', cls: 'bg-red-100 text-red-700' };
@@ -39,19 +43,25 @@ function paymentStatusLabel(sale: { status: string; paidCents: number; totalCent
 
 function exportToCSV(rows: any[], filename: string) {
   const headers = ['Invoice #', 'Date', 'Customer', 'Contact', 'Warehouse', 'Type', 'Payment Status', 'Payment Method', 'Total', 'Paid', 'Balance'];
-  const lines = rows.map(s => [
-    s.number,
-    new Date(s.date).toLocaleDateString(),
-    s.customer?.name ?? 'Walk-in',
-    s.customer?.phone ?? '',
-    s.warehouse?.name ?? '',
-    s.isPos ? 'POS' : 'Invoice',
-    paymentStatusLabel(s).label,
-    PAYMENT_LABELS[s.paymentMethod as PaymentMethod] ?? s.paymentMethod,
-    (s.totalCents / 100).toFixed(2),
-    (s.paidCents / 100).toFixed(2),
-    ((s.totalCents - s.paidCents) / 100).toFixed(2),
-  ]);
+  const lines = rows.map(s => {
+    // Option B — totalCents is never mutated; the exported Balance nets
+    // confirmed returns, matching the on-screen PAY STATUS badge.
+    const returnedCents  = (s.returns ?? []).reduce((sum: number, r: any) => sum + r.totalCents, 0);
+    const effectiveTotal = Math.max(0, s.totalCents - returnedCents);
+    return [
+      s.number,
+      new Date(s.date).toLocaleDateString(),
+      s.customer?.name ?? 'Walk-in',
+      s.customer?.phone ?? '',
+      s.warehouse?.name ?? '',
+      s.isPos ? 'POS' : 'Invoice',
+      paymentStatusLabel(s).label,
+      PAYMENT_LABELS[s.paymentMethod as PaymentMethod] ?? s.paymentMethod,
+      (s.totalCents / 100).toFixed(2),
+      (s.paidCents / 100).toFixed(2),
+      (Math.max(0, effectiveTotal - s.paidCents) / 100).toFixed(2),
+    ];
+  });
   const csv = [headers, ...lines].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -419,11 +429,13 @@ function SaleDetailModal({ saleId, onClose, onEdit }: { saleId: string; onClose:
   );
   if (!sale) return null;
 
-  const ps = paymentStatusLabel(sale);
   const totalReturnedCents  = linkedReturns.reduce((sum, r) => sum + r.totalCents, 0);
   const totalRefundedCents  = linkedReturns.reduce((sum, r) => sum + (r.refundedCents ?? 0), 0);
   const effectiveTotalCents = Math.max(0, sale.totalCents - totalReturnedCents);
   const balance = Math.max(0, effectiveTotalCents - sale.paidCents);
+  // Uses the already-fetched linkedReturns (this modal's own returns query),
+  // not sale.returns — getSale (single-sale fetch) doesn't include that field.
+  const ps = paymentStatusLabel({ ...sale, returns: linkedReturns });
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1162,7 +1174,13 @@ export default function SalesPage() {
   const stats = {
     totalRevenue: sales.reduce((s, x) => s + x.totalCents, 0),
     totalPaid:    sales.reduce((s, x) => s + x.paidCents, 0),
-    totalDue:     sales.reduce((s, x) => s + Math.max(0, x.totalCents - x.paidCents), 0),
+    // Option B — totalCents is never mutated; net confirmed returns per sale
+    // before summing outstanding, matching the PAY STATUS badge / CSV export.
+    totalDue:     sales.reduce((s, x) => {
+      const returnedCents  = (x.returns ?? []).reduce((sum, r) => sum + r.totalCents, 0);
+      const effectiveTotal = Math.max(0, x.totalCents - returnedCents);
+      return s + Math.max(0, effectiveTotal - x.paidCents);
+    }, 0),
     count:        total,
   };
 

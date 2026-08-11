@@ -121,7 +121,10 @@ export default function SuppliersPage() {
     const map: Record<string, number> = {};
     for (const po of purchasesData?.data ?? []) {
       if (po.paymentStatus === 'UNPAID' || po.paymentStatus === 'PARTIAL') {
-        const owed = po.totalCents - po.paidCents;
+        // Amount owed follows the delivered value (payable), minus confirmed
+        // return credit — mirrors SupplierDetailPage's poOutstanding.
+        const returnedCents = (po.purchaseReturns ?? []).reduce((s, r) => s + r.totalCents, 0);
+        const owed = (po.receivedValueCents ?? po.totalCents) - po.paidCents - returnedCents;
         const sid  = po.supplier.id;
         map[sid] = (map[sid] ?? 0) + Math.max(0, owed);
       }

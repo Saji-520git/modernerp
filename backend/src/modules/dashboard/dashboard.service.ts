@@ -187,7 +187,7 @@ export const dashboardService = {
   revenueChart: async (days: 30 | 60 | 90 = 30) => {
     const interval = `${days} days`;
 
-    const [salesRows, expenseRows, cogsRows] = await Promise.all([
+    const [salesRows, expenseRows, cogsRows, returnsRows] = await Promise.all([
       prisma.$queryRaw<DailyRevenue[]>`
         SELECT
           DATE_TRUNC('day', date)::date AS day,
@@ -226,6 +226,18 @@ export const dashboardService = {
         GROUP BY DATE_TRUNC('day', s.date)
         ORDER BY day ASC
       `,
+      // Daily sales returns, so the chart/footer can show TRUE net revenue
+      // (audit fix — this chart previously summed gross totalCents with no
+      // return-netting, overstating both Revenue and Net Profit on the
+      // Dashboard's first screen). SaleReturn has no soft-delete.
+      prisma.$queryRaw<{ day: Date; returned: bigint }[]>`
+        SELECT DATE_TRUNC('day', "createdAt")::date AS day,
+          COALESCE(SUM("totalCents"), 0)::bigint AS returned
+        FROM "SaleReturn"
+        WHERE "createdAt" >= NOW() - INTERVAL '1 day' * ${days}
+        GROUP BY DATE_TRUNC('day', "createdAt")
+        ORDER BY day ASC
+      `,
     ]);
 
     const salesMap = new Map<string, { revenue: number; orders: number }>();
@@ -241,6 +253,10 @@ export const dashboardService = {
     for (const row of cogsRows) {
       cogsMap.set(new Date(row.day).toISOString().slice(0, 10), Number(row.cogs));
     }
+    const returnsMap = new Map<string, number>();
+    for (const row of returnsRows) {
+      returnsMap.set(new Date(row.day).toISOString().slice(0, 10), Number(row.returned));
+    }
 
     const result: { date: string; revenue: number; orders: number; expensesCents: number; cogsCents: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
@@ -248,9 +264,10 @@ export const dashboardService = {
       d.setUTCHours(0, 0, 0, 0);
       d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
+      const grossRevenue = salesMap.get(key)?.revenue ?? 0;
       result.push({
         date:          key,
-        revenue:       salesMap.get(key)?.revenue ?? 0,
+        revenue:       Math.max(0, grossRevenue - (returnsMap.get(key) ?? 0)),
         orders:        salesMap.get(key)?.orders  ?? 0,
         expensesCents: expMap.get(key) ?? 0,
         cogsCents:     cogsMap.get(key) ?? 0,
@@ -265,26 +282,37 @@ export const dashboardService = {
   topProducts: async () => {
     const monthStart = startOfMonth(new Date());
 
-    const rows = await prisma.$queryRaw<TopProduct[]>`
-      SELECT
-        p.id AS "productId",
-        p.name,
-        SUM(sl."lineTotalCents")::bigint AS revenue,
-        SUM(sl.qty)::float AS qty
-      FROM "SaleLine" sl
-      JOIN "Product" p ON p.id = sl."productId"
-      JOIN "Sale" s ON s.id = sl."saleId"
-      WHERE s.status = 'CONFIRMED'
-        AND s.date >= ${monthStart}
-      GROUP BY p.id, p.name
-      ORDER BY revenue DESC
-      LIMIT 5
-    `;
+    const [rows, returnRows] = await Promise.all([
+      prisma.$queryRaw<TopProduct[]>`
+        SELECT
+          p.id AS "productId",
+          p.name,
+          SUM(sl."lineTotalCents")::bigint AS revenue,
+          SUM(sl.qty)::float AS qty
+        FROM "SaleLine" sl
+        JOIN "Product" p ON p.id = sl."productId"
+        JOIN "Sale" s ON s.id = sl."saleId"
+        WHERE s.status = 'CONFIRMED'
+          AND s.date >= ${monthStart}
+        GROUP BY p.id, p.name
+        ORDER BY revenue DESC
+        LIMIT 5
+      `,
+      // Returns netting (audit fix) — mirrors reports.service.ts's productReport/
+      // salesReport topProducts. SaleReturn has no soft-delete.
+      prisma.saleReturnLine.groupBy({
+        by: ['productId'],
+        where: { saleReturn: { createdAt: { gte: monthStart } } },
+        _sum: { lineTotalCents: true },
+      }),
+    ]);
+
+    const returnsMap = new Map(returnRows.map((r) => [r.productId, r._sum.lineTotalCents ?? 0]));
 
     return rows.map((r) => ({
       productId: r.productId,
       name: r.name,
-      revenueCents: Number(r.revenue),
+      revenueCents: Math.max(0, Number(r.revenue) - (returnsMap.get(r.productId) ?? 0)),
       qty: r.qty,
     }));
   },

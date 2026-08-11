@@ -83,6 +83,9 @@ export interface Sale {
   createdBy: { id: string; fullName: string };
   lines?: SaleLine[];
   customerPayments?: import('./customerPayments').CustomerPayment[];
+  // Option B — totalCents is never mutated; subtract this to get the
+  // effective outstanding. Present on list-endpoint rows only.
+  returns?: { totalCents: number }[];
   _count?: { lines: number };
   createdAt: string;
 }

@@ -114,6 +114,9 @@ export const salesService = {
           warehouse: { select: { id: true, name: true, code: true } },
           createdBy: { select: { id: true, fullName: true } },
           _count: { select: { lines: true } },
+          // Option B — totalCents is never mutated; consumers subtract this to
+          // get the effective outstanding. Mirrors purchases.listPurchases.
+          returns: { select: { totalCents: true } },
         },
       }),
     ]);

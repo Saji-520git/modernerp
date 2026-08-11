@@ -47,6 +47,13 @@ function fmtDate(iso: string) {
   });
 }
 
+// Option B — totalCents is never mutated; net confirmed returns before
+// paidCents to get the true amount owed. Mirrors SalesPage's stats.totalDue.
+function saleOutstanding(sale: { totalCents: number; paidCents: number; returns?: { totalCents: number }[] }) {
+  const returnedCents = (sale.returns ?? []).reduce((s, r) => s + r.totalCents, 0);
+  return Math.max(0, sale.totalCents - returnedCents - sale.paidCents);
+}
+
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
@@ -226,6 +233,15 @@ function SaleViewModal({ saleId, onClose }: { saleId: string; onClose: () => voi
     queryKey: ['sale', saleId],
     queryFn: () => salesApi.getSale(saleId),
   });
+  // getSale (single-sale fetch) doesn't include returns — fetch separately,
+  // mirroring SalesPage's SaleDetailModal (salesApi.listReturns({ saleId })).
+  const { data: returnsData } = useQuery({
+    queryKey: ['sale-returns-linked', saleId],
+    queryFn: () => salesApi.listReturns({ saleId }),
+    enabled: !!saleId,
+  });
+  const linkedReturns: SaleReturn[] = returnsData?.data ?? [];
+  const totalReturnedCents = linkedReturns.reduce((sum, r) => sum + r.totalCents, 0);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -326,12 +342,17 @@ function SaleViewModal({ saleId, onClose }: { saleId: string; onClose: () => voi
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-slate-200 text-slate-800">
                   <span>Total</span><span>{fmtCents(sale.totalCents)}</span>
                 </div>
+                {totalReturnedCents > 0 && (
+                  <div className="flex justify-between text-orange-600 font-medium">
+                    <span>Returns</span><span>− {fmtCents(totalReturnedCents)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-green-600 font-medium">
                   <span>Paid</span><span>{fmtCents(sale.paidCents)}</span>
                 </div>
-                {sale.totalCents - sale.paidCents > 0 && (
+                {saleOutstanding({ ...sale, returns: linkedReturns }) > 0 && (
                   <div className="flex justify-between text-red-600 font-bold">
-                    <span>Balance Due</span><span>{fmtCents(sale.totalCents - sale.paidCents)}</span>
+                    <span>Balance Due</span><span>{fmtCents(saleOutstanding({ ...sale, returns: linkedReturns }))}</span>
                   </div>
                 )}
               </div>
@@ -383,7 +404,7 @@ function RecordPaymentModal({
 
   // Auto-fill amount when sale selected
   const selectedSale = outstandingSales.find((s) => s.id === saleId);
-  const outstanding  = selectedSale ? selectedSale.totalCents - selectedSale.paidCents : 0;
+  const outstanding  = selectedSale ? saleOutstanding(selectedSale) : 0;
 
   const mutation = useMutation({
     mutationFn: (data: CreateCustomerPaymentInput) => customerPaymentsApi.create(data),
@@ -438,12 +459,12 @@ function RecordPaymentModal({
                 No outstanding invoices for this customer.
               </p>
             ) : (
-              <select value={saleId} onChange={(e) => { setSaleId(e.target.value); const s = outstandingSales.find(x => x.id === e.target.value); if (s) setAmount(((s.totalCents - s.paidCents) / 100).toFixed(2)); }}
+              <select value={saleId} onChange={(e) => { setSaleId(e.target.value); const s = outstandingSales.find(x => x.id === e.target.value); if (s) setAmount((saleOutstanding(s) / 100).toFixed(2)); }}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— Select invoice —</option>
                 {outstandingSales.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.number} · Outstanding: {fmtCents(s.totalCents - s.paidCents)}
+                    {s.number} · Outstanding: {fmtCents(saleOutstanding(s))}
                   </option>
                 ))}
               </select>
@@ -539,7 +560,7 @@ function LumpSumPaymentModal({
   }, [salesData]);
 
   const totalOutstanding = outstandingSales.reduce(
-    (s, x) => s + Math.max(0, x.totalCents - x.paidCents), 0,
+    (s, x) => s + saleOutstanding(x), 0,
   );
 
   const [amount, setAmount] = useState('');
@@ -559,7 +580,7 @@ function LumpSumPaymentModal({
     const rows: { number: string; applied: number }[] = [];
     for (const s of outstandingSales) {
       if (remaining <= 0) break;
-      const out = Math.max(0, s.totalCents - s.paidCents);
+      const out = saleOutstanding(s);
       if (out <= 0) continue;
       const applied = Math.min(remaining, out);
       rows.push({ number: s.number, applied });
@@ -768,7 +789,7 @@ function ApplyCreditModal({
   }, [salesData]);
 
   const totalOutstanding = outstandingSales.reduce(
-    (s, x) => s + Math.max(0, x.totalCents - x.paidCents), 0,
+    (s, x) => s + saleOutstanding(x), 0,
   );
 
   // Default the amount to the most that can actually be applied.
@@ -788,7 +809,7 @@ function ApplyCreditModal({
     const rows: { number: string; applied: number }[] = [];
     for (const s of outstandingSales) {
       if (remaining <= 0) break;
-      const out = Math.max(0, s.totalCents - s.paidCents);
+      const out = saleOutstanding(s);
       if (out <= 0) continue;
       const applied = Math.min(remaining, out);
       rows.push({ number: s.number, applied });

@@ -12,7 +12,7 @@ export const reportsService = {
     const prevTo      = new Date(from.getTime() - 1);          // day before from
     const prevFrom    = new Date(from.getTime() - durationMs); // same length back
 
-    const [summary, byWarehouseRaw, byPaymentRaw, cogsRaw, topProductsRaw, prevPeriodRaw] = await Promise.all([
+    const [summary, byWarehouseRaw, byPaymentRaw, cogsRaw, topProductsRaw, prevPeriodRaw, returnsByWarehouseRaw, returnsByPaymentRaw, returnsByProduct] = await Promise.all([
       prisma.sale.aggregate({
         where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
         _sum: { totalCents: true, taxCents: true, discountCents: true, paidCents: true },
@@ -66,6 +66,32 @@ export const reportsService = {
         where: { status: 'CONFIRMED', date: { gte: prevFrom, lte: prevTo } },
         _sum: { totalCents: true },
       }),
+      // ── Returns netting for the breakdown queries below (audit fix) ──────────
+      // The overall summary.totalRevenueCents already nets returns (FIX 2); these
+      // three sibling breakdowns did not, which is what caused e.g. the KPI tile
+      // and the by-warehouse/by-product tables to disagree on the same page.
+      // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter.
+      prisma.$queryRaw<{ code: string; returned: bigint }[]>`
+        SELECT w.code,
+          SUM(sr."totalCents")::bigint AS returned
+        FROM "SaleReturn" sr
+        JOIN "warehouses" w ON w.id = sr."warehouseId"
+        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to}
+        GROUP BY w.code
+      `,
+      prisma.$queryRaw<{ method: string; returned: bigint }[]>`
+        SELECT s."paymentMethod" AS method,
+          SUM(sr."totalCents")::bigint AS returned
+        FROM "SaleReturn" sr
+        JOIN "Sale" s ON s.id = sr."saleId"
+        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to}
+        GROUP BY s."paymentMethod"
+      `,
+      prisma.saleReturnLine.groupBy({
+        by: ['productId'],
+        where: { saleReturn: { createdAt: { gte: from, lte: to } } },
+        _sum: { lineTotalCents: true },
+      }),
     ]);
 
     // Period grouping — separate queries to avoid Prisma.raw complexity
@@ -97,6 +123,42 @@ export const reportsService = {
             GROUP BY 1 ORDER BY 1
           `;
 
+    // Returns bucketed the same way, so byPeriod can be netted per-bucket
+    // (audit fix — mirrors byPeriodRaw's day/week/month switch exactly).
+    const returnsByPeriodRaw =
+      groupBy === 'month'
+        ? await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
+            SELECT DATE_TRUNC('month', "createdAt")::date AS period,
+              SUM("totalCents")::bigint AS returned
+            FROM "SaleReturn"
+            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            GROUP BY 1 ORDER BY 1
+          `
+        : groupBy === 'week'
+        ? await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
+            SELECT DATE_TRUNC('week', "createdAt")::date AS period,
+              SUM("totalCents")::bigint AS returned
+            FROM "SaleReturn"
+            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            GROUP BY 1 ORDER BY 1
+          `
+        : await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
+            SELECT DATE_TRUNC('day', "createdAt")::date AS period,
+              SUM("totalCents")::bigint AS returned
+            FROM "SaleReturn"
+            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            GROUP BY 1 ORDER BY 1
+          `;
+
+    const returnsByPeriodMap = new Map(
+      returnsByPeriodRaw.map((r) => [new Date(r.period).toISOString().slice(0, 10), Number(r.returned)]),
+    );
+    const returnsByWarehouseMap = new Map(returnsByWarehouseRaw.map((r) => [r.code, Number(r.returned)]));
+    const returnsByPaymentMap   = new Map(returnsByPaymentRaw.map((r) => [r.method, Number(r.returned)]));
+    const returnsByProductMap   = new Map(
+      returnsByProduct.map((r) => [r.productId, r._sum.lineTotalCents ?? 0]),
+    );
+
     let   totalRevenue         = summary._sum.totalCents ?? 0;
     const totalCogs            = Number(cogsRaw[0]?.cogs ?? 0);
     const count                = summary._count;
@@ -123,30 +185,36 @@ export const reportsService = {
         avgOrderCents:          count > 0 ? Math.round(totalRevenue / count) : 0,
         prevPeriodRevenueCents: prevPeriodRevenue,
       },
-      byPeriod: byPeriodRaw.map((r) => ({
-        period: new Date(r.period).toISOString().slice(0, 10),
-        revenueCents: Number(r.revenue),
-        orders: Number(r.orders),
-      })),
+      byPeriod: byPeriodRaw.map((r) => {
+        const periodKey = new Date(r.period).toISOString().slice(0, 10);
+        return {
+          period: periodKey,
+          revenueCents: Math.max(0, Number(r.revenue) - (returnsByPeriodMap.get(periodKey) ?? 0)),
+          orders: Number(r.orders),
+        };
+      }),
       byWarehouse: byWarehouseRaw.map((r) => ({
         name: r.name,
         code: r.code,
-        revenueCents: Number(r.revenue),
+        revenueCents: Math.max(0, Number(r.revenue) - (returnsByWarehouseMap.get(r.code) ?? 0)),
         orders: Number(r.orders),
       })),
       byPayment: byPaymentRaw.map((r) => ({
         method: r.method,
         count: Number(r.count),
-        revenueCents: Number(r.revenue),
+        revenueCents: Math.max(0, Number(r.revenue) - (returnsByPaymentMap.get(r.method) ?? 0)),
       })),
       topProducts: topProductsRaw.map((r) => {
-        const rev  = Number(r.revenue);
+        // revenueCents nets returns; grossProfitCents/marginPct stay on gross
+        // revenue, mirroring productReport's established FIX 4 convention
+        // (returned goods go back to stock, so COGS stays charged as-is).
+        const rev = Number(r.revenue);
         const cogs = Number(r.cogs);
         return {
           productId:        r.productId,
           name:             r.name,
           sku:              r.sku,
-          revenueCents:     rev,
+          revenueCents:     Math.max(0, rev - (returnsByProductMap.get(r.productId) ?? 0)),
           qtySold:          r.qtySold,
           cogsCents:        cogs,
           grossProfitCents: rev - cogs,

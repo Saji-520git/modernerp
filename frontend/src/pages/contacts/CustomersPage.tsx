@@ -237,7 +237,10 @@ export default function CustomersPage() {
         sale.customer &&
         (sale.paymentStatus === 'UNPAID' || sale.paymentStatus === 'PARTIAL')
       ) {
-        const owed = sale.totalCents - sale.paidCents;
+        // Option B — totalCents is never mutated; net confirmed returns
+        // before summing outstanding, mirroring SalesPage's stats.totalDue.
+        const returnedCents = (sale.returns ?? []).reduce((s, r) => s + r.totalCents, 0);
+        const owed = sale.totalCents - returnedCents - sale.paidCents;
         const cid  = sale.customer.id;
         map[cid] = (map[cid] ?? 0) + Math.max(0, owed);
       }
