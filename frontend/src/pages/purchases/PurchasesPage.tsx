@@ -469,7 +469,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   // Per-line receive state (G2 adds unitCost + damaged)
   const [lineInputs, setLineInputs] = useState<
-    Record<string, { qty: string; unitCost: string; damaged: string; damagedAccepted: boolean; damagedCost: string; batchNumber: string; expiryDate: string }>
+    Record<string, { qty: string; unitCost: string; sellingPrice: string; damaged: string; damagedAccepted: boolean; damagedCost: string; batchNumber: string; expiryDate: string }>
   >({});
 
   const lines    = po.lines ?? [];
@@ -502,6 +502,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
       init[l.id] = {
         qty:         remaining > 0 ? String(remaining) : '0',
         unitCost:    ((l.unitCostCents ?? 0) / 100).toFixed(2),
+        sellingPrice: '', // left blank — backend defaults to the product's current price
         damaged:     '',
         damagedAccepted: false,
         damagedCost: '',
@@ -517,7 +518,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   const updateInput = (
     lineId: string,
-    field: 'qty' | 'unitCost' | 'damaged' | 'damagedCost' | 'batchNumber' | 'expiryDate',
+    field: 'qty' | 'unitCost' | 'sellingPrice' | 'damaged' | 'damagedCost' | 'batchNumber' | 'expiryDate',
     val: string,
   ) => {
     setLineInputs((prev) => ({ ...prev, [lineId]: { ...prev[lineId], [field]: val } }));
@@ -537,6 +538,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
             purchaseLineId: l.id,
             qty,
             unitCostCents: input.unitCost ? Math.round(parseFloat(input.unitCost) * 100) : undefined,
+            sellingPriceCents: input.sellingPrice ? Math.round(parseFloat(input.sellingPrice) * 100) : undefined,
             damagedQty:    damagedQty > 0 ? damagedQty : undefined,
             damagedAccepted: accepted || undefined,
             damagedUnitCostCents: accepted && input.damagedCost ? Math.round(parseFloat(input.damagedCost) * 100) : undefined,
@@ -705,6 +707,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                       <th className="pb-1.5 text-right font-medium">Remaining</th>
                       <th className="pb-1.5 text-right font-medium w-24">Received now</th>
                       <th className="pb-1.5 text-right font-medium w-24 pl-2">Unit Cost</th>
+                      <th className="pb-1.5 text-right font-medium w-24 pl-2">Selling Price</th>
                       <th className="pb-1.5 text-right font-medium w-20 pl-2">Damaged</th>
                       {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Batch #</th>}
                       {needsBatchCol && <th className="pb-1.5 text-left font-medium pl-2">Expiry Date</th>}
@@ -714,7 +717,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                     {lines.map((l) => {
                       const received      = Number(l.receivedQty ?? 0);
                       const remaining     = Math.max(0, Number(l.qty) - received);
-                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', damaged: '', damagedAccepted: false, damagedCost: '', batchNumber: '', expiryDate: '' };
+                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', sellingPrice: '', damaged: '', damagedAccepted: false, damagedCost: '', batchNumber: '', expiryDate: '' };
                       const isBatch       = l.product.isBatchTracked;
                       const qtyNow        = parseFloat(input.qty) || 0;   // TOTAL received now
                       const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
@@ -778,6 +781,19 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                               disabled={remaining === 0}
                               onChange={(e) => updateInput(l.id, 'unitCost', e.target.value)}
                               title="Actual unit cost for this delivery (defaults to the PO cost)"
+                              className="w-24 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                            />
+                          </td>
+                          <td className="py-1.5 pl-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={input.sellingPrice}
+                              placeholder="Product price"
+                              disabled={remaining === 0}
+                              onChange={(e) => updateInput(l.id, 'sellingPrice', e.target.value)}
+                              title="Selling price for this batch (defaults to the product's current price)"
                               className="w-24 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
                             />
                           </td>

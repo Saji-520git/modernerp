@@ -11,6 +11,7 @@ const receiptLineSchema = z.object({
   purchaseLineId: z.string().min(1),
   qty:            z.number().positive(),
   unitCostCents:  z.number().int().nonnegative().optional(),
+  sellingPriceCents: z.number().int().nonnegative().optional(),
   damagedQty:     z.number().nonnegative().optional(),
   damagedAccepted:       z.boolean().optional(),
   damagedUnitCostCents:  z.number().int().nonnegative().optional(),

@@ -13,9 +13,10 @@ import {
 } from 'lucide-react';
 import {
   posApi, formatCents, daysUntilExpiry,
-  type PosProduct, type Receipt, type AllPaymentMethods,
+  type PosProduct, type Receipt, type AllPaymentMethods, type ProductBatch,
 } from '../../services/pos';
 import DiscountInput, { type DiscountInputHandle } from '../../components/pos/DiscountInput';
+import BatchPickerModal from '../../components/common/BatchPickerModal';
 import { categoriesApi, brandsApi, type Category, type Brand } from '../../services/masterData';
 import NewReturnModal from '../../components/returns/NewReturnModal';
 import { shiftsApi } from '../../services/shifts';
@@ -74,6 +75,7 @@ interface CartItem {
   originalPriceCents?:number;  // selling price before staff sale toggle
   unitId?:            string;  // selected sales unit (defaults to base unit); sent in checkout payload
   unitShortCode?:     string;  // short code of the selected unit (display only)
+  batchId?:           string;  // manually-picked StockBatch (multi-batch products); sent in checkout payload
 }
 
 interface CustomerOption {
@@ -1593,6 +1595,7 @@ function productToPosProduct(p: Product): PosProduct {
     imageUrl:        p.imageUrl ?? null,
     expiryDate:      p.expiryDate ?? null,
     expiryAlertDays: p.expiryAlertDays ?? 30,
+    isBatchTracked:  p.isBatchTracked ?? false,
     unitId:          p.unitId,
     baseUnitId:      p.baseUnitId ?? null,
     purchaseUnitId:  p.purchaseUnitId ?? null,
@@ -1708,6 +1711,9 @@ export default function POSPage() {
       return [];
     }
   });
+  // Multi-batch product awaiting a cashier's batch pick — set by
+  // handleProductClick, cleared once BatchPickerModal resolves.
+  const [pendingBatchProduct, setPendingBatchProduct] = useState<PosProduct | null>(null);
   const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('amount');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
@@ -1991,7 +1997,7 @@ export default function POSPage() {
   })();
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
-  const addToCart = useCallback((product: PosProduct) => {
+  const addToCart = useCallback((product: PosProduct, chosenBatch?: ProductBatch) => {
     // Block out-of-stock products
     const availableQty = totalStock(product);
     if (availableQty <= 0) {
@@ -2045,9 +2051,11 @@ export default function POSPage() {
       // Default the line to the base/legacy unit
       const unitOpts     = getUnitOptions(product);
       const baseOpt      = unitOpts.find(o => o.isBase) ?? unitOpts[0];
+      // A manually-picked batch supplies its OWN cost/price — otherwise the
+      // product's usual defaults, unchanged.
       const priceToUse   = isStaffSale
-        ? (product.costCents ?? product.priceCents)
-        : baseOpt.priceCents;
+        ? (chosenBatch?.unitCostCents ?? product.costCents ?? product.priceCents)
+        : (chosenBatch?.sellingPriceCents ?? baseOpt.priceCents);
       // Seed the line discount from the selected unit (per-unit override) or the
       // product-level default. Cashier can override afterward.
       const seed         = discountSeedFromOption(baseOpt, product, appSettings?.posApplyDefaultDiscount !== false);
@@ -2064,6 +2072,7 @@ export default function POSPage() {
         itemDiscountCents: seedDiscountCents,
         unitId:        baseOpt.unitId,
         unitShortCode: baseOpt.label,
+        batchId:       chosenBatch?.id,
       }];
       // Auto-add service charge item if configured
       const svcCents = product.serviceChargeCents ?? 0;
@@ -2091,6 +2100,20 @@ export default function POSPage() {
     });
     refocusBarcode();
   }, [appSettings, refocusBarcode, isStaffSale]);
+
+  // Entry point for every "add this product" action (search grid, barcode,
+  // keyboard nav, quick-add). Routes multi-batch products through the picker
+  // on their FIRST add; re-scanning a product already in the cart just
+  // increments its existing line (same batch already chosen), so it skips
+  // the picker and calls addToCart directly, same as any other product.
+  const handleProductClick = useCallback((product: PosProduct) => {
+    const alreadyInCart = cart.some(i => i.product.id === product.id && !i.isServiceCharge);
+    if (product.isBatchTracked && !alreadyInCart) {
+      setPendingBatchProduct(product);
+    } else {
+      addToCart(product);
+    }
+  }, [addToCart, cart]);
 
   const removeFromCart = useCallback((productId: string) => {
     setCart(prev => prev.filter(i =>
@@ -2198,7 +2221,7 @@ export default function POSPage() {
     const localMatch = products.find(p => p.barcode === code || p.sku === code);
     if (localMatch) {
       sound.beep();
-      addToCart(localMatch);
+      handleProductClick(localMatch);
       focusNewItemQty(localMatch.id);
       return;
     }
@@ -2220,7 +2243,7 @@ export default function POSPage() {
 
       sound.beep();
       const posProduct = productToPosProduct(found);
-      addToCart(posProduct);
+      handleProductClick(posProduct);
       focusNewItemQty(posProduct.id);
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
@@ -2236,7 +2259,7 @@ export default function POSPage() {
       setBarcodeLoading(false);
       // Only refocus barcode if we didn't focus qty (i.e. 404 path or error)
     }
-  }, [barcodeInput, cart.length, products, addToCart, refocusBarcode, appSettings, hasOversoldItem, focusNewItemQty]);
+  }, [barcodeInput, cart.length, products, handleProductClick, refocusBarcode, appSettings, hasOversoldItem, focusNewItemQty]);
 
   // ── Grid keyboard navigation (v1.0.60) ─────────────────────────────────────────
   // Count of columns currently rendered in the auto-fill product grid, so Up/Down
@@ -2266,7 +2289,7 @@ export default function POSPage() {
       if (idx >= 0 && idx < products.length) {
         const p = products[idx];
         sound.beep();
-        addToCart(p);
+        handleProductClick(p);
         focusNewItemQty(p.id);
         // Return to a clean state: clear the name filter + grid highlight
         setSearch('');
@@ -2290,7 +2313,7 @@ export default function POSPage() {
     else return;
 
     setGridSelectedIndex(next);
-  }, [products, gridSelectedIndex, getGridColumns, addToCart, focusNewItemQty]);
+  }, [products, gridSelectedIndex, getGridColumns, handleProductClick, focusNewItemQty]);
 
   // ── Hold helpers ──────────────────────────────────────────────────────────────
   const holdBill = useCallback((label: string) => {
@@ -2537,6 +2560,7 @@ export default function POSPage() {
             unitId:         i.unitId,
             unitPriceCents: i.unitPriceCents + (i.qty > 0 ? svcTotal / i.qty : 0),
             discountCents:  i.itemDiscountCents,
+            batchId:        i.batchId,
           };
         }),
     } satisfies Parameters<typeof posApi.checkout>[0];
@@ -3113,7 +3137,7 @@ export default function POSPage() {
                     key={p.id}
                     product={p}
                     isSelected={idx === gridSelectedIndex}
-                    onAdd={() => { addToCart(p); focusNewItemQty(p.id); setSearch(''); setGridSelectedIndex(-1); }}
+                    onAdd={() => { handleProductClick(p); focusNewItemQty(p.id); setSearch(''); setGridSelectedIndex(-1); }}
                   />
                 ))}
               </div>
@@ -3782,7 +3806,7 @@ export default function POSPage() {
           onSuccess={(product) => {
             setQuickAddBarcode(null);
             sound.beep();
-            addToCart(productToPosProduct(product));
+            handleProductClick(productToPosProduct(product));
             setQuickAddToast(`"${product.name}" added. Complete details in Products page later.`);
             setTimeout(() => setQuickAddToast(null), 4000);
             refocusBarcode();
@@ -3791,6 +3815,24 @@ export default function POSPage() {
             setQuickAddBarcode(null);
             refocusBarcode();
           }}
+        />
+      )}
+
+      {/* Batch picker — mounted for every batch-tracked product on its first
+          add; resolves itself silently for 0/1 batches, or shows a picker. */}
+      {pendingBatchProduct && (
+        <BatchPickerModal
+          productId={pendingBatchProduct.id}
+          warehouseId={warehouseId}
+          productName={pendingBatchProduct.name}
+          qtyNeeded={1}
+          onSelect={(batch) => {
+            const product = pendingBatchProduct;
+            setPendingBatchProduct(null);
+            addToCart(product, batch ?? undefined);
+            focusNewItemQty(product.id);
+          }}
+          onClose={() => setPendingBatchProduct(null)}
         />
       )}
 

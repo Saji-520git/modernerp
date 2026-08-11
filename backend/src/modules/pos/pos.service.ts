@@ -3,7 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, getUnitPrice } from '../../utils/unit-converter.js';
-import { getBatchSummary, deductBatchesFEFO } from '../../utils/batch-expiry.js';
+import { getBatchSummary, deductBatchesFEFO, getBatchDetail } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { isModuleEnabled } from '../../config/modules.js';
 import { promotionsService } from '../promotions/promotions.service.js';
@@ -79,6 +79,7 @@ export const posService = {
           imageUrl: true,
           expiryDate: true,
           expiryAlertDays: true,
+          isBatchTracked: true,
           unitId: true,
           baseUnitId: true,
           purchaseUnitId: true,
@@ -128,6 +129,12 @@ export const posService = {
       select: { id: true, name: true, code: true },
       orderBy: { name: 'asc' },
     });
+  },
+
+  // ── Active batches for a product (powers the batch-picker at checkout) ────
+
+  async getProductBatches(productId: string, warehouseId: string) {
+    return getBatchDetail(productId, warehouseId);
   },
 
   // ── Checkout ───────────────────────────────────────────────────────────────
@@ -212,6 +219,24 @@ export const posService = {
       throw new HttpError(404, `Product not found or inactive: ${missing}`);
     }
 
+    // 1b. Load manually-picked batches (multi-batch products). Existence +
+    // ownership only here — the qty check needs baseQty, resolved in step 2.
+    const batchIds = [...new Set(items.filter((i) => i.batchId).map((i) => i.batchId as string))];
+    const batchMap = new Map<string, { id: string; productId: string; warehouseId: string; qty: Decimal; unitCostCents: number; sellingPriceCents: number; expiryDate: Date | null }>();
+    if (batchIds.length > 0) {
+      const batchRows = await prisma.stockBatch.findMany({ where: { id: { in: batchIds } } });
+      for (const b of batchRows) batchMap.set(b.id, b as any);
+      for (const item of items) {
+        if (!item.batchId) continue;
+        const batch = batchMap.get(item.batchId);
+        const product = products.find((p) => p.id === item.productId);
+        if (!batch) throw new HttpError(400, `Selected batch not found for "${product?.name ?? item.productId}"`);
+        if (batch.productId !== item.productId || batch.warehouseId !== warehouseId) {
+          throw new HttpError(400, `Selected batch does not match "${product?.name ?? item.productId}" / this warehouse`);
+        }
+      }
+    }
+
     // 2. Resolve base quantities (apply unit conversion if unitId is provided)
     const resolvedItems = await Promise.all(
       items.map(async (item) => {
@@ -287,6 +312,27 @@ export const posService = {
           : `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${item.baseQty}`;
         throw new HttpError(400, msg);
       }
+
+      // Manually-picked batch: qty is capped to that specific batch, not the
+      // product's aggregate stock — reject rather than silently spilling into
+      // another batch, so one cart line always means one cost + one price.
+      if (item.batchId) {
+        const batch = batchMap.get(item.batchId)!;
+        const batchQty = Number(batch.qty);
+        if (batchQty < item.baseQty) {
+          throw new HttpError(
+            400,
+            `Selected batch for "${product.name}" only has ${batchQty} available (requested ${item.baseQty}). Pick a different batch or reduce the quantity.`,
+          );
+        }
+        if (batch.expiryDate && batch.expiryDate <= new Date()) {
+          if (expiredStockPolicy === 'BLOCK') {
+            throw new HttpError(400, `Selected batch for "${product.name}" is expired and cannot be sold.`);
+          } else if (expiredStockPolicy === 'WARN') {
+            checkoutWarnings.push(`"${product.name}" — selected batch is expired, sold with manager approval`);
+          }
+        }
+      }
     }
 
     // 4. Compute line totals
@@ -304,10 +350,19 @@ export const posService = {
       resolvedItems.map(async (item) => {
         const product = products.find((p) => p.id === item.productId)!;
 
-        // Resolve price for the unit being used
+        // Resolve price for the unit being used. A manually-picked batch
+        // supplies its OWN selling price (not the product's default) — every
+        // cashier can select a batch regardless of adjust_sale_price, since
+        // picking one isn't a manual override, it's the system's pre-set
+        // price for that specific lot.
         let unitPrice: number;
         if (canAdjustPrice && item.unitPriceCents !== undefined) {
           unitPrice = item.unitPriceCents;
+        } else if (item.batchId) {
+          const batch = batchMap.get(item.batchId)!;
+          unitPrice = (item.unitId && item.unitId !== item.baseUnitId)
+            ? await getUnitPrice(item.productId, item.unitId, batch.sellingPriceCents, prisma)
+            : batch.sellingPriceCents;
         } else if (item.unitId && item.unitId !== item.baseUnitId) {
           unitPrice = await getUnitPrice(item.productId, item.unitId, product.priceCents, prisma);
         } else {
@@ -365,6 +420,7 @@ export const posService = {
         lineTotalCents: pl.lineSubtotal, // gross (unitPrice × qty, before discount)
         unitId:         pl.item.unitId ?? null,
         baseQty:        pl.item.baseQty !== pl.item.qty ? pl.item.baseQty : null,
+        batchId:        pl.item.batchId ?? null,
       };
     });
 
@@ -506,33 +562,56 @@ export const posService = {
           );
         }
 
-        // Deduct from StockBatch rows in FEFO order (earliest expiry first).
-        // If no batch rows exist (pre-batch-tracking stock), this is a no-op and
-        // returns 0 units deducted.
-        const deductedFromBatches = await deductBatchesFEFO(
-          tx, item.productId, warehouseId, item.baseQty, expiredStockPolicy !== 'BLOCK',
-        );
-
-        if (deductedFromBatches > 0) {
-          // Batch-tracked product: batches are the source of truth. Recompute the
-          // aggregate Stock.qty from the (already-decremented) batch sum so it can
-          // never go negative. (Replaces the old `decrement` upsert whose `create`
-          // branch wrote a negative qty — a bug.)
+        if (item.batchId) {
+          // Manually-picked batch: deduct from exactly that row, re-checked
+          // under lock (the pre-transaction check above can't see concurrent
+          // sales of the same batch). No FEFO fallback — one cart line means
+          // one specific batch, full stop.
+          const batchLocked = await tx.$queryRaw<{ qty: number }[]>`
+            SELECT qty::float AS qty FROM "stock_batches" WHERE id = ${item.batchId} FOR UPDATE
+          `;
+          const lockedBatchQty = batchLocked[0]?.qty ?? 0;
+          if (lockedBatchQty < item.baseQty) {
+            const product = products.find((p) => p.id === item.productId)!;
+            throw new HttpError(
+              400,
+              `Selected batch for "${product.name}" no longer has enough stock (available: ${lockedBatchQty}, requested: ${item.baseQty}).`,
+            );
+          }
+          await tx.stockBatch.update({
+            where: { id: item.batchId },
+            data:  { qty: { decrement: item.baseQty } },
+          });
           await recomputeStockQty(tx, item.productId, warehouseId);
         } else {
-          // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
-          // so the batch sum is 0 and recompute would WIPE legitimate stock.
-          // Keep the legacy aggregate decrement, floored at 0.
-          const cur = await tx.stock.findUnique({
-            where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
-            select: { qty: true },
-          });
-          const newQty = Math.max(0, Number(cur?.qty ?? 0) - Number(item.baseQty));
-          await tx.stock.upsert({
-            where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
-            update: { qty: newQty },
-            create: { productId: item.productId, warehouseId, qty: 0 },
-          });
+          // Deduct from StockBatch rows in FEFO order (earliest expiry first).
+          // If no batch rows exist (pre-batch-tracking stock), this is a no-op and
+          // returns 0 units deducted.
+          const deductedFromBatches = await deductBatchesFEFO(
+            tx, item.productId, warehouseId, item.baseQty, expiredStockPolicy !== 'BLOCK',
+          );
+
+          if (deductedFromBatches > 0) {
+            // Batch-tracked product: batches are the source of truth. Recompute the
+            // aggregate Stock.qty from the (already-decremented) batch sum so it can
+            // never go negative. (Replaces the old `decrement` upsert whose `create`
+            // branch wrote a negative qty — a bug.)
+            await recomputeStockQty(tx, item.productId, warehouseId);
+          } else {
+            // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
+            // so the batch sum is 0 and recompute would WIPE legitimate stock.
+            // Keep the legacy aggregate decrement, floored at 0.
+            const cur = await tx.stock.findUnique({
+              where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
+              select: { qty: true },
+            });
+            const newQty = Math.max(0, Number(cur?.qty ?? 0) - Number(item.baseQty));
+            await tx.stock.upsert({
+              where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
+              update: { qty: newQty },
+              create: { productId: item.productId, warehouseId, qty: 0 },
+            });
+          }
         }
         await tx.stockMovement.create({
           data: {
@@ -542,6 +621,7 @@ export const posService = {
             qty:     -item.baseQty,
             refType: 'Sale',
             refId:   created.id,
+            batchId: item.batchId ?? null,
             note:    `POS checkout ${number}`,
           },
         });

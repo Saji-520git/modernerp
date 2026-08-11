@@ -339,6 +339,7 @@ model Supplier {
   purchaseReturns    PurchaseReturn[]
   creditLedger       SupplierCreditLedger[]
   defaultForProducts Product[]         @relation("ProductDefaultSupplier")
+  stockBatches       StockBatch[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -471,6 +472,11 @@ model SaleLine {
   unitId   String?
   unit     Unit?    @relation(fields: [unitId], references: [id])
   baseQty  Decimal? @db.Decimal(18, 6)  // qty converted to base unit
+
+  // Which StockBatch this line was sold from (manual batch pick at POS/Invoice).
+  // Null = no batch chosen — checkout fell back to automatic FEFO, unchanged.
+  batchId  String?
+  batch    StockBatch? @relation(fields: [batchId], references: [id])
 }
 
 model SaleReturn {
@@ -629,19 +635,24 @@ model Payment {
 // ─── Stock Batches (one row per confirmed purchase line) ──────────────────────
 
 model StockBatch {
-  id             String    @id @default(cuid())
-  productId      String
-  warehouseId    String
-  purchaseLineId String?   // which purchase line created this batch
-  qty            Decimal   @db.Decimal(18, 4)
-  unitCostCents  Int       @default(0)   // this batch's own cost, per base unit — G1
-  batchNumber    String?   // supplier/manufacturer batch/lot number
-  expiryDate     DateTime?
-  receivedAt     DateTime  @default(now())
-  createdAt      DateTime  @default(now())
+  id                String    @id @default(cuid())
+  productId         String
+  warehouseId       String
+  purchaseLineId    String?   // which purchase line created this batch
+  qty               Decimal   @db.Decimal(18, 4)
+  unitCostCents     Int       @default(0)   // this batch's own cost, per base unit — G1
+  sellingPriceCents Int       @default(0)   // this batch's own selling price, per base unit
+  supplierId        String?   // denormalized from the receiving PO — lets batch matching
+                               // (cost + price + supplier) run as a flat lookup, no joins
+  batchNumber       String?   // supplier/manufacturer batch/lot number
+  expiryDate        DateTime?
+  receivedAt        DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
-  product    Product   @relation(fields: [productId],   references: [id])
-  warehouse  Warehouse @relation(fields: [warehouseId], references: [id])
+  product    Product    @relation(fields: [productId],   references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  supplier   Supplier?  @relation(fields: [supplierId],  references: [id])
+  saleLines  SaleLine[]
 
   @@map("stock_batches")
 }
@@ -772,6 +783,7 @@ model PurchaseReceiptLine {
   product        Product         @relation(fields: [productId], references: [id])
   qty            Decimal         @db.Decimal(18, 4)
   unitCostCents  Int             @default(0)   // actual cost per purchase unit at receipt — G1
+  sellingPriceCents Int?                        // selling price set for this receipt's batch(es)
   damagedQty     Decimal         @default(0) @db.Decimal(18, 4)   // damaged/rejected at receipt — G1
   damagedAccepted    Boolean     @default(false)   // accept damaged (pay for it) vs reject (unpaid) — G3
   damagedUnitCostCents Int?                        // negotiated cost per damaged unit when accepted — G3

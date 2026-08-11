@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { computeWAC } from '../../utils/cost.js';
+import { findOrCreateBatch } from '../../utils/batch-matching.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ export interface ReceiptLineInput {
   purchaseLineId: string;
   qty:            number;      // GOOD qty received (enters stock). Same unit as the PO line.
   unitCostCents?: number;      // actual cost per purchase unit at receipt; defaults to the PO line cost — G2
+  sellingPriceCents?: number;  // selling price for this batch; defaults to the product's current price
   damagedQty?:    number;      // damaged qty — recorded only, NOT added to stock — G2
   damagedAccepted?:     boolean; // accept damaged (pay for it) vs reject (unpaid, default) — G3
   damagedUnitCostCents?: number; // negotiated cost per damaged unit when accepted — G3
@@ -96,6 +98,7 @@ export async function createReceipt(
       where: { id: { in: receiptProductIds } },
       select: {
         id: true,
+        priceCents: true,
         baseUnit: { select: { type: true, allowDecimal: true } },
         unit:     { select: { type: true, allowDecimal: true } },
       },
@@ -168,6 +171,13 @@ export async function createReceipt(
       const costPerBaseCents = factor.isZero()
         ? receiptUnitCost
         : Math.round(receiptUnitCost / factor.toNumber());
+      // Selling price at receipt (defaults to the product's current price),
+      // converted to its per-BASE-unit equivalent the same way cost is —
+      // this batch's own price, shown/used when THIS batch is sold.
+      const receiptSellPrice = rl.sellingPriceCents ?? receiptLineMeta?.priceCents ?? 0;
+      const sellPricePerBaseCents = factor.isZero()
+        ? receiptSellPrice
+        : Math.round(receiptSellPrice / factor.toNumber());
       // Damaged pricing (G3): accept only makes sense with damaged qty > 0.
       const damagedAccepted  = (rl.damagedAccepted ?? false) && damagedQtyDec.greaterThan(0);
       // Cost per accepted damaged unit — defaults to the good receipt cost.
@@ -183,6 +193,7 @@ export async function createReceipt(
           productId:     poLine.productId,
           qty:           qtyDec,
           unitCostCents: receiptUnitCost,
+          sellingPriceCents: receiptSellPrice,
           damagedQty:    damagedQtyDec,
           damagedAccepted,
           damagedUnitCostCents: damagedUnitCost,
@@ -234,17 +245,19 @@ export async function createReceipt(
         },
       });
 
-      // 2d. Stock batch (FEFO expiry tracking) — stamped with its own cost (G2)
-      await (tx as any).stockBatch.create({
-        data: {
-          productId:      poLine.productId,
-          warehouseId:    purchase.warehouseId,
-          purchaseLineId: rl.purchaseLineId,
-          qty:            baseGood,
-          unitCostCents:  costPerBaseCents,
-          batchNumber:    rl.batchNumber ?? null,
-          expiryDate:     rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
-        },
+      // 2d. Stock batch (FEFO expiry tracking) — stamped with its own cost,
+      // selling price, and supplier. Merges into an existing open batch when
+      // all three already match; otherwise starts a new one.
+      await findOrCreateBatch(tx, {
+        productId:         poLine.productId,
+        warehouseId:       purchase.warehouseId,
+        purchaseLineId:    rl.purchaseLineId,
+        qty:               baseGood,
+        unitCostCents:     costPerBaseCents,
+        sellingPriceCents: sellPricePerBaseCents,
+        supplierId:        purchase.supplierId,
+        batchNumber:       rl.batchNumber ?? null,
+        expiryDate:        rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
       });
 
       // 2e. Update PurchaseLine.receivedQty (GOOD qty received against the order —

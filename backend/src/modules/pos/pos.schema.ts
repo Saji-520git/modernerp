@@ -8,6 +8,7 @@ export const checkoutLineSchema = z.object({
   unitPriceCents: z.number().int().min(0).optional(), // price override (requires adjust_sale_price perm)
   unitId:         z.string().optional(),              // unit used for this line (if omitted, uses base unit)
   discountCents:  z.number().int().min(0).default(0), // per-line discount in cents
+  batchId:        z.string().optional(),              // manually-picked StockBatch (multi-batch products)
 });
 
 export const checkoutSchema = z.object({

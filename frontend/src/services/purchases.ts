@@ -128,6 +128,7 @@ export interface CreateReceiptLineInput {
   purchaseLineId: string;
   qty:            number;       // good qty received (enters stock)
   unitCostCents?: number;       // actual cost per purchase unit at receipt — G2
+  sellingPriceCents?: number;   // selling price for this batch; defaults to the product's current price
   damagedQty?:    number;       // damaged qty (recorded, not stocked) — G2
   damagedAccepted?:     boolean; // accept damaged (pay) vs reject (unpaid, default) — G3
   damagedUnitCostCents?: number; // negotiated cost per damaged unit when accepted — G3

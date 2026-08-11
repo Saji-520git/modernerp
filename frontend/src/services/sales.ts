@@ -33,6 +33,7 @@ export interface SaleProduct {
   priceCents: number;
   taxPercent: number;
   stockQty: number;
+  isBatchTracked?: boolean;
   unit: SaleUnitRef;
   unitId?: string;
   baseUnitId?: string | null;
@@ -104,6 +105,7 @@ export interface SaleLineInput {
   taxPercent: number;
   discountCents: number;
   unitId?: string;
+  batchId?: string; // manually-picked StockBatch (multi-batch products)
 }
 
 export interface CreateSalePayload {

@@ -5,6 +5,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { computeWAC } from '../../utils/cost.js';
+import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 
@@ -306,6 +307,7 @@ export const purchaseService = {
           id: true,
           baseUnitId: true,
           unitId: true,
+          priceCents: true,
           baseUnit: { select: { type: true, allowDecimal: true } },
           unit:     { select: { type: true, allowDecimal: true } },
         },
@@ -408,16 +410,21 @@ export const purchaseService = {
         });
 
         // Create stock batch row — stamped with its own per-base-unit cost (G1),
-        // and tracks expiry per batch.
-        await (tx as any).stockBatch.create({
-          data: {
-            productId:      line.productId,
-            warehouseId:    purchase.warehouseId,
-            purchaseLineId: line.id,
-            qty:            baseQty,
-            unitCostCents:  costPerBaseCents,
-            expiryDate:     (line as any).expiryDate ?? null,
-          },
+        // selling price, and supplier; tracks expiry per batch. This quick
+        // "confirm PO" path has no per-line form, so the selling price defaults
+        // to the product's current price (customizing it happens via the
+        // explicit GRN "Record Delivery" form instead). Merges into an existing
+        // open batch when cost+price+supplier already match.
+        const confirmSellPriceCents = confirmPurchaseLineMeta?.priceCents ?? 0;
+        await findOrCreateBatch(tx, {
+          productId:         line.productId,
+          warehouseId:       purchase.warehouseId,
+          purchaseLineId:    line.id,
+          qty:               baseQty,
+          unitCostCents:     costPerBaseCents,
+          sellingPriceCents: confirmSellPriceCents,
+          supplierId:        purchase.supplierId,
+          expiryDate:        (line as any).expiryDate ?? null,
         });
 
         // Recompute aggregate Stock.qty from the batch rows. MUST run AFTER the

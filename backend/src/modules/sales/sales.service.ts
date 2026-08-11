@@ -44,6 +44,7 @@ export const salesService = {
         sku: true,
         priceCents: true,
         taxPercent: true,
+        isBatchTracked: true,
         unitId: true,
         baseUnitId: true,
         salesUnitId: true,
@@ -242,6 +243,7 @@ export const salesService = {
             lineTotalCents: l.lineTotalCents,
             unitId: l.unitId ?? null,
             baseQty: l.baseQty !== l.qty ? l.baseQty : null,
+            batchId: l.batchId ?? null,
           })),
         },
       },
@@ -281,6 +283,27 @@ export const salesService = {
     }
 
     logger.info({ saleId: id, number: sale.number, lines: sale.lines.length }, 'Confirming invoice');
+
+    // Manually-picked batches (multi-batch products) — validate existence and
+    // ownership up front; qty/expiry are re-checked under lock inside the
+    // transaction below (mirrors POS checkout's batchMap pattern).
+    const saleBatchIdSet = new Set<string>();
+    for (const l of sale.lines) {
+      if (l.batchId) saleBatchIdSet.add(l.batchId as string);
+    }
+    const saleBatchIds: string[] = Array.from(saleBatchIdSet);
+    const saleBatchMap = new Map<string, { id: string; productId: string; warehouseId: string; qty: any; expiryDate: Date | null }>();
+    if (saleBatchIds.length > 0) {
+      const batchRows = await prisma.stockBatch.findMany({ where: { id: { in: saleBatchIds } } });
+      for (const b of batchRows) saleBatchMap.set(b.id, b as any);
+      for (const line of sale.lines) {
+        if (!(line as any).batchId) continue;
+        const batch = saleBatchMap.get((line as any).batchId);
+        if (!batch || batch.productId !== line.productId || batch.warehouseId !== sale.warehouseId) {
+          throw new HttpError(400, `Selected batch is invalid for one of this invoice's lines — re-select the batch and try again.`);
+        }
+      }
+    }
 
     // CHUNK 22a (v1.0.73): enforce integer qty for COUNT products on sale
     // confirmation. Count-ness is resolved from the BASE unit (`baseUnit ??
@@ -331,6 +354,25 @@ export const salesService = {
             `Insufficient stock for "${product?.name}": available ${available}, needed ${needed}`,
           );
         }
+
+        // Manually-picked batch: qty is capped to that specific batch, not the
+        // product's aggregate stock (mirrors POS checkout).
+        const lineBatchId = (line as any).batchId as string | null;
+        if (lineBatchId) {
+          const batch = saleBatchMap.get(lineBatchId)!;
+          const batchQty = Number(batch.qty);
+          if (batchQty < needed) {
+            const product = await tx.product.findUnique({ where: { id: line.productId }, select: { name: true } });
+            throw new HttpError(
+              400,
+              `Selected batch for "${product?.name}" only has ${batchQty} available (requested ${needed}). Pick a different batch or reduce the quantity.`,
+            );
+          }
+          if (batch.expiryDate && batch.expiryDate <= new Date()) {
+            const product = await tx.product.findUnique({ where: { id: line.productId }, select: { name: true } });
+            throw new HttpError(400, `Selected batch for "${product?.name}" is expired and cannot be sold.`);
+          }
+        }
       }
 
       // Confirm the invoice
@@ -344,26 +386,46 @@ export const salesService = {
         // and line.qty IS the base qty (null baseQty → qty is base). includeExpired
         // = false (BLOCK default — confirmSale has no expiredStockPolicy in scope).
         const baseQty = Number(line.baseQty ?? line.qty);
-        const deducted = await deductBatchesFEFO(tx, line.productId, sale.warehouseId, baseQty, false);
-        if (deducted > 0) {
-          // Batch-tracked product: batches are the source of truth. Recompute the
-          // aggregate from the (already-decremented) batch sum so it can never go
-          // negative. Replaces the old raw `decrement: line.qty` upsert.
+        const lineBatchId = (line as any).batchId as string | null;
+
+        if (lineBatchId) {
+          // Manually-picked batch: deduct from exactly that row, re-checked
+          // under lock (mirrors POS checkout — no FEFO fallback).
+          const batchLocked = await tx.$queryRaw<{ qty: number }[]>`
+            SELECT qty::float AS qty FROM "stock_batches" WHERE id = ${lineBatchId} FOR UPDATE
+          `;
+          const lockedBatchQty = batchLocked[0]?.qty ?? 0;
+          if (lockedBatchQty < baseQty) {
+            const product = await tx.product.findUnique({ where: { id: line.productId }, select: { name: true } });
+            throw new HttpError(
+              400,
+              `Selected batch for "${product?.name}" no longer has enough stock (available: ${lockedBatchQty}, requested: ${baseQty}).`,
+            );
+          }
+          await tx.stockBatch.update({ where: { id: lineBatchId }, data: { qty: { decrement: baseQty } } });
           await recomputeStockQty(tx, line.productId, sale.warehouseId);
         } else {
-          // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
-          // so the batch sum is 0 and recompute would WIPE legitimate stock.
-          // Keep the legacy aggregate decrement, floored at 0.
-          const cur = await tx.stock.findUnique({
-            where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
-            select: { qty: true },
-          });
-          const newQty = Math.max(0, Number(cur?.qty ?? 0) - baseQty);
-          await tx.stock.upsert({
-            where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
-            update: { qty: newQty },
-            create: { productId: line.productId, warehouseId: sale.warehouseId, qty: 0 },
-          });
+          const deducted = await deductBatchesFEFO(tx, line.productId, sale.warehouseId, baseQty, false);
+          if (deducted > 0) {
+            // Batch-tracked product: batches are the source of truth. Recompute the
+            // aggregate from the (already-decremented) batch sum so it can never go
+            // negative. Replaces the old raw `decrement: line.qty` upsert.
+            await recomputeStockQty(tx, line.productId, sale.warehouseId);
+          } else {
+            // No batch rows existed (pre-batch-tracking stock) — FEFO was a no-op,
+            // so the batch sum is 0 and recompute would WIPE legitimate stock.
+            // Keep the legacy aggregate decrement, floored at 0.
+            const cur = await tx.stock.findUnique({
+              where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
+              select: { qty: true },
+            });
+            const newQty = Math.max(0, Number(cur?.qty ?? 0) - baseQty);
+            await tx.stock.upsert({
+              where:  { productId_warehouseId: { productId: line.productId, warehouseId: sale.warehouseId } },
+              update: { qty: newQty },
+              create: { productId: line.productId, warehouseId: sale.warehouseId, qty: 0 },
+            });
+          }
         }
         await tx.stockMovement.create({
           data: {
@@ -376,6 +438,7 @@ export const salesService = {
             qty:         line.baseQty ?? line.qty,
             refType:     'Sale',
             refId:       id,
+            batchId:     lineBatchId,
             note:        `Invoice ${sale.number}`,
           },
         });
@@ -464,6 +527,7 @@ export const salesService = {
               lineTotalCents: Math.round(l.qty * l.unitPriceCents) - (l.discountCents ?? 0),
               unitId:        l.unitId ?? null,
               baseQty:       l.baseQty !== l.qty ? l.baseQty : null,
+              batchId:       l.batchId ?? null,
             })),
           },
         },

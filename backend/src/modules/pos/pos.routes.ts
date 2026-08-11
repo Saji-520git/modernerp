@@ -9,6 +9,7 @@ router.use(requireAuth);
 
 router.get('/warehouses', ctrl.getWarehouses);
 router.get('/products', requirePermission('view_products'), ctrl.searchProducts);
+router.get('/products/:productId/batches', requirePermission('view_products'), h(ctrl.getProductBatches));
 router.get('/sales', requirePermission('view_sales'), ctrl.listSales);
 router.get('/receipt/:id', requirePermission('view_sales'), ctrl.getReceipt);
 

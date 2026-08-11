@@ -12,6 +12,12 @@ export const getWarehouses: RequestHandler = async (_req, res) => {
   res.json(await posService.getWarehouses());
 };
 
+export const getProductBatches: RequestHandler = async (req, res) => {
+  const warehouseId = req.query.warehouseId as string | undefined;
+  if (!warehouseId) throw new HttpError(400, 'warehouseId is required');
+  res.json(await posService.getProductBatches(req.params.productId, warehouseId));
+};
+
 export const checkout: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const input = checkoutSchema.parse(req.body);

@@ -9,6 +9,7 @@ export const saleLineInputSchema = z.object({
   taxPercent: z.number().min(0).max(100).default(0),
   discountCents: z.number().int().nonnegative().default(0),
   unitId: z.string().optional(),
+  batchId: z.string().optional(), // manually-picked StockBatch (multi-batch products)
 });
 
 // ─── Create invoice ───────────────────────────────────────────────────────────

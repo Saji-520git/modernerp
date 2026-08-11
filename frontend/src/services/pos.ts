@@ -37,6 +37,7 @@ export interface PosProduct {
   imageUrl: string | null;
   expiryDate: string | null;
   expiryAlertDays: number;
+  isBatchTracked: boolean;
   unitId:        string;
   baseUnitId:    string | null;
   purchaseUnitId:string | null;
@@ -68,6 +69,22 @@ export interface CheckoutLine {
   unitPriceCents?: number; // price override — requires adjust_sale_price permission
   unitId?:        string;  // unit used for this line; if omitted, uses base unit
   discountCents?: number;  // per-line discount amount in cents
+  batchId?:       string;  // manually-picked StockBatch (multi-batch products)
+}
+
+// ─── Batch picker (multi-batch products) ───────────────────────────────────────
+
+export interface ProductBatch {
+  id:                string;
+  qty:               number;
+  unitCostCents:     number;
+  sellingPriceCents: number;
+  supplierId:        string | null;
+  supplierName:      string | null;
+  batchNumber:       string | null;
+  expiryDate:        string | null;
+  receivedAt:        string;
+  status:            'expired' | 'expiring_soon' | 'ok' | 'no_expiry';
 }
 
 export type AllPaymentMethods = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'QR_PAY' | 'CREDIT';
@@ -208,6 +225,9 @@ export const posApi = {
     pageSize?: number;
   }): Promise<ProductsResponse> =>
     api.get('/pos/products', { params }).then((r) => r.data),
+
+  getProductBatches: (productId: string, warehouseId: string): Promise<ProductBatch[]> =>
+    api.get(`/pos/products/${productId}/batches`, { params: { warehouseId } }).then((r) => r.data),
 
   checkout: (payload: CheckoutPayload): Promise<{ receipt: Receipt; warnings?: string[]; promotions?: AppliedPromotion[]; loyalty?: LoyaltyResult }> =>
     // Longer timeout than the global default: the bundled offline PostgreSQL

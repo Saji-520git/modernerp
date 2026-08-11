@@ -23,6 +23,8 @@ import {
 import { useAppSettings } from '../../context/SettingsContext';
 import { useModule } from '../../hooks/useModule';
 import { useAuthStore } from '../../store/authStore';
+import BatchPickerModal from '../../components/common/BatchPickerModal';
+import type { ProductBatch } from '../../services/pos';
 import { isAdminRole, isManagerOrAbove } from '../../utils/roles';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
 
@@ -79,6 +81,7 @@ interface LineForm {
   taxPercent: string;
   discountCents: string;
   unitId?: string;   // selected sales unit (undefined = base unit)
+  batchId?: string;  // manually-picked StockBatch (multi-batch products)
 }
 
 // ─── Unit options ──────────────────────────────────────────────────────────────
@@ -664,10 +667,13 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
           qty: String(Number(l.qty)), unitPrice: (l.unitPriceCents / 100).toFixed(2),
           taxPercent: String(l.taxPercent), discountCents: String(l.discountCents ?? 0),
           unitId: l.unitId ?? undefined,
+          batchId: l.batchId ?? undefined,
         }))
       : [{ key: 0, productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }],
   );
   const [error, setError]             = useState('');
+  // Line awaiting a batch pick (multi-batch product just selected in the dropdown)
+  const [pendingBatchLine, setPendingBatchLine] = useState<{ key: number; productId: string; productName: string } | null>(null);
 
   const { data: warehouses = [] } = useQuery({ queryKey: ['warehouses-for-sale'], queryFn: () => inventoryApi.getWarehouses() });
   const { data: customers  = [] } = useQuery({ queryKey: ['customers-for-sale'], queryFn: () => salesApi.listCustomers() });
@@ -675,23 +681,42 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
 
   const addLine = () => setLines(p => [...p, { key: Date.now(), productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }]);
   const removeLine = (key: number) => setLines(p => p.filter(l => l.key !== key));
+
+  // Finalizes a product selection on a line — with an optional manually-picked
+  // batch, which supplies its own selling price. Used both for plain product
+  // changes (no batch) and once the batch picker resolves.
+  const selectProduct = (key: number, productId: string, batch?: ProductBatch) => {
+    setLines(p => p.map(l => {
+      if (l.key !== key) return l;
+      const pr = products.find(x => x.id === productId);
+      if (!pr) return { ...l, productId, unitId: undefined, batchId: undefined };
+      const opts = getSaleUnitOptions(pr);
+      const base = opts.find(o => o.isBase);
+      return {
+        ...l,
+        productId,
+        unitId: undefined,
+        unitPrice: batch ? (batch.sellingPriceCents / 100).toFixed(2) : ((base?.priceCents ?? pr.priceCents) / 100).toFixed(2),
+        taxPercent: String(pr.taxPercent),
+        batchId: batch?.id,
+      };
+    }));
+  };
+
+  // Product dropdown entry point — routes multi-batch products through the
+  // picker first; everything else finalizes immediately, unchanged.
+  const handleProductSelect = (key: number, productId: string) => {
+    const pr = products.find(x => x.id === productId);
+    if (pr?.isBatchTracked && productId) {
+      setPendingBatchLine({ key, productId, productName: pr.name });
+    } else {
+      selectProduct(key, productId);
+    }
+  };
+
   const updateLine = (key: number, field: keyof LineForm, value: string) =>
     setLines(p => p.map(l => {
       if (l.key !== key) return l;
-      if (field === 'productId') {
-        // Product change → reset unit to base and price to the base-unit price.
-        const pr = products.find(x => x.id === value);
-        if (!pr) return { ...l, productId: value, unitId: undefined };
-        const opts = getSaleUnitOptions(pr);
-        const base = opts.find(o => o.isBase);
-        return {
-          ...l,
-          productId: value,
-          unitId: undefined,
-          unitPrice: ((base?.priceCents ?? pr.priceCents) / 100).toFixed(2),
-          taxPercent: String(pr.taxPercent),
-        };
-      }
       if (field === 'unitId') {
         // Unit change → auto-fill price from the selected unit option (Flag B:
         // frontend price authority only; backend still trusts submitted price).
@@ -714,6 +739,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
       taxPercent: parseFloat(l.taxPercent) || 0,
       discountCents: parseInt(l.discountCents) || 0,
       unitId: l.unitId || undefined,
+      batchId: l.batchId || undefined,
     })),
   });
 
@@ -793,7 +819,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
                 return (
                 <div key={l.key} className="grid grid-cols-12 gap-2 items-center">
                   <div className="col-span-3">
-                    <select value={l.productId} onChange={e => updateLine(l.key, 'productId', e.target.value)}
+                    <select value={l.productId} onChange={e => handleProductSelect(l.key, e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                       <option value="">— Product —</option>
                       {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -844,6 +870,23 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
           </button>
         </div>
       </div>
+
+      {/* Batch picker — mounted when a multi-batch product is picked in the
+          line dropdown; resolves itself silently for 0/1 batches. */}
+      {pendingBatchLine && (
+        <BatchPickerModal
+          productId={pendingBatchLine.productId}
+          warehouseId={warehouseId}
+          productName={pendingBatchLine.productName}
+          qtyNeeded={1}
+          onSelect={(batch) => {
+            const { key, productId } = pendingBatchLine;
+            setPendingBatchLine(null);
+            selectProduct(key, productId, batch ?? undefined);
+          }}
+          onClose={() => setPendingBatchLine(null)}
+        />
+      )}
     </div>
   );
 }
