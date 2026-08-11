@@ -1631,6 +1631,23 @@ async function fetchLogoAsBase64(url: string, token: string | null): Promise<str
   }
 }
 
+// ─── Resizable products/cart split ────────────────────────────────────────────
+
+const PANEL_WIDTH_KEY       = 'pos_left_panel_width';
+const MIN_LEFT_PANEL_WIDTH  = 380;
+const MIN_RIGHT_PANEL_WIDTH = 420;
+const PANEL_HANDLE_WIDTH    = 6;
+const DEFAULT_PANEL_RATIO   = 0.46;
+
+// One clamp shared by dragging and by window resizes, so the split can never
+// leave a panel unusable. If the window is too narrow to satisfy both minimums
+// the cart wins — a cashier needs the totals more than the product grid — with
+// a hard floor so the products panel never collapses to nothing.
+function clampPanelWidth(proposed: number, containerWidth: number): number {
+  const maxLeft = containerWidth - MIN_RIGHT_PANEL_WIDTH - PANEL_HANDLE_WIDTH;
+  return Math.round(Math.max(Math.min(Math.max(proposed, MIN_LEFT_PANEL_WIDTH), maxLeft), 240));
+}
+
 // ─── Main POSPage ─────────────────────────────────────────────────────────────
 
 export default function POSPage() {
@@ -1685,6 +1702,8 @@ export default function POSPage() {
   const whDropdownRef   = useRef<HTMLDivElement>(null);
   // Grid container for keyboard navigation of no-barcode products (v1.0.60)
   const gridRef         = useRef<HTMLDivElement>(null);
+  // Products/cart panel container — measured to clamp the draggable divider
+  const panelContainerRef = useRef<HTMLDivElement>(null);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -1700,6 +1719,75 @@ export default function POSPage() {
   const [selectedBrand, setSelectedBrand]       = useState<string | null>(null);
   // Highlighted product card index for keyboard grid navigation (v1.0.60; -1 = none)
   const [gridSelectedIndex, setGridSelectedIndex] = useState<number>(-1);
+
+  // ── Draggable products/cart divider ─────────────────────────────────────────
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    return saved > 0 ? saved : Math.round(window.innerWidth * DEFAULT_PANEL_RATIO);
+  });
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
+
+  // Shared by mouse and touch. Only mousedown is prevented — preventing
+  // touchstart would also kill the synthesized tap events on the handle.
+  const handlePanelResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (e.type === 'mousedown') e.preventDefault();
+    setIsResizingPanels(true);
+  }, []);
+
+  // Drag tracking — attaches to window so the drag keeps working even if the
+  // pointer slips off the thin handle. Clamped to keep both panels usable.
+  // Touch is supported too: POS terminals are frequently touchscreens.
+  useEffect(() => {
+    if (!isResizingPanels) return;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const moveTo = (clientX: number) => {
+      const rect = panelContainerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setLeftPanelWidth(clampPanelWidth(clientX - rect.left, rect.width));
+    };
+    const handleMouseMove = (e: MouseEvent) => moveTo(e.clientX);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();   // stop the page panning under the finger
+      moveTo(e.touches[0].clientX);
+    };
+    const handleEnd = () => setIsResizingPanels(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('touchcancel', handleEnd);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [isResizingPanels]);
+
+  // Re-clamp when the window changes size, and once on mount — a width saved on
+  // a wide monitor must not squeeze the cart when restored on a smaller screen.
+  useEffect(() => {
+    const reclamp = () => {
+      const rect = panelContainerRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0) return;
+      setLeftPanelWidth(prev => clampPanelWidth(prev, rect.width));
+    };
+    reclamp();
+    window.addEventListener('resize', reclamp);
+    return () => window.removeEventListener('resize', reclamp);
+  }, []);
+
+  // Persist the chosen split once a drag ends, so it survives a reload.
+  useEffect(() => {
+    if (isResizingPanels) return;
+    localStorage.setItem(PANEL_WIDTH_KEY, String(leftPanelWidth));
+  }, [isResizingPanels, leftPanelWidth]);
+
   const CART_KEY = 'pos_cart_draft';
   const [cart, setCart]                         = useState<CartItem[]>(() => {
     try {
@@ -3011,11 +3099,13 @@ export default function POSPage() {
       </header>
 
       {/* ═══════════════════════════════════════════════════════════════
-          MAIN: Left 60% + Right 40%
+          MAIN: products | drag handle | cart — split is user-resizable
+          and remembered across sessions (localStorage).
       ═══════════════════════════════════════════════════════════════ */}
       <div
+        ref={panelContainerRef}
         className="overflow-hidden"
-        style={{ display: 'grid', gridTemplateColumns: '46fr 54fr' }}
+        style={{ display: 'grid', gridTemplateColumns: `${leftPanelWidth}px ${PANEL_HANDLE_WIDTH}px 1fr` }}
       >
 
         {/* ─── LEFT PANEL: products ─────────────────────────────────── */}
@@ -3203,6 +3293,24 @@ export default function POSPage() {
               </button>
             </div>
           </footer>
+        </div>
+
+        {/* ─── DRAG HANDLE ──────────────────────────────────────────── */}
+        <div
+          onMouseDown={handlePanelResizeStart}
+          onTouchStart={handlePanelResizeStart}
+          onDoubleClick={() => {
+            const rect = panelContainerRef.current?.getBoundingClientRect();
+            if (rect) setLeftPanelWidth(clampPanelWidth(Math.round(rect.width * DEFAULT_PANEL_RATIO), rect.width));
+          }}
+          title="Drag to resize · double-click to reset"
+          style={{ touchAction: 'none' }}
+          className={`group relative cursor-col-resize select-none ${isResizingPanels ? 'bg-indigo-400' : 'bg-slate-200 hover:bg-indigo-300'} transition-colors`}
+        >
+          {/* Widened invisible grab area — 6px is fine for a mouse but far too
+              thin for a fingertip. Overhangs only the panels' own padding. */}
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 rounded-full bg-slate-400 group-hover:bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
 
         {/* ─── RIGHT PANEL: cart ────────────────────────────────────── */}
