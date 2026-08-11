@@ -26,6 +26,7 @@ import { router as apiRouter } from './modules/index.js';
 import { prisma } from './config/prisma.js';
 import { inventoryService } from './modules/inventory/inventory.service.js';
 import { productsService } from './modules/products/products.service.js';
+import { seedDefaultUnitsIfEmpty } from './utils/default-units.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +72,14 @@ app.get('/uploads/:filename', (req, res) => {
 });
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+
+// API responses must never be served from the browser's HTTP cache — TanStack
+// Query already owns application-level caching. Without this, a long-idle tab
+// can replay a stale response (e.g. a stale "today" figure) on next fetch.
+app.use('/api/v1', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 app.use('/api/v1', apiRouter);
 
 // Serve React frontend
@@ -122,5 +131,14 @@ app.listen(env.PORT, async () => {
         if (r.fixed > 0) logger.info({ fixed: r.fixed }, 'Fixed scientific-notation barcodes');
       })
       .catch((e: unknown) => logger.error(e, 'Barcode cleanup failed'));
+
+    // Fresh-install safety net: a brand new DB (migrate deploy only, no dev
+    // seed) has zero units, which blocks product creation entirely. Only
+    // fires when the table is truly empty — never touches a client's units.
+    seedDefaultUnitsIfEmpty(prisma)
+      .then((seeded: number) => {
+        if (seeded > 0) logger.info({ seeded }, 'Seeded default starter units (fresh install)');
+      })
+      .catch((e: unknown) => logger.error(e, 'Default unit seed failed'));
   }
 });

@@ -197,7 +197,9 @@ export default function ThermalReceipt({
       {/* Tendered / Change / Balance */}
       {receipt.paymentMethod === 'CASH' && changeCents >= 0 && receipt.paidCents > 0 && (
         <>
-          <Row label={L.tendered} value={fmt(receipt.paidCents)} />
+          {/* Tendered = amount applied + change given back, reconstructing the
+              actual cash handed over (paidCents alone is capped at the total). */}
+          <Row label={L.tendered} value={fmt(receipt.paidCents + changeCents)} />
           {changeCents > 0 && <Row label={L.change} value={fmt(changeCents)} bold />}
         </>
       )}

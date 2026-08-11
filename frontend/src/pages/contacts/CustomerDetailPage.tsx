@@ -54,6 +54,14 @@ function saleOutstanding(sale: { totalCents: number; paidCents: number; returns?
   return Math.max(0, sale.totalCents - returnedCents - sale.paidCents);
 }
 
+// Effective payment status (PAID/PARTIAL/UNPAID), netting confirmed returns —
+// the raw DB paymentStatus field doesn't recompute after a return is applied.
+function effectivePaymentStatus(sale: { totalCents: number; paidCents: number; returns?: { totalCents: number }[] }): 'PAID' | 'PARTIAL' | 'UNPAID' {
+  if (saleOutstanding(sale) <= 0) return 'PAID';
+  if (sale.paidCents > 0) return 'PARTIAL';
+  return 'UNPAID';
+}
+
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
@@ -291,9 +299,14 @@ function SaleViewModal({ saleId, onClose }: { saleId: string; onClose: () => voi
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">Payment Status</p>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[sale.paymentStatus]}`}>
-                    {sale.paymentStatus}
-                  </span>
+                  {(() => {
+                    const status = effectivePaymentStatus({ ...sale, returns: linkedReturns });
+                    return (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[status]}`}>
+                        {status}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">Prepared by</p>
@@ -1072,9 +1085,14 @@ function SalesTab({
                 {fmtCents(sale.paidCents)}
               </td>
               <td className="px-4 py-3 text-center">
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[sale.paymentStatus]}`}>
-                  {sale.paymentStatus}
-                </span>
+                {(() => {
+                  const status = effectivePaymentStatus(sale);
+                  return (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PAY_STATUS_CLS[status]}`}>
+                      {status}
+                    </span>
+                  );
+                })()}
               </td>
               <td className="px-4 py-3 text-center">
                 <button onClick={() => onViewSale(sale.id)}

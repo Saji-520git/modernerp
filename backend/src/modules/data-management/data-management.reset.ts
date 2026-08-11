@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { seedDefaultUnitsIfEmpty } from '../../utils/default-units.js';
 
 export type ResetPreset = 'transactions' | 'keepProducts' | 'full';
 
@@ -72,7 +73,12 @@ export async function applyReset(tx: any, preset: ResetPreset): Promise<void> {
   const s = scopeOf(preset);
   await clearTransactions(tx);
   if (s.contacts)          await clearContacts(tx);
-  if (s.productsAndMaster) await clearProductsAndMaster(tx);
+  if (s.productsAndMaster) {
+    await clearProductsAndMaster(tx);
+    // A full reset wipes units — without this, the client is stuck unable to
+    // create any product until they manually recreate a unit first.
+    await seedDefaultUnitsIfEmpty(tx);
+  }
   if (s.nonSuperUsers)     await tx.user.deleteMany({ where: { NOT: { role: 'SUPER_ADMIN' as const } } });
 }
 

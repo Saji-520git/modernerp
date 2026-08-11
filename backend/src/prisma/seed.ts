@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { DEFAULT_UNITS } from '../utils/default-units.js';
 
 const prisma = new PrismaClient();
 
@@ -19,21 +20,7 @@ async function main() {
   });
 
   // ── Units ────────────────────────────────────────────────────────────────
-  const units = [
-    { name: 'Piece',      shortCode: 'pcs',  allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Kilogram',   shortCode: 'kg',   allowDecimal: true,  type: 'WEIGHT' as const },
-    { name: 'Gram',       shortCode: 'g',    allowDecimal: true,  type: 'WEIGHT' as const },
-    { name: 'Liter',      shortCode: 'l',    allowDecimal: true,  type: 'VOLUME' as const },
-    { name: 'Milliliter', shortCode: 'ml',   allowDecimal: true,  type: 'VOLUME' as const },
-    { name: 'Box',        shortCode: 'box',  allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Pack',       shortCode: 'pack', allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Carton',     shortCode: 'ctn',  allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Bottle',     shortCode: 'btl',  allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Bag',        shortCode: 'bag',  allowDecimal: false, type: 'COUNT'  as const },
-    { name: 'Case',       shortCode: 'case', allowDecimal: false, type: 'COUNT'  as const },
-  ];
-
-  for (const u of units) {
+  for (const u of DEFAULT_UNITS) {
     await prisma.unit.upsert({
       where: { shortCode: u.shortCode },
       update: { isActive: true },
