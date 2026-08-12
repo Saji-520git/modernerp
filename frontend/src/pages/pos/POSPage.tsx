@@ -3008,14 +3008,13 @@ export default function POSPage() {
             style={{ display: 'flex', alignItems: 'center', gap: 6, border: '.5px solid #e2e8f0', borderRadius: 6, padding: '5px 10px', fontSize: 12, color: '#1e293b', background: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Building2 size={13} style={{ color: '#94a3b8' }} />
             {selectedWarehouse
-              ? `${(selectedWarehouse as any).isDefault ? '★ ' : ''}${selectedWarehouse.name} (${selectedWarehouse.code || String(selectedWarehouse.name).slice(0, 4).toUpperCase()})`
+              ? `${selectedWarehouse.isDefault ? '★ ' : ''}${selectedWarehouse.name} (${selectedWarehouse.code || String(selectedWarehouse.name).slice(0, 4).toUpperCase()})`
               : 'Warehouse'}
             <ChevronDown size={11} style={{ color: '#94a3b8' }} />
           </button>
           {showWhDropdown && (
             <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '.5px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.08)', zIndex: 50, minWidth: 200, padding: 4 }}>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {(warehouses as any[]).map(w => (
+              {warehouses.map(w => (
                 <button key={w.id} type="button"
                   onClick={() => { setWarehouseId(w.id); setShowWhDropdown(false); try { localStorage.setItem('pos_warehouse_id', w.id); } catch { /* ignore */ } }}
                   style={{
@@ -3027,7 +3026,7 @@ export default function POSPage() {
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#f0f4ff'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}>
-                  {(w as any).isDefault ? '★ ' : ''}{w.name} ({w.code || String(w.name).slice(0, 4).toUpperCase()})
+                  {w.isDefault ? '★ ' : ''}{w.name} ({w.code || String(w.name).slice(0, 4).toUpperCase()})
                 </button>
               ))}
             </div>

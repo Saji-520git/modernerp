@@ -125,10 +125,15 @@ export const posService = {
   // ── Warehouses ─────────────────────────────────────────────────────────────
 
   async getWarehouses() {
+    // isDefault must be selected: the POS picks its warehouse by looking for the
+    // default one, and without this field that lookup silently never matched, so
+    // a till with no saved choice fell back to the first row — alphabetically,
+    // which is not the default. Ordering default-first makes even that fallback
+    // land correctly. Mirrors the warehouses module's own ordering.
     return prisma.warehouse.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, code: true },
-      orderBy: { name: 'asc' },
+      select: { id: true, name: true, code: true, isDefault: true },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
   },
 

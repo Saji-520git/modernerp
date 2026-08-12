@@ -6,6 +6,7 @@ export interface Warehouse {
   id: string;
   name: string;
   code: string;
+  isDefault: boolean;   // drives the POS's initial warehouse and the ★ marker
 }
 
 export interface PosUnitConversion {
