@@ -53,7 +53,8 @@ export async function createReceipt(
   }
   if (lines.length === 0) throw new HttpError(400, 'At least one line is required');
 
-  // Validate each receipt line against the PO lines
+  // Structural validation only — the receiving-allowance check needs to read
+  // committed receipt rows, so it runs inside the transaction below.
   const lineMap = new Map<string, any>(purchase.lines.map((l: any) => [l.id, l]));
   for (const rl of lines) {
     const poLine = lineMap.get(rl.purchaseLineId);
@@ -63,18 +64,50 @@ export async function createReceipt(
     if (rl.qty <= 0) {
       throw new HttpError(400, 'Received qty must be greater than 0');
     }
-    const remaining = Number(poLine.qty) - Number(poLine.receivedQty);
-    if (rl.qty > remaining + 0.0001) {
-      throw new HttpError(
-        400,
-        `Line for product exceeds remaining qty (ordered ${Number(poLine.qty)}, already received ${Number(poLine.receivedQty)}, trying to receive ${rl.qty})`,
-      );
-    }
   }
 
   const receiptNumber = await generateGRNNumber();
 
   await prisma.$transaction(async (tx) => {
+    // 0. Receiving allowance — how much of each ordered line may still be received.
+    //
+    // Derived from what has actually been logged on receipt lines, NOT from
+    // PurchaseLine.receivedQty. That counter deliberately tracks the GOOD qty
+    // only (damaged units don't fulfil the order), so using it as the allowance
+    // meant every damaged unit handed its allowance straight back and the same
+    // remainder could be spent without limit — a PO for 2 accepted 5.
+    //
+    // Quantities are totalled per purchase line first, so submitting the same
+    // line twice in one receipt can't slip two half-checks through. The whole
+    // check runs inside the transaction so two concurrent receipts can't both
+    // read a stale total and both pass.
+    const requestedByLine = new Map<string, number>();
+    for (const rl of lines) {
+      requestedByLine.set(
+        rl.purchaseLineId,
+        (requestedByLine.get(rl.purchaseLineId) ?? 0) + rl.qty,
+      );
+    }
+    for (const [purchaseLineId, requestedQty] of requestedByLine) {
+      const poLine = lineMap.get(purchaseLineId)!;
+      const logged = await tx.purchaseReceiptLine.aggregate({
+        where: { purchaseLineId },
+        _sum:  { qty: true },
+      });
+      const alreadyLogged = Number(logged._sum.qty ?? 0);
+      const remaining     = Number(poLine.qty) - alreadyLogged;
+      if (requestedQty > remaining + 0.0001) {
+        const product = await tx.product.findUnique({
+          where:  { id: poLine.productId },
+          select: { name: true },
+        });
+        throw new HttpError(
+          400,
+          `"${product?.name ?? 'Line'}" exceeds the ordered quantity — ordered ${Number(poLine.qty)}, already received ${alreadyLogged}, trying to receive ${requestedQty}.`,
+        );
+      }
+    }
+
     // 1. Create the GRN header
     const receipt = await tx.purchaseReceipt.create({
       data: {
