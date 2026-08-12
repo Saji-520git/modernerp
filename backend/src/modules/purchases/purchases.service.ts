@@ -125,6 +125,7 @@ export const purchaseService = {
         supplier: true,
         warehouse: { select: { id: true, name: true, code: true } },
         createdBy: { select: { id: true, fullName: true } },
+        closedShortBy: { select: { id: true, fullName: true } },
         lines: {
           include: {
             product: {
@@ -482,6 +483,42 @@ export const purchaseService = {
     return prisma.purchase.update({
       where: { id },
       data: { status: 'CANCELLED' },
+    });
+  },
+
+  // ── Close short (accept a shortfall and finish the order) ─────────────────
+  //
+  // A PO only reaches DELIVERED when every ordered unit has been received. Any
+  // shortfall the supplier never makes good — damaged goods not replaced, a
+  // discontinued line — would otherwise leave the order on PARTIAL forever.
+  // Closing short finishes it while recording that it was short, so reports are
+  // never told the supplier delivered in full.
+  //
+  // The payable is untouched: it follows received value, so the buyer still owes
+  // exactly what arrived. Returns of goods already received remain possible.
+  closeShort: async (id: string, userId: string, reason?: string) => {
+    const purchase = await (prisma as any).purchase.findFirst({ where: { id, deletedAt: null } });
+    if (!purchase) throw new HttpError(404, 'Purchase order not found');
+    if (purchase.status !== 'CONFIRMED') {
+      throw new HttpError(409, 'Only a confirmed purchase order can be closed short');
+    }
+    if (purchase.deliveryStatus === 'DELIVERED') {
+      throw new HttpError(409, 'This order was delivered in full — there is nothing outstanding to close');
+    }
+    if (purchase.deliveryStatus === 'CLOSED_SHORT') {
+      throw new HttpError(409, 'This order is already closed');
+    }
+
+    logger.info({ purchaseId: id, userId, reason }, 'Purchase order closed short');
+
+    return prisma.purchase.update({
+      where: { id },
+      data: {
+        deliveryStatus:    'CLOSED_SHORT',
+        closedShortAt:     new Date(),
+        closedShortById:   userId,
+        closedShortReason: reason ?? null,
+      },
     });
   },
 

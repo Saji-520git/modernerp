@@ -24,6 +24,9 @@ router.post('/',           h(requirePermission('create_purchases')),  h(ctrl.cre
 router.patch('/:id',       h(requirePermission('create_purchases')),  h(ctrl.updatePurchase));
 router.patch('/:id/confirm', h(requirePermission('confirm_purchases')), h(ctrl.confirmPurchase));
 router.patch('/:id/cancel',  h(requirePermission('create_purchases')), h(ctrl.cancelPurchase));
+// Closing short finishes a partially-delivered order, so it needs the same
+// authority as confirming a delivery — not merely creating a draft PO.
+router.patch('/:id/close-short', h(requirePermission('confirm_purchases')), h(ctrl.closeShortPurchase));
 router.delete('/:id',      h(requirePermission('create_purchases')),  h(ctrl.deletePurchase));
 // Legacy supplier-payment routes removed — the supplier-payments module
 // (POST /api/v1/supplier-payments) is the sole payment path.

@@ -52,6 +52,9 @@ export async function createReceipt(
   if (purchase.status !== 'CONFIRMED') {
     throw new HttpError(409, 'Can only record a delivery on a CONFIRMED purchase order');
   }
+  if (purchase.deliveryStatus === 'CLOSED_SHORT') {
+    throw new HttpError(409, 'This purchase order was closed short — no further deliveries can be recorded against it');
+  }
   if (lines.length === 0) throw new HttpError(400, 'At least one line is required');
 
   // Structural validation only — the receiving-allowance check needs to read

@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { z } from 'zod';
 import { purchaseService } from './purchases.service.js';
 import { createPurchaseSchema, updatePurchaseSchema, listPurchasesSchema, fromAlertsSchema } from './purchases.schema.js';
 import { HttpError } from '../../middleware/error-handler.js';
@@ -41,6 +42,15 @@ export const confirmPurchase: RequestHandler = async (req, res) => {
 
 export const cancelPurchase: RequestHandler = async (req, res) => {
   const result = await purchaseService.cancelPurchase(req.params.id);
+  res.json(result);
+};
+
+const closeShortSchema = z.object({ reason: z.string().max(300).optional() });
+
+export const closeShortPurchase: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new HttpError(401, 'Not authenticated');
+  const { reason } = closeShortSchema.parse(req.body ?? {});
+  const result = await purchaseService.closeShort(req.params.id, req.auth.userId, reason);
   res.json(result);
 };
 

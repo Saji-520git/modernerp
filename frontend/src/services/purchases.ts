@@ -31,7 +31,7 @@ export interface PurchaseProduct {
 
 export type PurchaseStatus        = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
 export type PurchasePaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
-export type DeliveryStatus        = 'PENDING' | 'PARTIAL' | 'DELIVERED';
+export type DeliveryStatus        = 'PENDING' | 'PARTIAL' | 'DELIVERED' | 'CLOSED_SHORT';
 
 export interface PurchaseLine {
   id: string;
@@ -105,6 +105,9 @@ export interface Purchase {
   status: PurchaseStatus;
   paymentStatus: PurchasePaymentStatus;
   deliveryStatus: DeliveryStatus;
+  closedShortAt: string | null;
+  closedShortReason: string | null;
+  closedShortBy?: { id: string; fullName: string } | null;
   sourceType: string | null;
   paidCents: number;
   date: string;
@@ -217,6 +220,10 @@ export const purchasesApi = {
   cancelPurchase: (id: string): Promise<Purchase> =>
     api.patch(`/purchases/${id}/cancel`).then((r) => r.data),
 
+  // Finish a partially-delivered order, accepting the shortfall.
+  closeShortPurchase: (id: string, reason?: string): Promise<Purchase> =>
+    api.patch(`/purchases/${id}/close-short`, { reason }).then((r) => r.data),
+
   deletePurchase: (id: string): Promise<{ success: boolean }> =>
     api.delete(`/purchases/${id}`).then((r) => r.data),
 
@@ -259,10 +266,12 @@ export const DELIVERY_LABELS: Record<DeliveryStatus, string> = {
   PENDING:   'Pending',
   PARTIAL:   'Partial',
   DELIVERED: 'Delivered',
+  CLOSED_SHORT: 'Closed Short',
 };
 
 export const DELIVERY_COLORS: Record<DeliveryStatus, string> = {
   PENDING:   'bg-slate-100 text-slate-500',
   PARTIAL:   'bg-amber-100 text-amber-700',
   DELIVERED: 'bg-emerald-100 text-emerald-700',
+  CLOSED_SHORT: 'bg-slate-200 text-slate-700',
 };

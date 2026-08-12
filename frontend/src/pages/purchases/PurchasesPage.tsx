@@ -466,6 +466,8 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
   const [showForm, setShowForm] = useState(false);
   const [notes, setNotes]       = useState('');
   const [err,   setErr]         = useState('');
+  const [showCloseShort, setShowCloseShort] = useState(false);
+  const [closeReason, setCloseReason]       = useState('');
 
   // Per-line receive state (G2 adds unitCost + damaged)
   const [lineInputs, setLineInputs] = useState<
@@ -565,7 +567,25 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
     },
   });
 
-  const isDelivered = po.deliveryStatus === 'DELIVERED';
+  const isDelivered   = po.deliveryStatus === 'DELIVERED';
+  const isClosedShort = po.deliveryStatus === 'CLOSED_SHORT';
+  // Closing short only makes sense while something is still outstanding.
+  const canCloseShort = !isDelivered && !isClosedShort;
+
+  const closeShortMut = useMutation({
+    mutationFn: () => purchasesApi.closeShortPurchase(po.id, closeReason.trim() || undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', po.id] });
+      setShowCloseShort(false);
+      setCloseReason('');
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: string } }; message?: string })
+        ?.response?.data?.message ?? (e as { message?: string })?.message ?? 'Failed to close the order';
+      setErr(msg);
+    },
+  });
 
   return (
     <div className="px-6 py-4 border-t border-slate-100">
@@ -584,26 +604,85 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
             </span>
           )}
         </p>
-        {!isDelivered && !showForm && po.deliveryStatus !== 'PARTIAL' && (
-          <button
-            onClick={initForm}
-            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
-          >
-            <PackageCheck className="w-3.5 h-3.5" /> Record Delivery
-          </button>
-        )}
-        {!isDelivered && !showForm && po.deliveryStatus === 'PARTIAL' && (
-          <button
-            onClick={initForm}
-            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-semibold"
-          >
-            <Truck className="w-3.5 h-3.5" /> Receive Remaining
-          </button>
-        )}
-        {showForm && (
-          <button onClick={() => setShowForm(false)} className="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
-        )}
+        <div className="flex items-center gap-3">
+          {!isDelivered && !isClosedShort && !showForm && po.deliveryStatus !== 'PARTIAL' && (
+            <button
+              onClick={initForm}
+              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+            >
+              <PackageCheck className="w-3.5 h-3.5" /> Record Delivery
+            </button>
+          )}
+          {!isDelivered && !isClosedShort && !showForm && po.deliveryStatus === 'PARTIAL' && (
+            <button
+              onClick={initForm}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-semibold"
+            >
+              <Truck className="w-3.5 h-3.5" /> Receive Remaining
+            </button>
+          )}
+          {canCloseShort && !showForm && !showCloseShort && (
+            <button
+              onClick={() => { setShowCloseShort(true); setErr(''); }}
+              title="Finish this order and stop expecting the outstanding quantity"
+              className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+            >
+              Close Order
+            </button>
+          )}
+          {showForm && (
+            <button onClick={() => setShowForm(false)} className="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+          )}
+        </div>
       </div>
+
+      {/* Closed-short summary — why this order was finished early */}
+      {isClosedShort && (
+        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-semibold text-slate-700">Closed short</span>
+          {po.closedShortBy?.fullName && <> by {po.closedShortBy.fullName}</>}
+          {po.closedShortAt && <> on {new Date(po.closedShortAt).toLocaleDateString()}</>}
+          {po.closedShortReason && <> — {po.closedShortReason}</>}
+          <span className="block mt-0.5 text-slate-400">
+            The outstanding quantity is no longer expected. You still owe only what was received.
+          </span>
+        </div>
+      )}
+
+      {/* Close-short confirmation */}
+      {showCloseShort && (
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+          <p className="text-xs font-semibold text-amber-800">Close this order short?</p>
+          <p className="mt-0.5 text-[11px] text-amber-700">
+            The outstanding quantity will no longer be expected and no further deliveries can be
+            recorded against this order. It will show as <strong>Closed Short</strong>, not Delivered.
+            What you owe the supplier does not change.
+          </p>
+          <input
+            type="text"
+            value={closeReason}
+            onChange={(e) => setCloseReason(e.target.value)}
+            maxLength={300}
+            placeholder="Reason (optional) — e.g. supplier discontinued the item"
+            className="mt-2 w-full border border-amber-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => closeShortMut.mutate()}
+              disabled={closeShortMut.isPending}
+              className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
+            >
+              {closeShortMut.isPending ? 'Closing…' : 'Close Order'}
+            </button>
+            <button
+              onClick={() => { setShowCloseShort(false); setCloseReason(''); }}
+              className="text-xs text-slate-500 hover:text-slate-700"
+            >
+              Keep it open
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* GRN history */}
       {receipts.length > 0 && (

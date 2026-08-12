@@ -49,9 +49,12 @@ enum SalePaymentStatus {
 }
 
 enum DeliveryStatus {
-  PENDING    // confirmed, awaiting first delivery
-  PARTIAL    // some lines / qty received
-  DELIVERED  // all ordered qty received
+  PENDING       // confirmed, awaiting first delivery
+  PARTIAL       // some lines / qty received
+  DELIVERED     // all ordered qty received
+  CLOSED_SHORT  // buyer closed the order accepting a shortfall — deliberately
+                // distinct from DELIVERED so reports never claim the supplier
+                // delivered in full when they did not
 }
 
 enum StockMoveType {
@@ -98,6 +101,7 @@ model User {
   // Soft-delete audit back-references
   deletedSales     Sale[]            @relation("SaleDeletedBy")
   deletedPurchases Purchase[]        @relation("PurchaseDeletedBy")
+  closedShortPurchases Purchase[]    @relation("PurchaseClosedShort")
   deletedExpenses  Expense[]         @relation("ExpenseDeletedBy")
   deletedExpCats   ExpenseCategory[] @relation("ExpenseCategoryDeletedBy")
 
@@ -367,6 +371,12 @@ model Purchase {
   deletedAt    DateTime?
   deletedById  String?
   deletedBy    User?      @relation("PurchaseDeletedBy", fields: [deletedById], references: [id])
+
+  // Close-short audit — who gave up on the outstanding qty, when, and why
+  closedShortAt     DateTime?
+  closedShortById   String?
+  closedShortBy     User?    @relation("PurchaseClosedShort", fields: [closedShortById], references: [id])
+  closedShortReason String?
   lines            PurchaseLine[]
   receipts         PurchaseReceipt[]
   payments         Payment[]
