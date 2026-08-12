@@ -13,7 +13,7 @@ import {
   WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS,
   type Warehouse, type CreateWarehouseBody,
 } from '../../services/warehouses';
-import { signedMovementQty } from '../../services/inventory';
+import { signedMovementQty, MOVEMENT_COLORS, MOVEMENT_LABELS } from '../../services/inventory';
 import { useAuthStore } from '../../store/authStore';
 import { isManagerOrAbove } from '../../utils/roles';
 
@@ -25,15 +25,6 @@ function fmt(cents: number) {
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-const MOVEMENT_COLORS: Record<string, string> = {
-  PURCHASE_IN:  'bg-green-100 text-green-700',
-  SALE_OUT:     'bg-red-100 text-red-700',
-  ADJUSTMENT:   'bg-amber-100 text-amber-700',
-  TRANSFER_IN:  'bg-blue-100 text-blue-700',
-  TRANSFER_OUT: 'bg-orange-100 text-orange-700',
-  RETURN_IN:    'bg-purple-100 text-purple-700',
-};
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -532,7 +523,7 @@ function WarehouseDetailPanel({
                     {stats.recentMovements.map((m) => (
                       <div key={m.id} className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-lg">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${MOVEMENT_COLORS[m.type] ?? 'bg-slate-100 text-slate-600'}`}>
-                          {m.type.replaceAll('_', ' ')}
+                          {MOVEMENT_LABELS[m.type] ?? m.type.replaceAll('_', ' ')}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-slate-800 truncate">{m.product.name}</p>
