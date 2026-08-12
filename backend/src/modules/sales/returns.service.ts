@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 import type { CreateReturnInput, ListReturnsInput } from './returns.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -245,16 +246,14 @@ export const returnsService = {
         await recomputeStockQty(tx, line.productId, sale.warehouseId);
 
         // Stock movement (BASE units, consistent with PURCHASE_IN / sale deduction)
-        await tx.stockMovement.create({
-          data: {
-            productId: line.productId,
-            warehouseId: sale.warehouseId,
-            type: 'RETURN_IN',
-            qty: baseQtyNum,
-            refType: 'SaleReturn',
-            refId: ret.id,
-            note: `Return ${ret.number} (from ${ret.sale.number})`,
-          },
+        await recordStockMovement(tx, {
+          productId: line.productId,
+          warehouseId: sale.warehouseId,
+          type: 'RETURN_IN',
+          qty: baseQtyNum,
+          refType: 'SaleReturn',
+          refId: ret.id,
+          note: `Return ${ret.number} (from ${ret.sale.number})`,
         });
       }
 

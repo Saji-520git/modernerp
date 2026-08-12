@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { MovementType } from './inventory';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export interface WarehouseStats {
   openShifts:    number;
   recentMovements: {
     id:        string;
-    type:      string;
+    type:      MovementType;
     qty:       number;
     createdAt: string;
     product:   { name: string; sku: string };

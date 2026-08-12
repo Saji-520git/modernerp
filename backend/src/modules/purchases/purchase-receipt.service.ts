@@ -5,6 +5,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -233,16 +234,14 @@ export async function createReceipt(
       });
 
       // 2c. Stock movement
-      await tx.stockMovement.create({
-        data: {
-          productId:   poLine.productId,
-          warehouseId: purchase.warehouseId,
-          type:        'PURCHASE_IN',
-          qty:         baseGood,
-          refType:     'PurchaseReceipt',
-          refId:       receipt.id,
-          note:        `GRN ${receiptNumber}`,
-        },
+      await recordStockMovement(tx, {
+        productId:   poLine.productId,
+        warehouseId: purchase.warehouseId,
+        type:        'PURCHASE_IN',
+        qty:         baseGood,
+        refType:     'PurchaseReceipt',
+        refId:       receipt.id,
+        note:        `GRN ${receiptNumber}`,
       });
 
       // 2d. Stock batch (FEFO expiry tracking) — stamped with its own cost,

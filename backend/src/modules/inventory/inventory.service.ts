@@ -5,6 +5,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, convertFromBaseUnit } from '../../utils/unit-converter.js';
 import { getBatchSummary, getBatchDetail, deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty, repairNegativeStockQty } from '../../utils/stock-utils.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 import type {
   StockListInput,
   AdjustmentInput,
@@ -561,15 +562,14 @@ export const inventoryService = {
       }
 
       // Record movement
-      const movement = await tx.stockMovement.create({
-        data: {
-          productId,
-          warehouseId,
-          type: 'ADJUSTMENT',
-          qty: signedBaseQty,
-          refType: 'Adjustment',
-          note: reason,
-        },
+      // ADJUSTMENT carries a signed delta — passed through as-is.
+      const movement = await recordStockMovement(tx, {
+        productId,
+        warehouseId,
+        type: 'ADJUSTMENT',
+        qty: signedBaseQty,
+        refType: 'Adjustment',
+        note: reason,
       });
 
       // ── FIX 1: offsetting P&L record (loss/gain) ───────────────────────────
@@ -703,28 +703,24 @@ export const inventoryService = {
         create: { productId, warehouseId: toWarehouseId, qty },
       });
 
-      // TRANSFER_OUT movement
-      await tx.stockMovement.create({
-        data: {
-          productId,
-          warehouseId: fromWarehouseId,
-          type: 'TRANSFER_OUT',
-          qty: -qty,
-          refType: 'Transfer',
-          note: note ?? `Transfer to ${toWh.name}`,
-        },
+      // TRANSFER_OUT movement (stored negative — sign comes from the type)
+      await recordStockMovement(tx, {
+        productId,
+        warehouseId: fromWarehouseId,
+        type: 'TRANSFER_OUT',
+        qty,
+        refType: 'Transfer',
+        note: note ?? `Transfer to ${toWh.name}`,
       });
 
       // TRANSFER_IN movement
-      await tx.stockMovement.create({
-        data: {
-          productId,
-          warehouseId: toWarehouseId,
-          type: 'TRANSFER_IN',
-          qty,
-          refType: 'Transfer',
-          note: note ?? `Transfer from ${fromWh.name}`,
-        },
+      await recordStockMovement(tx, {
+        productId,
+        warehouseId: toWarehouseId,
+        type: 'TRANSFER_IN',
+        qty,
+        refType: 'Transfer',
+        note: note ?? `Transfer from ${fromWh.name}`,
       });
     });
 
@@ -822,16 +818,14 @@ export const inventoryService = {
       await recomputeStockQty(tx, batch.productId, warehouseId);
 
       // Record movement with batchId link
-      await tx.stockMovement.create({
-        data: {
-          productId:   batch.productId,
-          warehouseId,
-          type:        'WRITE_OFF',
-          qty:         -qty,
-          refType:     'WriteOff',
-          batchId,
-          note:        reason,
-        },
+      await recordStockMovement(tx, {
+        productId:   batch.productId,
+        warehouseId,
+        type:        'WRITE_OFF',
+        qty,
+        refType:     'WriteOff',
+        batchId,
+        note:        reason,
       });
 
       // Record expense for the loss

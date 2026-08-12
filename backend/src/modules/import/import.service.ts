@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -282,15 +283,13 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
             create: { productId: product.id, warehouseId, qty: row.openingStock },
             update: { qty: { increment: row.openingStock } },
           });
-          await tx.stockMovement.create({
-            data: {
-              productId:   product.id,
-              warehouseId,
-              type:        'OPENING' as any,
-              qty:         row.openingStock,
-              refType:     'Import',
-              note:        `Opening stock via import`,
-            },
+          await recordStockMovement(tx, {
+            productId:   product.id,
+            warehouseId,
+            type:        'OPENING',
+            qty:         row.openingStock,
+            refType:     'Import',
+            note:        `Opening stock via import`,
           });
           withStock++;
         }

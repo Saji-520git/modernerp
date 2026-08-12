@@ -197,3 +197,21 @@ export const MOVEMENT_COLORS: Record<MovementType, string> = {
   RETURN_OUT:   'bg-red-100 text-red-700',
   WRITE_OFF:    'bg-red-100 text-red-800',
 };
+
+// ─── Movement sign ────────────────────────────────────────────────────────────
+//
+// The backend stores StockMovement.qty signed by direction (+in / -out) and
+// enforces it centrally in recordStockMovement. This derives the sign from the
+// type anyway, as defence-in-depth: it keeps rows written before that fix (where
+// non-POS SALE_OUT and RETURN_OUT were stored positive) rendering correctly on
+// any database that has not had the backfill migration applied.
+//
+// Idempotent — correctly-signed rows pass through unchanged.
+const MOVEMENT_OUT_TYPES: MovementType[] = ['SALE_OUT', 'RETURN_OUT', 'TRANSFER_OUT', 'WRITE_OFF'];
+const MOVEMENT_IN_TYPES:  MovementType[] = ['PURCHASE_IN', 'RETURN_IN', 'TRANSFER_IN'];
+
+export function signedMovementQty(type: MovementType, qty: number): number {
+  if (MOVEMENT_OUT_TYPES.includes(type)) return -Math.abs(qty);
+  if (MOVEMENT_IN_TYPES.includes(type))  return  Math.abs(qty);
+  return qty; // ADJUSTMENT (and any unknown) — carries its own signed delta
+}

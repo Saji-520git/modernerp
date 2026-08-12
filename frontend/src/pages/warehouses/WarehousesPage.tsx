@@ -13,6 +13,7 @@ import {
   WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS,
   type Warehouse, type CreateWarehouseBody,
 } from '../../services/warehouses';
+import { signedMovementQty } from '../../services/inventory';
 import { useAuthStore } from '../../store/authStore';
 import { isManagerOrAbove } from '../../utils/roles';
 
@@ -537,9 +538,17 @@ function WarehouseDetailPanel({
                           <p className="text-xs font-medium text-slate-800 truncate">{m.product.name}</p>
                           <p className="text-[10px] text-slate-400">{relativeTime(m.createdAt)}</p>
                         </div>
-                        <span className={`text-xs font-bold font-mono ${Number(m.qty) > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {Number(m.qty) > 0 ? '+' : ''}{Number(m.qty).toFixed(1)}
-                        </span>
+                        {(() => {
+                          // Derive the sign from the movement type rather than
+                          // trusting the stored sign — same rule the Inventory
+                          // history uses, so the two pages always agree.
+                          const sq = signedMovementQty(m.type, Number(m.qty));
+                          return (
+                            <span className={`text-xs font-bold font-mono ${sq > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {sq > 0 ? '+' : ''}{sq.toFixed(1)}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>

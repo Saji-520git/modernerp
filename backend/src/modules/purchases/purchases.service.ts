@@ -6,6 +6,7 @@ import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 
@@ -374,16 +375,14 @@ export const purchaseService = {
           : Math.round(line.unitCostCents / factor.toNumber());
 
         // Create PURCHASE_IN movement
-        await tx.stockMovement.create({
-          data: {
-            productId: line.productId,
-            warehouseId: purchase.warehouseId,
-            type: 'PURCHASE_IN',
-            qty: baseQty,
-            refType: 'Purchase',
-            refId: id,
-            note: `PO ${purchase.number}`,
-          },
+        await recordStockMovement(tx, {
+          productId: line.productId,
+          warehouseId: purchase.warehouseId,
+          type: 'PURCHASE_IN',
+          qty: Number(baseQty),
+          refType: 'Purchase',
+          refId: id,
+          note: `PO ${purchase.number}`,
         });
 
         // G1: weighted-average cost. Blend this receipt into the product's running

@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,17 +149,17 @@ export const purchaseReturnService = {
           : rawQty;                                                // null unitId → already base
         const baseQtyNum = Number(baseQty);
 
-        // 1. Create RETURN_OUT stock movement (BASE units, consistent with PURCHASE_IN)
-        await tx.stockMovement.create({
-          data: {
-            productId:   line.productId,
-            warehouseId: ret.warehouseId,
-            type:        'RETURN_OUT',
-            qty:         baseQtyNum,
-            refType:     'PurchaseReturn',
-            refId:       ret.id,
-            note:        `PRET ${ret.number}`,
-          },
+        // 1. Create RETURN_OUT stock movement (BASE units). Stored negative:
+        //    goods are leaving for the supplier, and recordStockMovement derives
+        //    the sign from the type.
+        await recordStockMovement(tx, {
+          productId:   line.productId,
+          warehouseId: ret.warehouseId,
+          type:        'RETURN_OUT',
+          qty:         baseQtyNum,
+          refType:     'PurchaseReturn',
+          refId:       ret.id,
+          note:        `PRET ${ret.number}`,
         });
 
         // 2. Decrement the ORIGIN StockBatch row(s) — those created from this

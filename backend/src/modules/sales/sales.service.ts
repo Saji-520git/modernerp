@@ -5,6 +5,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 import type { CreateSaleInput, ListSalesInput, RecordPaymentInput } from './sales.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -427,20 +428,18 @@ export const salesService = {
             });
           }
         }
-        await tx.stockMovement.create({
-          data: {
-            productId:   line.productId,
-            warehouseId: sale.warehouseId,
-            // Log the BASE quantity that was actually deducted (mirrors POS
-            // pos.service.ts:446). null baseQty → qty, byte-identical for
-            // legacy/no-unit lines.
-            type:        'SALE_OUT',
-            qty:         line.baseQty ?? line.qty,
-            refType:     'Sale',
-            refId:       id,
-            batchId:     lineBatchId,
-            note:        `Invoice ${sale.number}`,
-          },
+        // Log the BASE quantity that was actually deducted. null baseQty → qty,
+        // byte-identical for legacy/no-unit lines. Stored negative: SALE_OUT
+        // removes stock, and recordStockMovement derives the sign from the type.
+        await recordStockMovement(tx, {
+          productId:   line.productId,
+          warehouseId: sale.warehouseId,
+          type:        'SALE_OUT',
+          qty:         Number(line.baseQty ?? line.qty),
+          refType:     'Sale',
+          refId:       id,
+          batchId:     lineBatchId,
+          note:        `Invoice ${sale.number}`,
         });
       }
     });

@@ -2,6 +2,7 @@ import { prisma } from '../../config/prisma.js';
 import { productsService } from '../products/products.service.js';
 import { suppliersService } from '../suppliers/suppliers.service.js';
 import { customersService } from '../customers/customers.service.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 
 export type ClearableEntity = 'product' | 'supplier' | 'customer';
 
@@ -85,15 +86,13 @@ export const dataManagementService = {
     await prisma.$transaction(async (tx) => {
       for (const s of rows) {
         const q = Number(s.qty);
-        await tx.stockMovement.create({
-          data: {
-            productId:   s.productId,
-            warehouseId: s.warehouseId,
-            type:        'ADJUSTMENT',
-            qty:         -q,                 // signed: removing on-hand stock
-            refType:     'DataManagement',
-            note:        'Bulk zero stock',
-          },
+        await recordStockMovement(tx, {
+          productId:   s.productId,
+          warehouseId: s.warehouseId,
+          type:        'ADJUSTMENT',
+          qty:         -q,                 // signed delta: removing on-hand stock
+          refType:     'DataManagement',
+          note:        'Bulk zero stock',
         });
         await tx.stock.update({ where: { id: s.id }, data: { qty: 0 } });
         affected.add(s.productId);

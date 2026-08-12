@@ -10,6 +10,7 @@ import { promotionsService } from '../promotions/promotions.service.js';
 import { computePromotions, type AppliedPromo } from '../promotions/promotions.engine.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
+import { recordStockMovement } from '../../utils/stock-movement.js';
 import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
@@ -613,17 +614,15 @@ export const posService = {
             });
           }
         }
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            warehouseId,
-            type:    'SALE_OUT',
-            qty:     -item.baseQty,
-            refType: 'Sale',
-            refId:   created.id,
-            batchId: item.batchId ?? null,
-            note:    `POS checkout ${number}`,
-          },
+        await recordStockMovement(tx, {
+          productId: item.productId,
+          warehouseId,
+          type:    'SALE_OUT',
+          qty:     item.baseQty,
+          refType: 'Sale',
+          refId:   created.id,
+          batchId: item.batchId ?? null,
+          note:    `POS checkout ${number}`,
         });
       }
 
