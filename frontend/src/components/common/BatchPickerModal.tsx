@@ -9,6 +9,9 @@ interface BatchPickerModalProps {
   warehouseId: string;
   productName: string;
   qtyNeeded:   number;
+  // The product's own price, used to display a batch that has none recorded
+  // (0). Keeps the price shown here equal to the price actually charged.
+  fallbackPriceCents?: number;
   // null = no batch rows exist (legacy pre-batch-tracking stock) — proceed
   // with the product's own defaults, same as before this feature existed.
   onSelect:    (batch: ProductBatch | null) => void;
@@ -21,7 +24,7 @@ interface BatchPickerModalProps {
 // so the cashier/clerk can choose which lot to sell from (own cost, selling
 // price, supplier).
 export default function BatchPickerModal({
-  productId, warehouseId, productName, qtyNeeded, onSelect, onClose,
+  productId, warehouseId, productName, qtyNeeded, fallbackPriceCents, onSelect, onClose,
 }: BatchPickerModalProps) {
   const { formatMoney } = useAppSettings();
 
@@ -106,7 +109,9 @@ export default function BatchPickerModal({
                       </div>
                       <div>
                         <p className="text-slate-400">Selling Price</p>
-                        <p className="font-semibold text-indigo-700">{formatMoney(b.sellingPriceCents)}</p>
+                        <p className="font-semibold text-indigo-700">
+                          {formatMoney(b.sellingPriceCents > 0 ? b.sellingPriceCents : (fallbackPriceCents ?? b.sellingPriceCents))}
+                        </p>
                       </div>
                       <div className="min-w-0">
                         <p className="text-slate-400">Supplier</p>

@@ -54,6 +54,7 @@ export interface PosProduct {
     expiringSoonQty: number;
     nearestExpiry:   string | null;
     expiryStatus:    'none' | 'ok' | 'expiring' | 'has_expired_batch';
+    batchCount:      number;   // open batches — 2+ means the cashier gets to pick
   } | null;
 }
 

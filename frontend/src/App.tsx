@@ -36,6 +36,7 @@ import StockTakePage from './pages/stocktake/StockTakePage';
 import LoyaltyPage from './pages/loyalty/LoyaltyPage';
 import QuotationsPage from './pages/quotations/QuotationsPage';
 import { useModule } from './hooks/useModule';
+import { useModalFocusTrap } from './hooks/useModalFocusTrap';
 import type { ModuleKey } from './config/modules';
 import { useAuthStore } from './store/authStore';
 
@@ -81,6 +82,10 @@ function CashierGuard({ children }: { children: JSX.Element }) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Keeps Tab inside whichever dialog is open, app-wide. Mounted once here so
+  // every existing and future modal is covered without wiring each one.
+  useModalFocusTrap();
+
   // Validate any persisted session on startup. If the stored token is
   // expired/invalid the /auth/me call returns 401, the axios interceptor
   // clears the auth store, and the Protected guard redirects to /login.

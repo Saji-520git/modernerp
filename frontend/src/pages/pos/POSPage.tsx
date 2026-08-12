@@ -2141,9 +2141,16 @@ export default function POSPage() {
       const baseOpt      = unitOpts.find(o => o.isBase) ?? unitOpts[0];
       // A manually-picked batch supplies its OWN cost/price — otherwise the
       // product's usual defaults, unchanged.
+      //
+      // A zero batch price means "no price recorded", not "free" — batches from
+      // before per-batch pricing default to 0 — so it must not win over the
+      // product price. `??` would let 0 through; the explicit check does not.
+      // Mirrors the same guard in the backend checkout, which sets the price
+      // that is actually charged.
+      const batchPrice   = (chosenBatch?.sellingPriceCents ?? 0) > 0 ? chosenBatch!.sellingPriceCents : undefined;
       const priceToUse   = isStaffSale
         ? (chosenBatch?.unitCostCents ?? product.costCents ?? product.priceCents)
-        : (chosenBatch?.sellingPriceCents ?? baseOpt.priceCents);
+        : (batchPrice ?? baseOpt.priceCents);
       // Seed the line discount from the selected unit (per-unit override) or the
       // product-level default. Cashier can override afterward.
       const seed         = discountSeedFromOption(baseOpt, product, appSettings?.posApplyDefaultDiscount !== false);
@@ -2194,9 +2201,17 @@ export default function POSPage() {
   // on their FIRST add; re-scanning a product already in the cart just
   // increments its existing line (same batch already chosen), so it skips
   // the picker and calls addToCart directly, same as any other product.
+  //
+  // The picker opens on how many batches the product ACTUALLY has, not on the
+  // isBatchTracked flag. Those are different things: a product can hold several
+  // batches without being flagged — accepting damaged goods creates a second,
+  // cheaper batch on any product — and the cashier must be able to choose which
+  // one is sold rather than have FEFO decide silently. A single batch needs no
+  // decision, so it is added straight away without interrupting the till.
   const handleProductClick = useCallback((product: PosProduct) => {
     const alreadyInCart = cart.some(i => i.product.id === product.id && !i.isServiceCharge);
-    if (product.isBatchTracked && !alreadyInCart) {
+    const batchCount    = product.batchSummary?.batchCount ?? 0;
+    if (batchCount > 1 && !alreadyInCart) {
       setPendingBatchProduct(product);
     } else {
       addToCart(product);
@@ -3933,6 +3948,7 @@ export default function POSPage() {
           warehouseId={warehouseId}
           productName={pendingBatchProduct.name}
           qtyNeeded={1}
+          fallbackPriceCents={pendingBatchProduct.priceCents}
           onSelect={(batch) => {
             const product = pendingBatchProduct;
             setPendingBatchProduct(null);

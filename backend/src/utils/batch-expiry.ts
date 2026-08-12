@@ -11,6 +11,9 @@ export interface BatchSummary {
   expiringSoonQty:  number;   // subset of sellable: expiring within 30 days
   nearestExpiry:    Date | null; // min(expiryDate) among non-expired batches
   expiryStatus:     ExpiryStatus;
+  batchCount:       number;   // open batches (qty > 0). POS opens the batch
+                              // picker on 2+, so the cashier chooses which one
+                              // is sold rather than FEFO deciding silently.
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -32,7 +35,7 @@ export async function getBatchSummary(
       select: { qty: true },
     });
     const qty = stockRow ? Number(stockRow.qty) : 0;
-    return { sellableQty: qty, expiredQty: 0, expiringSoonQty: 0, nearestExpiry: null, expiryStatus: 'none' };
+    return { sellableQty: qty, expiredQty: 0, expiringSoonQty: 0, nearestExpiry: null, expiryStatus: 'none', batchCount: 0 };
   }
 
   const today          = new Date();
@@ -72,7 +75,7 @@ export async function getBatchSummary(
     expiryStatus = 'ok';
   }
 
-  return { sellableQty, expiredQty, expiringSoonQty, nearestExpiry, expiryStatus };
+  return { sellableQty, expiredQty, expiringSoonQty, nearestExpiry, expiryStatus, batchCount: batches.length };
 }
 
 // ─── Batch list for a product+warehouse (detail view) ────────────────────────

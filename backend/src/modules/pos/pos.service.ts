@@ -366,9 +366,14 @@ export const posService = {
           unitPrice = item.unitPriceCents;
         } else if (item.batchId) {
           const batch = batchMap.get(item.batchId)!;
+          // A zero batch price means "no price recorded", not "free". Batches
+          // created before per-batch pricing existed default to 0, and stock
+          // taken in without a price does the same — selling those at Rs.0
+          // would give the goods away. Fall back to the product's own price.
+          const batchPrice = batch.sellingPriceCents > 0 ? batch.sellingPriceCents : product.priceCents;
           unitPrice = (item.unitId && item.unitId !== item.baseUnitId)
-            ? await getUnitPrice(item.productId, item.unitId, batch.sellingPriceCents, prisma)
-            : batch.sellingPriceCents;
+            ? await getUnitPrice(item.productId, item.unitId, batchPrice, prisma)
+            : batchPrice;
         } else if (item.unitId && item.unitId !== item.baseUnitId) {
           unitPrice = await getUnitPrice(item.productId, item.unitId, product.priceCents, prisma);
         } else {

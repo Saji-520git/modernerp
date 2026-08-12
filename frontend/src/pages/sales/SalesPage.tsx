@@ -673,7 +673,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
   );
   const [error, setError]             = useState('');
   // Line awaiting a batch pick (multi-batch product just selected in the dropdown)
-  const [pendingBatchLine, setPendingBatchLine] = useState<{ key: number; productId: string; productName: string } | null>(null);
+  const [pendingBatchLine, setPendingBatchLine] = useState<{ key: number; productId: string; productName: string; priceCents: number } | null>(null);
 
   const { data: warehouses = [] } = useQuery({ queryKey: ['warehouses-for-sale'], queryFn: () => inventoryApi.getWarehouses() });
   const { data: customers  = [] } = useQuery({ queryKey: ['customers-for-sale'], queryFn: () => salesApi.listCustomers() });
@@ -696,7 +696,12 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
         ...l,
         productId,
         unitId: undefined,
-        unitPrice: batch ? (batch.sellingPriceCents / 100).toFixed(2) : ((base?.priceCents ?? pr.priceCents) / 100).toFixed(2),
+        // A zero batch price means "no price recorded", not "free" (batches
+        // predating per-batch pricing default to 0), so it must not be used as
+        // the line price. Same guard as the POS cart and checkout.
+        unitPrice: batch && batch.sellingPriceCents > 0
+          ? (batch.sellingPriceCents / 100).toFixed(2)
+          : ((base?.priceCents ?? pr.priceCents) / 100).toFixed(2),
         taxPercent: String(pr.taxPercent),
         batchId: batch?.id,
       };
@@ -708,7 +713,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
   const handleProductSelect = (key: number, productId: string) => {
     const pr = products.find(x => x.id === productId);
     if (pr?.isBatchTracked && productId) {
-      setPendingBatchLine({ key, productId, productName: pr.name });
+      setPendingBatchLine({ key, productId, productName: pr.name, priceCents: pr.priceCents });
     } else {
       selectProduct(key, productId);
     }
@@ -879,6 +884,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
           warehouseId={warehouseId}
           productName={pendingBatchLine.productName}
           qtyNeeded={1}
+          fallbackPriceCents={pendingBatchLine.priceCents}
           onSelect={(batch) => {
             const { key, productId } = pendingBatchLine;
             setPendingBatchLine(null);
