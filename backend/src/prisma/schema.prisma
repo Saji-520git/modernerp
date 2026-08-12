@@ -644,6 +644,10 @@ model StockBatch {
   sellingPriceCents Int       @default(0)   // this batch's own selling price, per base unit
   supplierId        String?   // denormalized from the receiving PO — lets batch matching
                                // (cost + price + supplier) run as a flat lookup, no joins
+  isDamaged         Boolean   @default(false)  // accepted-damaged goods: kept and paid for at a
+                                               // reduced cost, sold at a reduced price. Part of the
+                                               // batch-matching key so damaged stock can never merge
+                                               // into a batch of good stock.
   batchNumber       String?   // supplier/manufacturer batch/lot number
   expiryDate        DateTime?
   receivedAt        DateTime  @default(now())
@@ -787,6 +791,7 @@ model PurchaseReceiptLine {
   damagedQty     Decimal         @default(0) @db.Decimal(18, 4)   // damaged/rejected at receipt — G1
   damagedAccepted    Boolean     @default(false)   // accept damaged (pay for it) vs reject (unpaid) — G3
   damagedUnitCostCents Int?                        // negotiated cost per damaged unit when accepted — G3
+  damagedSellingPriceCents Int?                    // price the accepted damaged batch is sold at
   note           String?         // per-line receiving note — G1
   batchNumber    String?
   expiryDate     DateTime?

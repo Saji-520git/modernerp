@@ -26,6 +26,7 @@ export interface ReceiptLineInput {
   damagedQty?:    number;      // damaged qty — recorded only, NOT added to stock — G2
   damagedAccepted?:     boolean; // accept damaged (pay for it) vs reject (unpaid, default) — G3
   damagedUnitCostCents?: number; // negotiated cost per damaged unit when accepted — G3
+  damagedSellingPriceCents?: number; // price the accepted damaged batch sells at
   note?:          string;      // per-line receiving note — G2
   batchNumber?:   string;
   expiryDate?:    string; // ISO date string
@@ -218,6 +219,25 @@ export async function createReceipt(
       const damagedUnitCost  = damagedAccepted
         ? (rl.damagedUnitCostCents ?? receiptUnitCost)
         : null;
+      // Price the accepted damaged batch is sold at — defaults to the good
+      // selling price when the receiver hasn't set a reduced one.
+      const damagedSellPrice = damagedAccepted
+        ? (rl.damagedSellingPriceCents ?? receiptSellPrice)
+        : null;
+
+      // Accepted damaged goods are kept and PAID for, so they belong in stock —
+      // as their own batch, at the negotiated cost and their own lower selling
+      // price, so they can be sold at a discount. Rejected damaged is not paid
+      // for and never enters stock.
+      const baseDamagedAccepted = damagedAccepted
+        ? damagedQtyDec.mul(factor)
+        : new Decimal(0);
+      const damagedCostPerBaseCents = damagedUnitCost == null ? 0
+        : (factor.isZero() ? damagedUnitCost  : Math.round(damagedUnitCost  / factor.toNumber()));
+      const damagedSellPerBaseCents = damagedSellPrice == null ? 0
+        : (factor.isZero() ? damagedSellPrice : Math.round(damagedSellPrice / factor.toNumber()));
+      // Everything from this line that actually enters stock.
+      const baseReceived = baseGood.plus(baseDamagedAccepted);
 
       // 2a. Create receipt line document (with actual cost + damaged + note — G2/G3)
       await tx.purchaseReceiptLine.create({
@@ -231,6 +251,7 @@ export async function createReceipt(
           damagedQty:    damagedQtyDec,
           damagedAccepted,
           damagedUnitCostCents: damagedUnitCost,
+          damagedSellingPriceCents: damagedSellPrice,
           note:          rl.note ?? null,
           batchNumber:   rl.batchNumber ?? null,
           expiryDate:    rl.expiryDate ? new Date(rl.expiryDate) : null,
@@ -248,49 +269,103 @@ export async function createReceipt(
         where:  { id: poLine.productId },
         select: { costCents: true },
       });
-      const newAvgCents      = computeWAC(existingQty, curProd?.costCents ?? 0, baseGood.toNumber(), costPerBaseCents);
+      // Good and accepted-damaged arrived at different costs, so they are blended
+      // in separately. Damaged is normally much cheaper and must pull the average
+      // down — ignoring it would leave the product's cost reading too high.
+      let avgCents   = curProd?.costCents ?? 0;
+      let runningQty = existingQty;
+      if (baseGood.greaterThan(0)) {
+        avgCents   = computeWAC(runningQty, avgCents, baseGood.toNumber(), costPerBaseCents);
+        runningQty += baseGood.toNumber();
+      }
+      if (baseDamagedAccepted.greaterThan(0)) {
+        avgCents   = computeWAC(runningQty, avgCents, baseDamagedAccepted.toNumber(), damagedCostPerBaseCents);
+        runningQty += baseDamagedAccepted.toNumber();
+      }
       await tx.product.update({
         where: { id: poLine.productId },
-        data:  { costCents: newAvgCents, lastCostCents: costPerBaseCents, isActive: true },
-      });
-
-      // 2b. Upsert stock (base units) — GOOD qty only; damaged does NOT enter stock.
-      await tx.stock.upsert({
-        where: {
-          productId_warehouseId: {
-            productId:   poLine.productId,
-            warehouseId: purchase.warehouseId,
-          },
+        data:  {
+          costCents: avgCents,
+          // lastCost tracks the latest GOOD purchase cost — a receipt that was
+          // entirely damaged shouldn't overwrite it with a distressed price.
+          ...(baseGood.greaterThan(0) ? { lastCostCents: costPerBaseCents } : {}),
+          isActive: true,
         },
-        create: { productId: poLine.productId, warehouseId: purchase.warehouseId, qty: baseGood },
-        update: { qty: { increment: baseGood } },
       });
 
-      // 2c. Stock movement
-      await recordStockMovement(tx, {
-        productId:   poLine.productId,
-        warehouseId: purchase.warehouseId,
-        type:        'PURCHASE_IN',
-        qty:         baseGood,
-        refType:     'PurchaseReceipt',
-        refId:       receipt.id,
-        note:        `GRN ${receiptNumber}`,
-      });
+      // 2b. Upsert stock (base units) — good PLUS accepted damaged. Rejected
+      // damaged is not paid for and never enters stock.
+      if (baseReceived.greaterThan(0)) {
+        await tx.stock.upsert({
+          where: {
+            productId_warehouseId: {
+              productId:   poLine.productId,
+              warehouseId: purchase.warehouseId,
+            },
+          },
+          create: { productId: poLine.productId, warehouseId: purchase.warehouseId, qty: baseReceived },
+          update: { qty: { increment: baseReceived } },
+        });
+      }
 
-      // 2d. Stock batch (FEFO expiry tracking) — stamped with its own cost,
+      // 2c. Stock movements — good and accepted-damaged are logged separately so
+      // the ledger shows what arrived under each cost. Nothing is logged when a
+      // quantity is zero: a movement that moved nothing is noise.
+      if (baseGood.greaterThan(0)) {
+        await recordStockMovement(tx, {
+          productId:   poLine.productId,
+          warehouseId: purchase.warehouseId,
+          type:        'PURCHASE_IN',
+          qty:         baseGood,
+          refType:     'PurchaseReceipt',
+          refId:       receipt.id,
+          note:        `GRN ${receiptNumber}`,
+        });
+      }
+      if (baseDamagedAccepted.greaterThan(0)) {
+        await recordStockMovement(tx, {
+          productId:   poLine.productId,
+          warehouseId: purchase.warehouseId,
+          type:        'PURCHASE_IN',
+          qty:         baseDamagedAccepted,
+          refType:     'PurchaseReceipt',
+          refId:       receipt.id,
+          note:        `GRN ${receiptNumber} — damaged accepted`,
+        });
+      }
+
+      // 2d. Stock batches (FEFO expiry tracking) — stamped with their own cost,
       // selling price, and supplier. Merges into an existing open batch when
-      // all three already match; otherwise starts a new one.
-      await findOrCreateBatch(tx, {
-        productId:         poLine.productId,
-        warehouseId:       purchase.warehouseId,
-        purchaseLineId:    rl.purchaseLineId,
-        qty:               baseGood,
-        unitCostCents:     costPerBaseCents,
-        sellingPriceCents: sellPricePerBaseCents,
-        supplierId:        purchase.supplierId,
-        batchNumber:       rl.batchNumber ?? null,
-        expiryDate:        rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
-      });
+      // those already match; otherwise starts a new one. Damaged is always its
+      // own batch: isDamaged is part of the matching key.
+      if (baseGood.greaterThan(0)) {
+        await findOrCreateBatch(tx, {
+          productId:         poLine.productId,
+          warehouseId:       purchase.warehouseId,
+          purchaseLineId:    rl.purchaseLineId,
+          qty:               baseGood,
+          unitCostCents:     costPerBaseCents,
+          sellingPriceCents: sellPricePerBaseCents,
+          supplierId:        purchase.supplierId,
+          isDamaged:         false,
+          batchNumber:       rl.batchNumber ?? null,
+          expiryDate:        rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
+        });
+      }
+      if (baseDamagedAccepted.greaterThan(0)) {
+        await findOrCreateBatch(tx, {
+          productId:         poLine.productId,
+          warehouseId:       purchase.warehouseId,
+          purchaseLineId:    rl.purchaseLineId,
+          qty:               baseDamagedAccepted,
+          unitCostCents:     damagedCostPerBaseCents,
+          sellingPriceCents: damagedSellPerBaseCents,
+          supplierId:        purchase.supplierId,
+          isDamaged:         true,
+          batchNumber:       rl.batchNumber ?? null,
+          expiryDate:        rl.expiryDate ? new Date(rl.expiryDate) : (poLine.expiryDate ?? null),
+        });
+      }
 
       // 2e. Update PurchaseLine.receivedQty (GOOD qty received against the order —
       // damaged units don't fulfil the order, so only good counts toward delivery).

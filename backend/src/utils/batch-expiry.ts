@@ -84,6 +84,7 @@ export interface BatchDetail {
   sellingPriceCents: number;         // this batch's own selling price, per base unit
   supplierId:        string | null;
   supplierName:      string | null;
+  isDamaged:         boolean;         // accepted-damaged stock, sold at a reduced price
   batchNumber:       string | null;
   expiryDate:        Date | null;
   receivedAt:        Date;
@@ -99,12 +100,12 @@ export async function getBatchDetail(
     orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
     select: {
       id: true, qty: true, unitCostCents: true, sellingPriceCents: true,
-      supplierId: true, supplier: { select: { name: true } },
+      supplierId: true, supplier: { select: { name: true } }, isDamaged: true,
       batchNumber: true, expiryDate: true, receivedAt: true,
     },
   }) as Array<{
     id: string; qty: { toNumber: () => number }; unitCostCents: number; sellingPriceCents: number;
-    supplierId: string | null; supplier: { name: string } | null;
+    supplierId: string | null; supplier: { name: string } | null; isDamaged: boolean;
     batchNumber: string | null; expiryDate: Date | null; receivedAt: Date;
   }>;
 
@@ -123,6 +124,7 @@ export async function getBatchDetail(
       id: b.id, qty: b.qty.toNumber(), unitCostCents: b.unitCostCents,
       sellingPriceCents: b.sellingPriceCents,
       supplierId: b.supplierId, supplierName: b.supplier?.name ?? null,
+      isDamaged: b.isDamaged,
       batchNumber: b.batchNumber, expiryDate: b.expiryDate, receivedAt: b.receivedAt, status,
     };
   });

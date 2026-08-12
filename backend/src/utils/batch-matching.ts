@@ -9,6 +9,7 @@ export interface FindOrCreateBatchInput {
   unitCostCents:     number;
   sellingPriceCents: number;
   supplierId:        string | null;
+  isDamaged?:        boolean;
   batchNumber?:      string | null;
   expiryDate?:       Date | null;
 }
@@ -19,11 +20,15 @@ export interface FindOrCreateBatchResult {
 }
 
 // A new delivery merges into an existing open batch (qty > 0) for the same
-// product+warehouse ONLY when cost, selling price, AND supplier all match
-// exactly — otherwise it becomes its own batch. Matching intentionally does
-// NOT consider expiryDate or batchNumber (not part of the spec); a merge into
-// a batch with a different expiry keeps the EXISTING batch's expiry — the new
-// delivery's expiry is not applied retroactively.
+// product+warehouse ONLY when cost, selling price, supplier AND damaged status
+// all match exactly — otherwise it becomes its own batch. Matching intentionally
+// does NOT consider expiryDate or batchNumber (not part of the spec); a merge
+// into a batch with a different expiry keeps the EXISTING batch's expiry — the
+// new delivery's expiry is not applied retroactively.
+//
+// isDamaged is part of the key so accepted-damaged stock can never merge into a
+// batch of good stock, even in the rare case where cost, price and supplier all
+// coincide — the two are not interchangeable on the shelf.
 export async function findOrCreateBatch(
   tx: Prisma.TransactionClient,
   input: FindOrCreateBatchInput,
@@ -36,6 +41,7 @@ export async function findOrCreateBatch(
       unitCostCents:     input.unitCostCents,
       sellingPriceCents: input.sellingPriceCents,
       supplierId:        input.supplierId,
+      isDamaged:         input.isDamaged ?? false,
     },
     orderBy: { receivedAt: 'asc' },
   });
@@ -57,6 +63,7 @@ export async function findOrCreateBatch(
       unitCostCents:     input.unitCostCents,
       sellingPriceCents: input.sellingPriceCents,
       supplierId:        input.supplierId,
+      isDamaged:         input.isDamaged ?? false,
       batchNumber:       input.batchNumber ?? null,
       expiryDate:        input.expiryDate ?? null,
     },

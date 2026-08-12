@@ -91,6 +91,9 @@ export default function BatchPickerModal({
                         {b.status === 'expiring_soon' && (
                           <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full shrink-0">EXPIRING SOON</span>
                         )}
+                        {b.isDamaged && (
+                          <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full shrink-0">DAMAGED</span>
+                        )}
                       </div>
                       <span className={`text-xs font-semibold shrink-0 ${insufficient ? 'text-red-500' : 'text-slate-600'}`}>
                         Qty {b.qty}

@@ -62,6 +62,7 @@ export interface PurchaseReceiptLine {
   damagedQty:     number;         // damaged qty (not stocked) — G2
   damagedAccepted:      boolean;       // accepted (paid) vs rejected (unpaid) — G3
   damagedUnitCostCents: number | null; // negotiated damaged cost when accepted — G3
+  damagedSellingPriceCents: number | null; // selling price of the accepted damaged batch
   note:           string | null;  // per-line receiving note — G2
   batchNumber:    string | null;
   expiryDate:     string | null;
@@ -132,6 +133,7 @@ export interface CreateReceiptLineInput {
   damagedQty?:    number;       // damaged qty (recorded, not stocked) — G2
   damagedAccepted?:     boolean; // accept damaged (pay) vs reject (unpaid, default) — G3
   damagedUnitCostCents?: number; // negotiated cost per damaged unit when accepted — G3
+  damagedSellingPriceCents?: number; // selling price for the accepted damaged batch
   note?:          string;       // per-line receiving note — G2
   batchNumber?:   string;
   expiryDate?:    string;

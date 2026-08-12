@@ -15,6 +15,7 @@ const receiptLineSchema = z.object({
   damagedQty:     z.number().nonnegative().optional(),
   damagedAccepted:       z.boolean().optional(),
   damagedUnitCostCents:  z.number().int().nonnegative().optional(),
+  damagedSellingPriceCents: z.number().int().nonnegative().optional(),
   note:           z.string().max(300).optional(),
   batchNumber:    z.string().optional(),
   expiryDate:     z.string().optional(),

@@ -469,7 +469,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   // Per-line receive state (G2 adds unitCost + damaged)
   const [lineInputs, setLineInputs] = useState<
-    Record<string, { qty: string; unitCost: string; sellingPrice: string; damaged: string; damagedAccepted: boolean; damagedCost: string; batchNumber: string; expiryDate: string }>
+    Record<string, { qty: string; unitCost: string; sellingPrice: string; damaged: string; damagedAccepted: boolean; damagedCost: string; damagedSellPrice: string; batchNumber: string; expiryDate: string }>
   >({});
 
   const lines    = po.lines ?? [];
@@ -506,6 +506,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
         damaged:     '',
         damagedAccepted: false,
         damagedCost: '',
+        damagedSellPrice: '',
         batchNumber: '',
         expiryDate:  '',
       };
@@ -518,7 +519,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
 
   const updateInput = (
     lineId: string,
-    field: 'qty' | 'unitCost' | 'sellingPrice' | 'damaged' | 'damagedCost' | 'batchNumber' | 'expiryDate',
+    field: 'qty' | 'unitCost' | 'sellingPrice' | 'damaged' | 'damagedCost' | 'damagedSellPrice' | 'batchNumber' | 'expiryDate',
     val: string,
   ) => {
     setLineInputs((prev) => ({ ...prev, [lineId]: { ...prev[lineId], [field]: val } }));
@@ -542,6 +543,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
             damagedQty:    damagedQty > 0 ? damagedQty : undefined,
             damagedAccepted: accepted || undefined,
             damagedUnitCostCents: accepted && input.damagedCost ? Math.round(parseFloat(input.damagedCost) * 100) : undefined,
+            damagedSellingPriceCents: accepted && input.damagedSellPrice ? Math.round(parseFloat(input.damagedSellPrice) * 100) : undefined,
             batchNumber:  input.batchNumber || undefined,
             expiryDate:   input.expiryDate  || undefined,
           });
@@ -717,7 +719,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                     {lines.map((l) => {
                       const received      = Number(l.receivedQty ?? 0);
                       const remaining     = Math.max(0, Number(l.qty) - received);
-                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', sellingPrice: '', damaged: '', damagedAccepted: false, damagedCost: '', batchNumber: '', expiryDate: '' };
+                      const input         = lineInputs[l.id] ?? { qty: '0', unitCost: '', sellingPrice: '', damaged: '', damagedAccepted: false, damagedCost: '', damagedSellPrice: '', batchNumber: '', expiryDate: '' };
                       const isBatch       = l.product.isBatchTracked;
                       const qtyNow        = parseFloat(input.qty) || 0;   // TOTAL received now
                       const missingBatch  = isBatch && qtyNow > 0 && !input.batchNumber;
@@ -806,7 +808,7 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                               placeholder="0"
                               disabled={remaining === 0}
                               onChange={(e) => updateInput(l.id, 'damaged', e.target.value)}
-                              title="Damaged units — recorded but not added to stock"
+                              title="Damaged units — rejected ones are not paid for or stocked; accepted ones enter stock as their own batch"
                               className="w-20 border border-slate-200 rounded px-2 py-1 text-right text-xs focus:outline-none focus:ring-1 focus:ring-red-300 disabled:bg-slate-100"
                             />
                             {/* Damaged disposition (G3): reject = unpaid, or accept at a negotiated cost */}
@@ -825,16 +827,28 @@ function ReceiveStockSection({ po }: { po: Purchase }) {
                                   title="Accept damaged — pay a negotiated cost"
                                 >Accept</button>
                                 {input.damagedAccepted && (
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={input.damagedCost}
-                                    placeholder="Rs./unit"
-                                    onChange={(e) => updateInput(l.id, 'damagedCost', e.target.value)}
-                                    title="Cost per accepted damaged unit (defaults to the good cost)"
-                                    className="w-16 border border-green-300 rounded px-1 py-0.5 text-right text-[10px] focus:outline-none focus:ring-1 focus:ring-green-400"
-                                  />
+                                  <>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={input.damagedCost}
+                                      placeholder="Rs./unit"
+                                      onChange={(e) => updateInput(l.id, 'damagedCost', e.target.value)}
+                                      title="Cost per accepted damaged unit (defaults to the good cost)"
+                                      className="w-16 border border-green-300 rounded px-1 py-0.5 text-right text-[10px] focus:outline-none focus:ring-1 focus:ring-green-400"
+                                    />
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={input.damagedSellPrice}
+                                      placeholder="Sell Rs."
+                                      onChange={(e) => updateInput(l.id, 'damagedSellPrice', e.target.value)}
+                                      title="Selling price for the accepted damaged batch (defaults to this delivery's selling price)"
+                                      className="w-16 border border-orange-300 rounded px-1 py-0.5 text-right text-[10px] focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                    />
+                                  </>
                                 )}
                               </div>
                             )}

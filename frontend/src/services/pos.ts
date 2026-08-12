@@ -81,6 +81,7 @@ export interface ProductBatch {
   sellingPriceCents: number;
   supplierId:        string | null;
   supplierName:      string | null;
+  isDamaged:         boolean;         // accepted-damaged stock, sold at a reduced price
   batchNumber:       string | null;
   expiryDate:        string | null;
   receivedAt:        string;
