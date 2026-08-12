@@ -76,6 +76,11 @@ interface CartItem {
   unitId?:            string;  // selected sales unit (defaults to base unit); sent in checkout payload
   unitShortCode?:     string;  // short code of the selected unit (display only)
   batchId?:           string;  // manually-picked StockBatch (multi-batch products); sent in checkout payload
+  batchQty?:          number;  // BASE units held by that batch when it was picked.
+                               // The line is capped against THIS, not the product's
+                               // total, so a line bound to a 1-unit batch cannot be
+                               // raised to the product's full stock and then be
+                               // rejected at payment. Backend re-checks under lock.
 }
 
 interface CustomerOption {
@@ -469,6 +474,9 @@ const CartLine = forwardRef<CartLineHandle, {
   const unitOpts                = item.isServiceCharge ? [] : getUnitOptions(item.product);
   // Does the line's SELECTED unit allow decimal qty? COUNT units → whole only.
   const unitAllowDecimal        = getUnitAllowDecimal(item.product, item.unitId);
+  // Base units per one of the line's selected unit — batch stock is held in base
+  // units, the typed qty is in the selected unit, so caps convert through this.
+  const baseFactorForLine       = getBaseFactor(item.product, item.unitId);
 
   useImperativeHandle(cartLineRef, () => ({
     focusQty:      () => startEdit(),
@@ -496,6 +504,27 @@ const CartLine = forwardRef<CartLineHandle, {
     // rounded value is what gets capped against stock.
     if (!unitAllowDecimal) {
       qty = Math.max(1, Math.round(qty));
+    }
+
+    // A line bound to one batch is limited by that batch, not by the product's
+    // total stock — typing 3 against a 1-unit batch must be refused here, at the
+    // keyboard, not later when payment is rejected.
+    const lineBatchQty = item.batchId && item.batchQty !== undefined ? item.batchQty : null;
+    if (lineBatchQty !== null) {
+      const maxFromBatch = Math.floor(lineBatchQty / baseFactorForLine);
+      if (qty > maxFromBatch) {
+        qty = maxFromBatch;
+        onBatchCap?.(
+          maxFromBatch > 0
+            ? `Only ${maxFromBatch} left in this batch — add the rest from another batch`
+            : 'This batch is finished — pick another batch',
+        );
+      }
+      setCappedAt(null);
+      if (qty <= 0) { setEditing(false); return; }
+      onChange(qty);
+      setEditing(false);
+      return;
     }
 
     // Batch-aware cap: respect expiredStockPolicy
@@ -2106,17 +2135,31 @@ export default function POSPage() {
     setCart(prev => {
       const idx = prev.findIndex(i => i.product.id === product.id);
       if (idx >= 0) {
-        const newQty = prev[idx].qty + 1;
-        if (maxQty !== null && newQty > maxQty) {
+        const line   = prev[idx];
+        const newQty = line.qty + 1;
+        // A line bound to a specific batch can only draw on THAT batch. Capping
+        // against the product's total let the cashier build a line the batch
+        // could never fill, and the refusal only arrived at payment.
+        if (line.batchId && line.batchQty !== undefined) {
+          const factor      = getBaseFactor(product, line.unitId);
+          const maxFromBatch = Math.floor(line.batchQty / factor);
+          if (newQty > maxFromBatch) {
+            setBatchCapToast(
+              maxFromBatch > 0
+                ? `Only ${maxFromBatch} left in this batch — add the rest from another batch`
+                : 'This batch is finished — pick another batch',
+            );
+            return prev;
+          }
+        } else if (maxQty !== null && newQty > maxQty) {
           if (maxQty === 0) {
             setBatchCapToast('No stock available');
           } else {
             setBatchCapToast(`Only ${maxQty} available`);
           }
           return prev; // don't add
-        }
-        // Non-batch products: cap at total physical stock
-        if (maxQty === null && newQty > availableQty) {
+        } else if (maxQty === null && newQty > availableQty) {
+          // Non-batch products: cap at total physical stock
           setBatchCapToast(`Only ${availableQty} available`);
           return prev;
         }
@@ -2168,6 +2211,7 @@ export default function POSPage() {
         unitId:        baseOpt.unitId,
         unitShortCode: baseOpt.label,
         batchId:       chosenBatch?.id,
+        batchQty:      chosenBatch?.qty,
       }];
       // Auto-add service charge item if configured
       const svcCents = product.serviceChargeCents ?? 0;
@@ -2241,20 +2285,32 @@ export default function POSPage() {
     setCart(prev => {
       let cappedQty = qty;
       if (posProduct) {
-        const available = availableStockFor(posProduct); // BASE units
-        if (available <= 0) {
-          setBatchCapToast('No stock available');
-          return prev; // no change
-        }
         const targetLine = prev.find(
           i => i.product.id === productId && !i.isServiceCharge,
         );
-        const factor   = getBaseFactor(posProduct, targetLine?.unitId);
+        const factor = getBaseFactor(posProduct, targetLine?.unitId);
+
+        // A batch-bound line is limited by its own batch, not by the product's
+        // total stock — otherwise the cashier can type a qty this batch can
+        // never fill and only finds out when payment is refused.
+        const isBatchLine = !!targetLine?.batchId && targetLine.batchQty !== undefined;
+        const available   = isBatchLine
+          ? (targetLine!.batchQty as number)
+          : availableStockFor(posProduct);   // BASE units either way
+
+        if (available <= 0) {
+          setBatchCapToast(isBatchLine ? 'This batch is finished — pick another batch' : 'No stock available');
+          return prev; // no change
+        }
         const maxUnits = Math.floor(available / factor);
         if (cappedQty > maxUnits) {
           cappedQty = maxUnits;
           setBatchCapToast(
-            maxUnits > 0 ? `Only ${maxUnits} available` : 'Not enough stock',
+            isBatchLine
+              ? (maxUnits > 0
+                  ? `Only ${maxUnits} left in this batch — add the rest from another batch`
+                  : 'This batch is finished — pick another batch')
+              : (maxUnits > 0 ? `Only ${maxUnits} available` : 'Not enough stock'),
           );
         }
         if (cappedQty <= 0) return prev; // can't fit even one whole unit
