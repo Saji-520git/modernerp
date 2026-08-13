@@ -212,8 +212,11 @@ export const posService = {
 
     const checkoutWarnings: string[] = [];
 
-    // 1. Load products
-    const productIds = items.map((i) => i.productId);
+    // 1. Load products. DISTINCT ids: one product legitimately appears on more
+    // than one line when a quantity is filled from several batches (1 from the
+    // cheap lot, 2 from the next). Comparing the raw list against the row count
+    // made every such sale look like a missing product and rejected it.
+    const productIds = [...new Set(items.map((i) => i.productId))];
     const products   = await prisma.product.findMany({
       where: { id: { in: productIds }, isActive: true },
       include: { stock: { where: { warehouseId } } },
@@ -281,10 +284,20 @@ export const posService = {
       }),
     );
 
+    // Total demand per product across ALL lines. A product can occupy several
+    // lines when its quantity is filled from more than one batch, and checking
+    // each line on its own against the same stock reading would let the lines
+    // together ask for more than is on hand.
+    const demandByProduct = new Map<string, number>();
+    for (const it of resolvedItems) {
+      demandByProduct.set(it.productId, (demandByProduct.get(it.productId) ?? 0) + Number(it.baseQty));
+    }
+
     // 3. Stock check — use sellableQty (non-expired) if batches exist
     for (const item of resolvedItems) {
       const product = products.find((p) => p.id === item.productId)!;
       const totalAvailable = product.stock[0] ? Number(product.stock[0].qty) : 0;
+      const productDemand  = demandByProduct.get(item.productId) ?? Number(item.baseQty);
 
       // Check sellable (non-expired) qty from batches
       const batchData = await getBatchSummary(item.productId, warehouseId);
@@ -312,11 +325,12 @@ export const posService = {
         ? totalAvailable
         : available;
 
-      if (effectiveAvailable < item.baseQty) {
-        const msg = batchData.expiredQty > 0
-          ? `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${item.baseQty}`
-          : `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${item.baseQty}`;
-        throw new HttpError(400, msg);
+      // Compared against the product's TOTAL demand, not this line alone.
+      if (effectiveAvailable < productDemand) {
+        throw new HttpError(
+          400,
+          `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${productDemand}`,
+        );
       }
 
       // Manually-picked batch: qty is capped to that specific batch, not the

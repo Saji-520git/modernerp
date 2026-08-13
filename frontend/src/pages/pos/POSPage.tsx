@@ -83,6 +83,37 @@ interface CartItem {
                                // rejected at payment. Backend re-checks under lock.
 }
 
+// ─── Cart line identity ───────────────────────────────────────────────────────
+//
+// A cart line is identified by product AND batch, not by product alone. One
+// product can occupy several lines when the customer's quantity is filled from
+// more than one batch — three tins where the cheap batch holds only one means a
+// line of 1 from that batch and a line of 2 from the next, each at its own
+// price. Adding the same product+batch again merges into the existing line, so
+// the same batch can never appear twice and be double-counted at checkout.
+function lineKeyOf(i: CartItem): string {
+  if (i.isServiceCharge) return `svc:${i.linkedProductId ?? i.product.id}`;
+  return `${i.product.id}|${i.batchId ?? ''}`;
+}
+
+// Service charges stay keyed to the PRODUCT, never to the line. The Product page
+// offers two modes and they behave differently once a product spans lines:
+//   per_transaction — flat, once per sale. One charge no matter how many lines;
+//                     charging per line would bill the flat fee twice.
+//   per_unit        — Rs.X per unit sold, so the qty is the SUM across that
+//                     product's lines: 1 + 2 split still totals 3.
+function syncServiceCharges(items: CartItem[]): CartItem[] {
+  return items.map((i) => {
+    if (!i.isServiceCharge || !i.linkedProductId) return i;
+    const parents = items.filter(p => !p.isServiceCharge && p.product.id === i.linkedProductId);
+    if (parents.length === 0) return i;   // orphan; removeFromCart drops it
+    const qty = parents[0].product.serviceChargeMode === 'per_transaction'
+      ? 1
+      : parents.reduce((s, p) => s + p.qty, 0);
+    return i.qty === qty ? i : { ...i, qty };
+  });
+}
+
 interface CustomerOption {
   id: string;
   name: string;
@@ -2133,7 +2164,10 @@ export default function POSPage() {
       : null;
 
     setCart(prev => {
-      const idx = prev.findIndex(i => i.product.id === product.id);
+      // Match on product AND batch: re-adding the same batch tops up that line,
+      // while a different batch starts its own line at its own price.
+      const targetKey = `${product.id}|${chosenBatch?.id ?? ''}`;
+      const idx = prev.findIndex(i => !i.isServiceCharge && lineKeyOf(i) === targetKey);
       if (idx >= 0) {
         const line   = prev[idx];
         const newQty = line.qty + 1;
@@ -2165,15 +2199,7 @@ export default function POSPage() {
         }
         const next = [...prev];
         next[idx] = { ...next[idx], qty: newQty };
-        // Sync svc line qty to match the new parent qty for all modes except
-        // per_transaction (flat — stays at qty=1, falls through unchanged).
-        return next.map(item =>
-          item.isServiceCharge &&
-          item.linkedProductId === product.id &&
-          item.product.serviceChargeMode !== 'per_transaction'
-            ? { ...item, qty: newQty }
-            : item,
-        );
+        return syncServiceCharges(next);
       }
       if (maxQty !== null && maxQty <= 0) {
         setBatchCapToast('No stock available');
@@ -2213,9 +2239,12 @@ export default function POSPage() {
         batchId:       chosenBatch?.id,
         batchQty:      chosenBatch?.qty,
       }];
-      // Auto-add service charge item if configured
+      // Auto-add service charge item if configured — but only once per product.
+      // A second batch line must not spawn a second charge; syncServiceCharges
+      // below adjusts the existing one's qty instead.
       const svcCents = product.serviceChargeCents ?? 0;
-      if (svcCents > 0) {
+      const svcAlreadyPresent = prev.some(i => i.isServiceCharge && i.linkedProductId === product.id);
+      if (svcCents > 0 && !svcAlreadyPresent) {
         // Create a pseudo-product for the service charge line
         const svcProduct: PosProduct = {
           ...product,
@@ -2235,16 +2264,13 @@ export default function POSPage() {
           isServiceCharge: true, linkedProductId: product.id,
         });
       }
-      return [...prev, ...newItems];
+      return syncServiceCharges([...prev, ...newItems]);
     });
     refocusBarcode();
   }, [appSettings, refocusBarcode, isStaffSale]);
 
   // Entry point for every "add this product" action (search grid, barcode,
-  // keyboard nav, quick-add). Routes multi-batch products through the picker
-  // on their FIRST add; re-scanning a product already in the cart just
-  // increments its existing line (same batch already chosen), so it skips
-  // the picker and calls addToCart directly, same as any other product.
+  // keyboard nav, quick-add).
   //
   // The picker opens on how many batches the product ACTUALLY has, not on the
   // isBatchTracked flag. Those are different things: a product can hold several
@@ -2252,27 +2278,51 @@ export default function POSPage() {
   // cheaper batch on any product — and the cashier must be able to choose which
   // one is sold rather than have FEFO decide silently. A single batch needs no
   // decision, so it is added straight away without interrupting the till.
+  //
+  // It re-opens EVERY time for a multi-batch product, including when the product
+  // is already in the cart. That is how a quantity gets filled from more than
+  // one batch: the cheap batch holds one, the cashier adds the product again and
+  // picks the next batch for the rest. Picking a batch that is already on a line
+  // tops that line up rather than starting a second one for the same batch.
+  //
+  // It must not fall through to a batch-less add once every batch is taken —
+  // that produced an extra, unpriced line beyond the number of real batches.
   const handleProductClick = useCallback((product: PosProduct) => {
-    const alreadyInCart = cart.some(i => i.product.id === product.id && !i.isServiceCharge);
-    const batchCount    = product.batchSummary?.batchCount ?? 0;
-    if (batchCount > 1 && !alreadyInCart) {
-      setPendingBatchProduct(product);
-    } else {
-      addToCart(product);
-    }
-  }, [addToCart, cart]);
+    // A scanned product can arrive from the barcode API fallback, which returns
+    // no batch summary — batchCount would read 0 and the scan would silently
+    // add a batch-less line at the product price, bypassing batch selection
+    // entirely. Prefer the loaded grid's copy, which carries the summary.
+    const known   = products.find(p => p.id === product.id);
+    const summary = product.batchSummary ?? known?.batchSummary ?? null;
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart(prev => prev.filter(i =>
-      i.product.id !== productId &&
-      // Also remove any service charge linked to this product
-      i.linkedProductId !== productId,
-    ));
+    // Unknown count → let the picker decide rather than guessing: it resolves
+    // itself silently for 0 or 1 batch and only appears for 2+.
+    if (!summary || summary.batchCount > 1) {
+      setPendingBatchProduct(known ?? product);
+      return;
+    }
+    addToCart(product);
+  }, [addToCart, products]);
+
+  const removeFromCart = useCallback((lineKey: string) => {
+    setCart(prev => {
+      const target = prev.find(i => lineKeyOf(i) === lineKey);
+      if (!target) return prev;
+      const productId = target.product.id;
+      const remaining = prev.filter(i => lineKeyOf(i) !== lineKey);
+      // The product's service charge survives while ANY of its lines remain —
+      // removing one batch line of a split quantity must not drop the charge.
+      const stillHasLines = remaining.some(i => !i.isServiceCharge && i.product.id === productId);
+      const cleaned = stillHasLines
+        ? remaining
+        : remaining.filter(i => i.linkedProductId !== productId);
+      return syncServiceCharges(cleaned);
+    });
     refocusBarcode();
   }, [refocusBarcode]);
 
-  const updateQty = useCallback((productId: string, qty: number) => {
-    if (qty <= 0) { removeFromCart(productId); return; }
+  const updateQty = useCallback((lineKey: string, qty: number) => {
+    if (qty <= 0) { removeFromCart(lineKey); return; }
 
     // v1.0.61 — cap requested qty at available stock. The +/- steppers call this
     // directly and bypass CartLine's typed-input cap, so enforce it here too.
@@ -2280,14 +2330,12 @@ export default function POSPage() {
     // unit (e.g. boxes). Convert: maxUnits = floor(baseAvailable / baseFactor).
     // The line's unit lives on the cart line, so resolve it from the FRESH `prev`
     // state inside the updater (updateQty's closure has no `cart` dep → stale).
-    const posProduct = products.find(p => p.id === productId);
-
     setCart(prev => {
+      const targetLine = prev.find(i => lineKeyOf(i) === lineKey && !i.isServiceCharge);
+      const posProduct = targetLine ? products.find(p => p.id === targetLine.product.id) : undefined;
+
       let cappedQty = qty;
       if (posProduct) {
-        const targetLine = prev.find(
-          i => i.product.id === productId && !i.isServiceCharge,
-        );
         const factor = getBaseFactor(posProduct, targetLine?.unitId);
 
         // A batch-bound line is limited by its own batch, not by the product's
@@ -2316,23 +2364,17 @@ export default function POSPage() {
         if (cappedQty <= 0) return prev; // can't fit even one whole unit
       }
 
-      return prev.map(i => {
-        // Service-charge line follows its parent product's qty for all modes
-        // except per_transaction (flat — stays at qty=1, falls through unchanged).
-        if (
-          i.isServiceCharge &&
-          i.linkedProductId === productId &&
-          i.product.serviceChargeMode !== 'per_transaction'
-        ) {
-          return { ...i, qty: cappedQty };
-        }
-        if (i.product.id !== productId) return i;
+      // Only the addressed line changes; service charges are recomputed after,
+      // from the totals across all of that product's lines.
+      const next = prev.map(i => {
+        if (lineKeyOf(i) !== lineKey || i.isServiceCharge) return i;
         const newLineSubtotal = cappedQty * i.unitPriceCents;
         const newDiscountCents = i.itemDiscountType === 'percent'
           ? Math.floor(newLineSubtotal * i.itemDiscountValue / 100)
           : Math.min(Math.round(i.itemDiscountValue * 100) * cappedQty, newLineSubtotal);
         return { ...i, qty: cappedQty, itemDiscountCents: newDiscountCents };
       });
+      return syncServiceCharges(next);
     });
     refocusBarcode();
   }, [removeFromCart, refocusBarcode, products, availableStockFor]);
@@ -2351,9 +2393,22 @@ export default function POSPage() {
   // ── Barcode lookup ────────────────────────────────────────────────────────────
   // Focus the qty input of a (possibly just-added) cart item once state settles.
   // Component-scope (v1.0.60) so both the barcode flow and the grid can call it.
+  // Focus a specific line's qty box (and select its contents) by line key —
+  // used by the batch picker, which knows exactly which line it just filled.
+  const focusLineQty = useCallback((lineKey: string) => {
+    setTimeout(() => { cartLineRefs.current[lineKey]?.focusQty(); }, 120);
+  }, []);
+
+  // Callers know the product, not which batch line was just created, so focus
+  // the LAST line for that product — the one the add produced.
   const focusNewItemQty = useCallback((productId: string) => {
     setTimeout(() => {
-      cartLineRefs.current[productId]?.focusQty();
+      setCart(current => {
+        const lines = current.filter(i => !i.isServiceCharge && i.product.id === productId);
+        const target = lines[lines.length - 1];
+        if (target) cartLineRefs.current[lineKeyOf(target)]?.focusQty();
+        return current;   // read-only use of fresh state
+      });
     }, 120);
   }, []);
 
@@ -2648,9 +2703,9 @@ export default function POSPage() {
     },
   });
 
-  const updateItemDiscount = useCallback((productId: string, type: 'percent' | 'amount', value: number) => {
+  const updateItemDiscount = useCallback((lineKey: string, type: 'percent' | 'amount', value: number) => {
     setCart(prev => prev.map(i => {
-      if (i.product.id !== productId) return i;
+      if (lineKeyOf(i) !== lineKey) return i;
       const lineSubtotal   = i.qty * i.unitPriceCents;
       const discountCents  = type === 'percent'
         ? Math.floor(lineSubtotal * value / 100)
@@ -2663,9 +2718,9 @@ export default function POSPage() {
   // in staff-sale mode, which prices at cost) the unit price, then ALWAYS
   // re-seeds the line discount from the target unit (per-unit override wins;
   // else product default) and recomputes against the new subtotal.
-  const changeCartUnit = useCallback((productId: string, unitId: string) => {
+  const changeCartUnit = useCallback((lineKey: string, unitId: string) => {
     setCart(prev => prev.map(i => {
-      if (i.product.id !== productId || i.isServiceCharge) return i;
+      if (lineKeyOf(i) !== lineKey || i.isServiceCharge) return i;
       const opt = getUnitOptions(i.product).find(o => o.unitId === unitId);
       if (!opt) return i;
       const newUnitPrice   = isStaffSale ? i.unitPriceCents : opt.priceCents;
@@ -2704,15 +2759,23 @@ export default function POSPage() {
       ...(cashAmountCents && cashAmountCents > 0 ? { cashAmountCents } : {}),
       items: cart
         .filter(i => !i.isServiceCharge)
-        .map(i => {
+        .map((i, idx, sellable) => {
           // Fold any service charge for this product into its unitPriceCents.
           // svc TOTAL = flat per-unit rate × svc qty:
           //   per_item     → qty 1            → flat Rs.X once
           //   proportional → qty = parent qty → Rs.X × parent qty
           // Divide by parent qty because the backend computes the line total
           // as unitPriceCents × qty (so this re-multiplies back to svc TOTAL).
+          //
+          // A product split across batches has several lines but ONE service
+          // charge, so the total is attached to that product's FIRST line only.
+          // Folding it into every line would bill the charge once per line.
           const svcItem  = cart.find(sc => sc.isServiceCharge && sc.linkedProductId === i.product.id);
-          const svcTotal = svcItem ? svcItem.unitPriceCents * svcItem.qty : 0;
+          const isFirstLineOfProduct =
+            sellable.findIndex(s => s.product.id === i.product.id) === idx;
+          const svcTotal = svcItem && isFirstLineOfProduct
+            ? svcItem.unitPriceCents * svcItem.qty
+            : 0;
           return {
             productId:      i.product.id,
             qty:            i.qty,
@@ -2962,7 +3025,7 @@ export default function POSPage() {
         e.preventDefault();
         if (cart.length > 0) {
           const last = cart[cart.length - 1];
-          updateQty(last.product.id, last.qty + 1);
+          updateQty(lineKeyOf(last), last.qty + 1);
         }
         return;
       }
@@ -2972,8 +3035,8 @@ export default function POSPage() {
         e.preventDefault();
         if (cart.length > 0) {
           const last = cart[cart.length - 1];
-          if (last.qty > 1) updateQty(last.product.id, last.qty - 1);
-          else removeFromCart(last.product.id);
+          if (last.qty > 1) updateQty(lineKeyOf(last), last.qty - 1);
+          else removeFromCart(lineKeyOf(last));
         }
         return;
       }
@@ -2983,7 +3046,7 @@ export default function POSPage() {
         e.preventDefault();
         if (cart.length > 0) {
           const last = cart[cart.length - 1];
-          removeFromCart(last.product.id);
+          removeFromCart(lineKeyOf(last));
         }
         return;
       }
@@ -3466,15 +3529,15 @@ export default function POSPage() {
                 </div>
                 {cart.map(item => (
                   <CartLine
-                    key={item.product.id}
-                    ref={el => { cartLineRefs.current[item.product.id] = el; }}
+                    key={lineKeyOf(item)}
+                    ref={el => { cartLineRefs.current[lineKeyOf(item)] = el; }}
                     item={item}
-                    onChange={qty => updateQty(item.product.id, qty)}
-                    onRemove={() => removeFromCart(item.product.id)}
+                    onChange={qty => updateQty(lineKeyOf(item), qty)}
+                    onRemove={() => removeFromCart(lineKeyOf(item))}
                     onBatchCap={msg => setBatchCapToast(msg)}
-                    onUpdateDiscount={(type, value) => updateItemDiscount(item.product.id, type, value)}
+                    onUpdateDiscount={(type, value) => updateItemDiscount(lineKeyOf(item), type, value)}
                     onNavigateToBarcode={refocusBarcode}
-                    onChangeUnit={unitId => changeCartUnit(item.product.id, unitId)}
+                    onChangeUnit={unitId => changeCartUnit(lineKeyOf(item), unitId)}
                   />
                 ))}
               </div>
@@ -3996,8 +4059,8 @@ export default function POSPage() {
         />
       )}
 
-      {/* Batch picker — mounted for every batch-tracked product on its first
-          add; resolves itself silently for 0/1 batches, or shows a picker. */}
+      {/* Batch picker — mounted whenever a multi-batch product is added;
+          resolves itself silently for 0/1 batches, or shows a picker. */}
       {pendingBatchProduct && (
         <BatchPickerModal
           productId={pendingBatchProduct.id}
@@ -4005,11 +4068,20 @@ export default function POSPage() {
           productName={pendingBatchProduct.name}
           qtyNeeded={1}
           fallbackPriceCents={pendingBatchProduct.priceCents}
+          alreadyInCart={cart.reduce<Record<string, number>>((acc, i) => {
+            // Base units already taken from each batch by this sale, so the
+            // picker offers what is left rather than the full shelf quantity.
+            if (i.isServiceCharge || !i.batchId || i.product.id !== pendingBatchProduct.id) return acc;
+            acc[i.batchId] = (acc[i.batchId] ?? 0) + i.qty * getBaseFactor(i.product, i.unitId);
+            return acc;
+          }, {})}
           onSelect={(batch) => {
             const product = pendingBatchProduct;
             setPendingBatchProduct(null);
             addToCart(product, batch ?? undefined);
-            focusNewItemQty(product.id);
+            // Focus the exact line this pick landed on — topping up an existing
+            // batch line must select ITS qty box, not the most recently added.
+            focusLineQty(`${product.id}|${batch?.id ?? ''}`);
           }}
           onClose={() => setPendingBatchProduct(null)}
         />

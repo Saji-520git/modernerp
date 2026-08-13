@@ -12,6 +12,10 @@ interface BatchPickerModalProps {
   // The product's own price, used to display a batch that has none recorded
   // (0). Keeps the price shown here equal to the price actually charged.
   fallbackPriceCents?: number;
+  // Base units of each batch ALREADY sitting in the cart, keyed by batch id.
+  // Subtracted from what the picker offers, so a batch of 5 with 2 already
+  // taken shows 3 — the cashier sees what is still addable, not the shelf qty.
+  alreadyInCart?: Record<string, number>;
   // null = no batch rows exist (legacy pre-batch-tracking stock) — proceed
   // with the product's own defaults, same as before this feature existed.
   onSelect:    (batch: ProductBatch | null) => void;
@@ -24,7 +28,7 @@ interface BatchPickerModalProps {
 // so the cashier/clerk can choose which lot to sell from (own cost, selling
 // price, supplier).
 export default function BatchPickerModal({
-  productId, warehouseId, productName, qtyNeeded, fallbackPriceCents, onSelect, onClose,
+  productId, warehouseId, productName, qtyNeeded, fallbackPriceCents, alreadyInCart, onSelect, onClose,
 }: BatchPickerModalProps) {
   const { formatMoney } = useAppSettings();
 
@@ -72,7 +76,12 @@ export default function BatchPickerModal({
           ) : (
             <div className="space-y-2">
               {batches.map((b) => {
-                const insufficient = b.qty < qtyNeeded;
+                // What is still addable: the batch's stock minus whatever this
+                // sale has already taken from it. A batch fully consumed by the
+                // cart is shown as such rather than offering stock twice.
+                const taken     = alreadyInCart?.[b.id] ?? 0;
+                const remaining = Math.max(0, b.qty - taken);
+                const insufficient = remaining < qtyNeeded;
                 return (
                   <button
                     key={b.id}
@@ -97,9 +106,14 @@ export default function BatchPickerModal({
                         {b.isDamaged && (
                           <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full shrink-0">DAMAGED</span>
                         )}
+                        {taken > 0 && (
+                          <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full shrink-0">
+                            {taken} IN CART
+                          </span>
+                        )}
                       </div>
                       <span className={`text-xs font-semibold shrink-0 ${insufficient ? 'text-red-500' : 'text-slate-600'}`}>
-                        Qty {b.qty}
+                        Qty {remaining}{taken > 0 ? ` of ${b.qty}` : ''}
                       </span>
                     </div>
                     <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
@@ -124,7 +138,9 @@ export default function BatchPickerModal({
                       </p>
                     )}
                     {insufficient && (
-                      <p className="mt-1 text-[10px] text-red-500 font-medium">Not enough stock in this batch</p>
+                      <p className="mt-1 text-[10px] text-red-500 font-medium">
+                        {taken > 0 ? 'All of this batch is already in the cart' : 'Not enough stock in this batch'}
+                      </p>
                     )}
                   </button>
                 );
