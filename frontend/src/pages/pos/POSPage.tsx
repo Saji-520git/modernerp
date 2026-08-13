@@ -50,6 +50,8 @@ const POS_SHORTCUTS = [
   { group: 'SALES',      key: 'F4',           action: 'Hold current cart' },
   { group: 'SALES',      key: 'F5',           action: 'Cancel current sale' },
   { group: 'SALES',      key: 'F8',           action: 'Pay now' },
+  { group: 'SALES',      key: 'F7',           action: 'Payment dialog: select customer' },
+  { group: 'SALES',      key: 'F6',           action: 'Payment dialog: new customer' },
   { group: 'SALES',      key: 'Esc',          action: 'Close any open modal' },
   { group: 'CART',       key: 'Tap a line',   action: 'Select it — +/-/Del then act on that line' },
   { group: 'CART',       key: '↑ / ↓',        action: 'Move the selection (when not typing)' },
@@ -1015,12 +1017,19 @@ function CancelConfirmModal({
 function PaymentDialog({
   totalCents: rawTotalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
   loyaltyEnabled, customerPoints, pointValueCents, minRedeemPoints, redeemPoints, setRedeemPoints,
+  onChangeCustomer, onNewCustomer, suppressEscape = false,
 }: {
   totalCents: number;
   onConfirm: (method: AllPaymentMethods, receivedCents?: number, cashAmountCents?: number) => void;
   onClose: () => void;
   isPending: boolean;
   customer: CustomerOption | null;
+  // Attaching a customer at tender time is often the moment the need appears —
+  // Credit is disabled without one, and so is redeeming loyalty points. Both
+  // reuse the pickers POS already has, so the choice sticks to the sale.
+  onChangeCustomer: () => void;
+  onNewCustomer: () => void;
+  suppressEscape?: boolean;
   canSellOnCredit: boolean;
   loyaltyEnabled: boolean;
   customerPoints: number;
@@ -1123,7 +1132,18 @@ function PaymentDialog({
   // Zone-based keyboard handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (isPending) return; e.preventDefault(); onClose(); return; }
+      // Stand down while a customer picker sits above this dialog: that picker
+      // handles its own Escape, and this listener would otherwise close the
+      // payment behind it on the same keypress.
+      if (e.key === 'Escape') { if (isPending || suppressEscape) return; e.preventDefault(); onClose(); return; }
+
+      // F7 / F6 — reach the customer without a full tab cycle. Focus stays on
+      // the amount field when the dialog opens, because the common sale is cash
+      // with no customer and that field is what the cashier types into; the
+      // customer row sits FIRST in the dialog, so tabbing to it means going all
+      // the way round. A direct key costs the ordinary sale nothing.
+      if (e.key === 'F7') { if (isPending) return; e.preventDefault(); onChangeCustomer(); return; }
+      if (e.key === 'F6') { if (isPending) return; e.preventDefault(); onNewCustomer();   return; }
 
       if (tabsFocused) {
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -1177,6 +1197,30 @@ function PaymentDialog({
         </div>
 
         <div className="p-6 space-y-5">
+          {/* Customer — attaching one here is often the moment the need appears:
+              Credit is disabled without a customer, and so is redeeming points.
+              The choice sticks to the sale, same as picking from the header. */}
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+            <User size={14} className="text-slate-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Customer</p>
+              <p className="text-sm font-semibold text-slate-800 truncate">
+                {customer ? customer.name : 'Walk-in'}
+                {customer?.phone && <span className="ml-1 font-normal text-slate-400">{customer.phone}</span>}
+              </p>
+            </div>
+            <button type="button" onClick={onChangeCustomer} disabled={isPending}
+              title="Select a customer (F7)"
+              className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-40">
+              {customer ? 'Change' : 'Select'} <span className="text-[10px] text-slate-400">F7</span>
+            </button>
+            <button type="button" onClick={onNewCustomer} disabled={isPending}
+              title="Create a new customer (F6)"
+              className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-700 disabled:opacity-40">
+              + New <span className="text-[10px] text-slate-400">F6</span>
+            </button>
+          </div>
+
           {/* Amount Due */}
           <div className="bg-indigo-600 rounded-2xl px-5 py-4 text-center">
             <p className="text-indigo-200 text-xs font-semibold uppercase tracking-widest mb-1">Amount Due</p>
@@ -2951,19 +2995,22 @@ export default function POSPage() {
       // Escape — close topmost modal/panel
       if (e.key === 'Escape') {
         if (showCloseShift)       { setShowCloseShift(false);       return; }
+        // Customer pickers sit ABOVE the payment dialog when opened from it, so
+        // they must close first — otherwise Esc dismisses the payment behind
+        // them and leaves the picker stranded.
+        if (showQuickAddCustomer) { setShowQuickAddCustomer(false); return; }
+        if (showCustomer)         { setShowCustomer(false);         return; }
         if (showPayment)          { if (checkoutMutation.isPending) return; setShowPayment(false); return; }
         if (showHoldModal)        { setShowHoldModal(false);        return; }
         if (showShortcuts)        { setShowShortcuts(false);        return; }
         if (showExitBlocked)      { setShowExitBlocked(false);      return; }
         if (showSignOutShift)     { setShowSignOutShift(false);     return; }
-        if (showQuickAddCustomer) { setShowQuickAddCustomer(false); return; }
         if (quickAddBarcode)      { setQuickAddBarcode(null);       return; }
         if (showHolds)            { setShowHolds(false);            return; }
         // Reprint view is read-only — closing it must NOT clear the cart
         // (unlike the live post-sale receipt modal below).
         if (reprintReceipt)       { setReprintReceipt(null); refocusBarcode(); return; }
         if (showReceipt)          { clearCart(); setCustomer(null); setCartDiscountValue(0); setCartDiscountType('amount'); setShowReceipt(false); refocusBarcode(); return; }
-        if (showCustomer)         { setShowCustomer(false);         return; }
         refocusBarcode();
         return;
       }
@@ -3069,8 +3116,13 @@ export default function POSPage() {
         return;
       }
 
-      // Enter — open payment dialog if cart has items
-      if (e.key === 'Enter') {
+      // Enter — open payment dialog if cart has items.
+      //
+      // Stands down while any dialog is open. Tabbing to a button inside a popup
+      // leaves focus on a BUTTON, not an input, so this fired: preventDefault
+      // cancelled the button's own activation and the payment dialog opened
+      // behind the popup. Enter must belong to whatever is on top.
+      if (e.key === 'Enter' && !anyModalOpen) {
         const active = document.activeElement;
         const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
         if (!isInput && cart.length > 0) {
@@ -3081,8 +3133,10 @@ export default function POSPage() {
         }
       }
 
-      // Any printable character outside an input → route focus to barcode
-      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Any printable character outside an input → route focus to barcode.
+      // Same rule: while a dialog is open, typing belongs to that dialog and
+      // must not yank focus to the scanner field behind it.
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && !anyModalOpen) {
         const active  = document.activeElement;
         const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
         if (!isInput) barcodeRef.current?.focus();
@@ -3730,6 +3784,9 @@ export default function POSPage() {
           minRedeemPoints={loyaltyConfig?.minRedeemPoints ?? 0}
           redeemPoints={redeemPoints}
           setRedeemPoints={setRedeemPoints}
+          suppressEscape={showCustomer || showQuickAddCustomer}
+          onChangeCustomer={() => setShowCustomer(true)}
+          onNewCustomer={() => { setNewCustName(''); setNewCustPhone(''); setQuickAddError(''); setShowQuickAddCustomer(true); }}
         />
       )}
 
