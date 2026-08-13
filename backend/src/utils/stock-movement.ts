@@ -26,7 +26,9 @@ const IN_TYPES:  readonly StockMoveType[] = ['PURCHASE_IN', 'RETURN_IN', 'TRANSF
  * untouched.
  */
 export function signedMovementQty(type: StockMoveType, qty: number): number {
-  if (OUT_TYPES.includes(type)) return -Math.abs(qty);
+  // `|| 0` collapses negative zero: -Math.abs(0) is -0, which is pointless in a
+  // ledger and surprises strict comparisons.
+  if (OUT_TYPES.includes(type)) return -Math.abs(qty) || 0;
   if (IN_TYPES.includes(type))  return  Math.abs(qty);
   return qty; // ADJUSTMENT — caller-signed delta
 }

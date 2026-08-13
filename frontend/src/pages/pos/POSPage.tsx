@@ -62,57 +62,9 @@ const POS_SHORTCUTS = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CartItem {
-  product:            PosProduct;
-  qty:                number;
-  unitPriceCents:     number;
-  itemDiscountType:   'percent' | 'amount';
-  itemDiscountValue:  number;  // % or display-currency amount
-  itemDiscountCents:  number;  // computed cents
-  isServiceCharge?:   boolean; // service charge line (display only — excluded from checkout items)
-  linkedProductId?:   string;  // product ID this service charge belongs to
-  costCents?:         number;  // product cost price — used for staff sale repricing
-  originalPriceCents?:number;  // selling price before staff sale toggle
-  unitId?:            string;  // selected sales unit (defaults to base unit); sent in checkout payload
-  unitShortCode?:     string;  // short code of the selected unit (display only)
-  batchId?:           string;  // manually-picked StockBatch (multi-batch products); sent in checkout payload
-  batchQty?:          number;  // BASE units held by that batch when it was picked.
-                               // The line is capped against THIS, not the product's
-                               // total, so a line bound to a 1-unit batch cannot be
-                               // raised to the product's full stock and then be
-                               // rejected at payment. Backend re-checks under lock.
-}
-
-// ─── Cart line identity ───────────────────────────────────────────────────────
-//
-// A cart line is identified by product AND batch, not by product alone. One
-// product can occupy several lines when the customer's quantity is filled from
-// more than one batch — three tins where the cheap batch holds only one means a
-// line of 1 from that batch and a line of 2 from the next, each at its own
-// price. Adding the same product+batch again merges into the existing line, so
-// the same batch can never appear twice and be double-counted at checkout.
-function lineKeyOf(i: CartItem): string {
-  if (i.isServiceCharge) return `svc:${i.linkedProductId ?? i.product.id}`;
-  return `${i.product.id}|${i.batchId ?? ''}`;
-}
-
-// Service charges stay keyed to the PRODUCT, never to the line. The Product page
-// offers two modes and they behave differently once a product spans lines:
-//   per_transaction — flat, once per sale. One charge no matter how many lines;
-//                     charging per line would bill the flat fee twice.
-//   per_unit        — Rs.X per unit sold, so the qty is the SUM across that
-//                     product's lines: 1 + 2 split still totals 3.
-function syncServiceCharges(items: CartItem[]): CartItem[] {
-  return items.map((i) => {
-    if (!i.isServiceCharge || !i.linkedProductId) return i;
-    const parents = items.filter(p => !p.isServiceCharge && p.product.id === i.linkedProductId);
-    if (parents.length === 0) return i;   // orphan; removeFromCart drops it
-    const qty = parents[0].product.serviceChargeMode === 'per_transaction'
-      ? 1
-      : parents.reduce((s, p) => s + p.qty, 0);
-    return i.qty === qty ? i : { ...i, qty };
-  });
-}
+// Cart line model and the rules that decide what is charged live in
+// ./cartLines — pure functions, unit-tested next to that file.
+import { type CartItem, lineKeyOf, syncServiceCharges, serviceChargePerUnitFor } from './cartLines';
 
 interface CustomerOption {
   id: string;
@@ -2760,27 +2712,15 @@ export default function POSPage() {
       items: cart
         .filter(i => !i.isServiceCharge)
         .map((i, idx, sellable) => {
-          // Fold any service charge for this product into its unitPriceCents.
-          // svc TOTAL = flat per-unit rate × svc qty:
-          //   per_item     → qty 1            → flat Rs.X once
-          //   proportional → qty = parent qty → Rs.X × parent qty
-          // Divide by parent qty because the backend computes the line total
-          // as unitPriceCents × qty (so this re-multiplies back to svc TOTAL).
-          //
-          // A product split across batches has several lines but ONE service
-          // charge, so the total is attached to that product's FIRST line only.
-          // Folding it into every line would bill the charge once per line.
-          const svcItem  = cart.find(sc => sc.isServiceCharge && sc.linkedProductId === i.product.id);
-          const isFirstLineOfProduct =
-            sellable.findIndex(s => s.product.id === i.product.id) === idx;
-          const svcTotal = svcItem && isFirstLineOfProduct
-            ? svcItem.unitPriceCents * svcItem.qty
-            : 0;
+          // Service charge folded into unitPriceCents — see cartLines.ts for the
+          // rule (one charge per product, on its first line, divided by qty so
+          // the backend's unitPrice x qty re-multiplies back to the total).
+          const svcPerUnit = serviceChargePerUnitFor(i, idx, sellable, cart);
           return {
             productId:      i.product.id,
             qty:            i.qty,
             unitId:         i.unitId,
-            unitPriceCents: i.unitPriceCents + (i.qty > 0 ? svcTotal / i.qty : 0),
+            unitPriceCents: i.unitPriceCents + svcPerUnit,
             discountCents:  i.itemDiscountCents,
             batchId:        i.batchId,
           };
