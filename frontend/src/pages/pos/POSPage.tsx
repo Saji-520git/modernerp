@@ -51,9 +51,11 @@ const POS_SHORTCUTS = [
   { group: 'SALES',      key: 'F5',           action: 'Cancel current sale' },
   { group: 'SALES',      key: 'F8',           action: 'Pay now' },
   { group: 'SALES',      key: 'Esc',          action: 'Close any open modal' },
-  { group: 'CART',       key: '+',            action: 'Add 1 to last item qty' },
-  { group: 'CART',       key: '-',            action: 'Remove 1 from last item qty' },
-  { group: 'CART',       key: 'Del',          action: 'Remove last item from cart' },
+  { group: 'CART',       key: 'Tap a line',   action: 'Select it — +/-/Del then act on that line' },
+  { group: 'CART',       key: '↑ / ↓',        action: 'Move the selection (when not typing)' },
+  { group: 'CART',       key: '+',            action: 'Add 1 to selected item qty' },
+  { group: 'CART',       key: '-',            action: 'Remove 1 from selected item qty' },
+  { group: 'CART',       key: 'Del',          action: 'Remove selected item from cart' },
   { group: 'DRAFTS',     key: 'L',            action: 'Open drafts list' },
   { group: 'SHIFT',      key: 'Ctrl+Shift+O', action: 'Open shift (if none active)' },
   { group: 'SHIFT',      key: 'Ctrl+Shift+X', action: 'Close shift' },
@@ -434,8 +436,10 @@ const CartLine = forwardRef<CartLineHandle, {
   onUpdateDiscount: (type: 'percent' | 'amount', value: number) => void;
   onNavigateToBarcode: () => void;
   onChangeUnit: (unitId: string) => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }>(function CartLine({
-  item, onChange, onRemove, onBatchCap, onUpdateDiscount, onNavigateToBarcode, onChangeUnit,
+  item, onChange, onRemove, onBatchCap, onUpdateDiscount, onNavigateToBarcode, onChangeUnit, selected = false, onSelect,
 }, cartLineRef) {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
@@ -547,11 +551,24 @@ const CartLine = forwardRef<CartLineHandle, {
   };
 
   return (
-    <div className="group" style={{ background: '#fff', borderBottom: CART_COL_BORDER }}>
+    <div
+      className="group"
+      // Tapping anywhere on the row selects it — the primary route on a
+      // touchscreen till, and it steals no keyboard shortcut. Clicks on the
+      // controls inside (qty, unit, discount, trash) keep their own behaviour.
+      onMouseDown={() => onSelect?.()}
+      style={{
+        // Selected line: an indigo edge and tint, so the cashier can see which
+        // row +/-/Del will act on before pressing anything.
+        background: selected ? '#eef2ff' : '#fff',
+        borderBottom: CART_COL_BORDER,
+        boxShadow: selected ? 'inset 3px 0 0 #4f46e5' : undefined,
+      }}
+    >
       {/* Single flush table row with per-cell vertical dividers — columns match the
           dark CART_GRID header: Product | Unit | Price | Qty | Disc | Disc Tot | Total | trash */}
       <div
-        className="transition-colors group-hover:bg-slate-50/70"
+        className={selected ? 'transition-colors' : 'transition-colors group-hover:bg-slate-50/70'}
         style={{
           display: 'grid',
           gridTemplateColumns: CART_GRID,
@@ -1732,6 +1749,13 @@ export default function POSPage() {
   // Highlighted product card index for keyboard grid navigation (v1.0.60; -1 = none)
   const [gridSelectedIndex, setGridSelectedIndex] = useState<number>(-1);
 
+  // ── Cart line selection ─────────────────────────────────────────────────────
+  // Which cart line +/-/Del act on. Held as a line KEY rather than an index so
+  // it survives lines being added or removed. null means "the newest line",
+  // which is what those keys did before selection existed — so a cashier who
+  // never presses an arrow sees exactly the old behaviour.
+  const [cartSelectedKey, setCartSelectedKey] = useState<string | null>(null);
+
   // ── Draggable products/cart divider ─────────────────────────────────────────
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
@@ -2079,6 +2103,33 @@ export default function POSPage() {
   // v1.0.61 — Aggregate BASE-unit demand per product across ALL its cart lines
   // (a product may appear under different sales units), then compare the summed
   // base qty to live base-unit stock. Backend remains the final authority.
+  // Lines a cashier can act on. Service-charge rows are derived from their
+  // parent product, so they are never selectable or individually removable.
+  const sellableLines = cart.filter(i => !i.isServiceCharge);
+
+  // Any dialog covering the till — cart arrows stand down so the dialog keeps
+  // its own arrow behaviour (the payment dialog cycles its method tabs).
+  const anyModalOpen =
+    showPayment || showReceipt || showHoldModal || showHolds || showCustomer ||
+    showCloseShift || showSignOutShift || showShortcuts || showExitBlocked ||
+    showQuickAddCustomer || showCancelConfirm || showReturn ||
+    !!quickAddBarcode || !!reprintReceipt || !!pendingBatchProduct;
+
+  // The line +/-/Del apply to: the selected one, else the newest. Falling back
+  // to the newest also covers a selection whose line has since been removed.
+  const targetLine =
+    (cartSelectedKey ? sellableLines.find(i => lineKeyOf(i) === cartSelectedKey) : undefined)
+    ?? sellableLines[sellableLines.length - 1];
+
+  // Drop a selection whose line is gone, so the highlight never points at a
+  // row that no longer exists.
+  useEffect(() => {
+    if (cartSelectedKey && !sellableLines.some(i => lineKeyOf(i) === cartSelectedKey)) {
+      setCartSelectedKey(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, cartSelectedKey]);
+
   const hasOversoldItem = (() => {
     const baseByProduct = new Map<string, number>();
     for (const i of cart) {
@@ -2960,34 +3011,54 @@ export default function POSPage() {
         return;
       }
 
-      // + / = — increase qty of last cart item
+      // ↑ / ↓ — move the cart selection, so +/-/Del can reach a line that is not
+      // the newest (the mistake is often a few rows up by the time it is spotted).
+      //
+      // Deliberately narrow so it cannot steal arrows from anything that already
+      // uses them: the product grid has its own handler and calls preventDefault,
+      // the payment dialog cycles its tabs, and typing in any field must keep
+      // normal caret movement.
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const active  = document.activeElement;
+        const isInput = active instanceof HTMLInputElement
+          || active instanceof HTMLTextAreaElement
+          || active instanceof HTMLSelectElement;
+        const inGrid  = !!(active && gridRef.current?.contains(active));
+        if (e.defaultPrevented || isInput || inGrid || anyModalOpen || sellableLines.length === 0) return;
+
+        e.preventDefault();
+        const idx = cartSelectedKey
+          ? sellableLines.findIndex(i => lineKeyOf(i) === cartSelectedKey)
+          : sellableLines.length - 1;               // no selection yet → start at the newest
+        const from = idx < 0 ? sellableLines.length - 1 : idx;
+        const next = e.key === 'ArrowDown'
+          ? Math.min(from + 1, sellableLines.length - 1)
+          : Math.max(from - 1, 0);
+        setCartSelectedKey(lineKeyOf(sellableLines[next]));
+        return;
+      }
+
+      // + / = — increase qty of the selected cart line (newest if none selected)
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          updateQty(lineKeyOf(last), last.qty + 1);
-        }
+        if (targetLine) updateQty(lineKeyOf(targetLine), targetLine.qty + 1);
         return;
       }
 
-      // - — decrease qty of last cart item
+      // - — decrease qty of the selected cart line; removes it at qty 1
       if (e.key === '-') {
         e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          if (last.qty > 1) updateQty(lineKeyOf(last), last.qty - 1);
-          else removeFromCart(lineKeyOf(last));
+        if (targetLine) {
+          if (targetLine.qty > 1) updateQty(lineKeyOf(targetLine), targetLine.qty - 1);
+          else removeFromCart(lineKeyOf(targetLine));
         }
         return;
       }
 
-      // Delete — remove last cart item
+      // Delete — remove the selected cart line (newest if none selected)
       if (e.key === 'Delete' || e.key === 'Del') {
         e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          removeFromCart(lineKeyOf(last));
-        }
+        if (targetLine) removeFromCart(lineKeyOf(targetLine));
         return;
       }
 
@@ -3023,7 +3094,8 @@ export default function POSPage() {
   }, [showCloseShift, showSignOutShift, showPayment, showHoldModal, showShortcuts, showExitBlocked, showQuickAddCustomer,
       showHolds, showReceipt, showCustomer, showCancelConfirm, showReturn, quickAddBarcode, reprintReceipt,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
-      checkoutMutation.isPending, hasOversoldItem]);
+      checkoutMutation.isPending, hasOversoldItem,
+      anyModalOpen, cartSelectedKey, sellableLines, targetLine]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   // Use live shift data from API (has real-time saleCount / totalSalesCents)
@@ -3478,6 +3550,8 @@ export default function POSPage() {
                     onUpdateDiscount={(type, value) => updateItemDiscount(lineKeyOf(item), type, value)}
                     onNavigateToBarcode={refocusBarcode}
                     onChangeUnit={unitId => changeCartUnit(lineKeyOf(item), unitId)}
+                    selected={!item.isServiceCharge && !!targetLine && lineKeyOf(item) === lineKeyOf(targetLine) && cartSelectedKey !== null}
+                    onSelect={() => { if (!item.isServiceCharge) setCartSelectedKey(lineKeyOf(item)); }}
                   />
                 ))}
               </div>
