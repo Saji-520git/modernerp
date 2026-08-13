@@ -34,6 +34,9 @@ export interface SaleProduct {
   taxPercent: number;
   stockQty: number;
   isBatchTracked?: boolean;
+  batchCount?: number;   // open batches in the selected warehouse — 2+ lets the
+                         // clerk pick which lot the line draws from
+
   unit: SaleUnitRef;
   unitId?: string;
   baseUnitId?: string | null;

@@ -70,9 +70,25 @@ export const salesService = {
       },
     });
 
+    // Open batches per product in this warehouse. The line's batch picker opens
+    // on how many batches a product ACTUALLY has — mirroring POS — because
+    // isBatchTracked governs forcing batch entry when RECEIVING goods, not
+    // whether a product has several lots to choose between when selling.
+    // One grouped query rather than a lookup per product.
+    const batchCounts = new Map<string, number>();
+    if (warehouseId) {
+      const grouped = await prisma.stockBatch.groupBy({
+        by: ['productId'],
+        where: { warehouseId, qty: { gt: 0 } },
+        _count: { _all: true },
+      });
+      for (const g of grouped) batchCounts.set(g.productId, g._count._all);
+    }
+
     return products.map((p) => ({
       ...p,
       stockQty: p.stock.reduce((sum, s) => sum + Number(s.qty), 0),
+      batchCount: batchCounts.get(p.id) ?? 0,
     }));
   },
 

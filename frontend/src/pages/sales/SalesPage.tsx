@@ -710,9 +710,14 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
 
   // Product dropdown entry point — routes multi-batch products through the
   // picker first; everything else finalizes immediately, unchanged.
+  //
+  // Triggers on how many batches the product ACTUALLY has, matching POS. Gating
+  // on isBatchTracked meant a product holding several lots without that flag —
+  // which is what accepting damaged goods produces — silently skipped the
+  // picker here while offering it at the till.
   const handleProductSelect = (key: number, productId: string) => {
     const pr = products.find(x => x.id === productId);
-    if (pr?.isBatchTracked && productId) {
+    if (pr && productId && (pr.batchCount ?? 0) > 1) {
       setPendingBatchLine({ key, productId, productName: pr.name, priceCents: pr.priceCents });
     } else {
       selectProduct(key, productId);
@@ -885,6 +890,21 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
           productName={pendingBatchLine.productName}
           qtyNeeded={1}
           fallbackPriceCents={pendingBatchLine.priceCents}
+          alreadyInCart={lines.reduce<Record<string, number>>((acc, l) => {
+            // Base units this invoice already draws from each batch, so the
+            // picker offers what is left rather than the full shelf quantity.
+            // The line being re-picked is excluded — it is about to be replaced.
+            if (l.key === pendingBatchLine.key) return acc;
+            if (!l.batchId || l.productId !== pendingBatchLine.productId) return acc;
+            const pr   = products.find(p => p.id === l.productId);
+            const opts = getSaleUnitOptions(pr);
+            const opt  = opts.find(o => o.unitId === (l.unitId ?? opts.find(x => x.isBase)?.unitId));
+            const factor = opt && !opt.isBase && pr
+              ? Number(pr.unitConversions?.find(c => c.fromUnitId === opt.unitId)?.conversionQty ?? 1)
+              : 1;
+            acc[l.batchId] = (acc[l.batchId] ?? 0) + (parseFloat(l.qty) || 0) * factor;
+            return acc;
+          }, {})}
           onSelect={(batch) => {
             const { key, productId } = pendingBatchLine;
             setPendingBatchLine(null);
