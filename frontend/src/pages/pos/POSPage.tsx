@@ -766,6 +766,8 @@ function CustomerPicker({
   const [query, setQuery]     = useState('');
   const [results, setResults] = useState<CustomerOption[]>([]);
   const [loading, setLoading] = useState(false);
+  // Which result Enter will take — moved with the arrow keys, reset on each search.
+  const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -794,7 +796,27 @@ function CustomerPicker({
         <div className="p-3">
           <div className="relative mb-2">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+            <input ref={inputRef} value={query} onChange={e => { setQuery(e.target.value); setHighlight(0); }}
+              onKeyDown={e => {
+                // Type, then Enter — the whole point of a search box. Without
+                // this, Enter fell through to the dialog underneath.
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const pick = results[highlight];
+                  if (pick) { onSelect(pick); onClose(); }
+                  return;
+                }
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlight(h => Math.min(h + 1, Math.max(results.length - 1, 0)));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlight(h => Math.max(h - 1, 0));
+                }
+              }}
               placeholder="Search by name or phone…"
               className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
@@ -804,9 +826,11 @@ function CustomerPicker({
             <User size={14} /> Walk-in Customer
           </button>
           {loading && <p className="text-xs text-slate-400 text-center py-3">Searching…</p>}
-          {results.map(c => (
+          {results.map((c, i) => (
             <button key={c.id} type="button" onClick={() => { onSelect(c); onClose(); }}
+              onMouseEnter={() => setHighlight(i)}
               className={cls('w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-slate-50 transition',
+                i === highlight ? 'ring-2 ring-indigo-400 bg-indigo-50/60' : '',
                 selected?.id === c.id ? 'bg-indigo-50' : '')}>
               <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                 <span className="text-xs font-bold text-indigo-600">{c.name.charAt(0)}</span>
@@ -1017,7 +1041,7 @@ function CancelConfirmModal({
 function PaymentDialog({
   totalCents: rawTotalCents, onConfirm, onClose, isPending, customer, canSellOnCredit,
   loyaltyEnabled, customerPoints, pointValueCents, minRedeemPoints, redeemPoints, setRedeemPoints,
-  onChangeCustomer, onNewCustomer, suppressEscape = false,
+  onChangeCustomer, onNewCustomer, suppressKeys = false,
 }: {
   totalCents: number;
   onConfirm: (method: AllPaymentMethods, receivedCents?: number, cashAmountCents?: number) => void;
@@ -1029,7 +1053,7 @@ function PaymentDialog({
   // reuse the pickers POS already has, so the choice sticks to the sale.
   onChangeCustomer: () => void;
   onNewCustomer: () => void;
-  suppressEscape?: boolean;
+  suppressKeys?: boolean;
   canSellOnCredit: boolean;
   loyaltyEnabled: boolean;
   customerPoints: number;
@@ -1135,7 +1159,13 @@ function PaymentDialog({
       // Stand down while a customer picker sits above this dialog: that picker
       // handles its own Escape, and this listener would otherwise close the
       // payment behind it on the same keypress.
-      if (e.key === 'Escape') { if (isPending || suppressEscape) return; e.preventDefault(); onClose(); return; }
+      // A customer picker sitting above this dialog owns the keyboard entirely.
+      // Gating only Escape was not enough: Enter still reached the branch below
+      // that clicks Confirm Payment, so choosing a customer with Enter COMPLETED
+      // THE SALE instead. Nothing here may fire while something is on top.
+      if (suppressKeys) return;
+
+      if (e.key === 'Escape') { if (isPending) return; e.preventDefault(); onClose(); return; }
 
       // F7 / F6 — reach the customer without a full tab cycle. Focus stays on
       // the amount field when the dialog opens, because the common sale is cash
@@ -1898,6 +1928,8 @@ export default function POSPage() {
   // v1.0.43 — true once a sale completes, until the cashier acknowledges via "New Sale".
   // Drives the receipt-recovery effect that re-opens the popup if it ever closes early.
   const receiptPendingRef                       = useRef(false);
+  // Synchronous double-submit guard for the whole checkout path — see handleCheckout.
+  const checkoutSubmittingRef                   = useRef(false);
   const [lastChangeCents, setLastChangeCents]   = useState(0);
   const [holds, setHolds]                       = useState<HoldBill[]>(loadHolds);
 
@@ -2625,15 +2657,21 @@ export default function POSPage() {
   const checkoutMutation = useMutation({
     mutationFn: (payload: Parameters<typeof posApi.checkout>[0]) => posApi.checkout(payload),
     onSuccess: (data) => {
+     try {
       sound.success();
+      // The sale is COMMITTED the moment we get here, so leave the payment
+      // dialog first and put the cashier on the receipt before touching
+      // anything that could throw. Every line below is display polish; none of
+      // it is worth stranding a cashier on a dialog for a sale that already
+      // happened — that is what invites a second, duplicate charge.
+      setShowPayment(false);
+      setShowReceipt(true);
+
       // Guard: ensure receipt data exists. If the server returns 200 with a
-      // missing/malformed body, the sale was still recorded — close the
-      // payment modal and show a safe fallback receipt state instead of
-      // throwing (which would leave the cashier on a blank screen).
+      // missing/malformed body, the sale was still recorded — show a safe
+      // fallback receipt state instead of throwing.
       if (!data?.receipt) {
         setLastReceipt(null);
-        setShowPayment(false);
-        setShowReceipt(true);
         return;
       }
       // Augment receipt: split service-charge amounts back out as separate lines for display.
@@ -2693,8 +2731,6 @@ export default function POSPage() {
       const saleInfo: LastSaleInfo = { id: data.receipt.id, number: data.receipt.number, changeCents };
       setLastSaleInfo(saleInfo);
       try { localStorage.setItem(LAST_RECEIPT_KEY, JSON.stringify(saleInfo)); } catch { /* ignore */ }
-      setShowPayment(false);
-      setShowReceipt(true);
       // Success toast
       setQuickAddToast(`✓ Sale ${data.receipt.number} completed`);
       setTimeout(() => setQuickAddToast(null), 2000);
@@ -2705,6 +2741,14 @@ export default function POSPage() {
       qc.invalidateQueries({ queryKey: ['pos-products'] });
       // v1.0.43 — mark this sale's receipt as pending acknowledgement (cleared on New Sale)
       receiptPendingRef.current = true;
+     } catch (err) {
+      // Last resort. The money has already moved, so the cashier must end up on
+      // the receipt no matter what broke while decorating it.
+      console.error('checkout onSuccess failed after the sale committed', err);
+      setLastReceipt(data?.receipt ?? null);
+      setShowPayment(false);
+      setShowReceipt(true);
+     }
     },
     onError: (err: unknown) => {
       sound.error();
@@ -2789,7 +2833,25 @@ export default function POSPage() {
   }, [isStaffSale]);
 
   const handleCheckout = useCallback((method: AllPaymentMethods, receivedCents = 0, cashAmountCents?: number) => {
-    if (!warehouseId || cart.length === 0) return;
+    // Second guard, at the outermost point a sale can start. The payment dialog
+    // has its own, but Enter and a button click can arrive in the same tick from
+    // different components — and a duplicate charge is the worst outcome here.
+    // Released on a timer rather than in onSettled so a fast double-tap cannot
+    // slip through between the response landing and React re-rendering.
+    if (checkoutSubmittingRef.current) return;
+
+    if (!warehouseId || cart.length === 0) {
+      // Was a silent no-op: the cashier pressed Pay and nothing happened, with
+      // nothing on screen to say why.
+      setQuickAddToast(cart.length === 0
+        ? '⚠ Cart is empty'
+        : '⚠ Select a warehouse before taking payment');
+      setTimeout(() => setQuickAddToast(null), 3000);
+      return;
+    }
+
+    checkoutSubmittingRef.current = true;
+    setTimeout(() => { checkoutSubmittingRef.current = false; }, 800);
     setPendingReceivedCents(receivedCents);
     const payload = {
       warehouseId,
@@ -3784,7 +3846,7 @@ export default function POSPage() {
           minRedeemPoints={loyaltyConfig?.minRedeemPoints ?? 0}
           redeemPoints={redeemPoints}
           setRedeemPoints={setRedeemPoints}
-          suppressEscape={showCustomer || showQuickAddCustomer}
+          suppressKeys={showCustomer || showQuickAddCustomer}
           onChangeCustomer={() => setShowCustomer(true)}
           onNewCustomer={() => { setNewCustName(''); setNewCustPhone(''); setQuickAddError(''); setShowQuickAddCustomer(true); }}
         />
