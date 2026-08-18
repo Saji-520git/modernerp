@@ -76,7 +76,7 @@ function ensureEnv() {
     PORT: '4000',
     UPLOAD_PATH: UPLOADS,
     LOG_PATH: LOGS,
-    CORS_ORIGIN: 'http://localhost:4000',
+    CORS_ORIGIN: '*',
     LOG_LEVEL: 'info',
     BCRYPT_ROUNDS: '12',
     SESSION_TIMEOUT: '60',
@@ -98,10 +98,22 @@ function ensureEnv() {
       .filter(l => l && !l.startsWith('#') && l.includes('='))
       .map(l => l.slice(0, l.indexOf('=')).trim())
   );
+  // Repair a stale CORS_ORIGIN before backfilling. Existing installs carry
+  // CORS_ORIGIN=http://localhost:4000, which can never match the renderer's
+  // file:// origin — every API call was blocked and login reported "Cannot
+  // reach the server". Backfill only adds MISSING keys, so a wrong value would
+  // survive the upgrade untouched and the rebuild alone would not fix it.
+  let repaired = existing;
+  if (present.has('CORS_ORIGIN') && !/^CORS_ORIGIN=\*\s*$/m.test(existing)) {
+    repaired = existing.replace(/^CORS_ORIGIN=.*$/m, 'CORS_ORIGIN=*');
+    fs.writeFileSync(ENV_FILE, repaired, 'utf8');
+    log.info('Repaired stale CORS_ORIGIN in .env');
+  }
+
   const missing = Object.entries(pairs).filter(([k]) => !present.has(k));
   if (missing.length === 0) return;
 
-  const appended = (existing.endsWith('\n') ? '' : '\n')
+  const appended = (repaired.endsWith('\n') ? '' : '\n')
     + missing.map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
   fs.appendFileSync(ENV_FILE, appended, 'utf8');
   log.info('Backfilled missing .env keys:', missing.map(([k]) => k).join(', '));
@@ -486,7 +498,7 @@ function startBackend() {
       PORT: '4000',
       UPLOAD_PATH: UPLOADS,
       LOG_PATH: LOGS,
-      CORS_ORIGIN: 'http://localhost:4000',
+      CORS_ORIGIN: '*',
       NODE_PATH: path.join(BACKEND_DIR, 'node_modules'),
       CHECKPOINT_DISABLE: '1',
       XDG_CACHE_HOME: CACHE,

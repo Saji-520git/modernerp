@@ -35,7 +35,25 @@ const app = express();
 
 // ── Security headers ───────────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+// CORS_ORIGIN accepts a comma-separated list, or '*' meaning "reflect whatever
+// origin asked".
+//
+// One backend serves two very different callers. In development the renderer is
+// http://localhost:5173. In the packaged desktop app it is loaded with
+// loadFile(), so the page origin is file:// — sent as `Origin: null`, which can
+// never match a fixed http:// value. A mismatch there blocked every API
+// response and reached the cashier as "Cannot reach the server", because a
+// browser reports a blocked cross-origin request as a network failure.
+//
+// A literal '*' cannot be handed to cors() here: the app sends credentials, and
+// browsers refuse a wildcard on credentialed requests. Reflecting the origin is
+// the supported equivalent, and safe for this server — it binds to localhost
+// and ships inside the desktop app.
+const corsOrigins = env.CORS_ORIGIN.split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({
+  origin: corsOrigins.includes('*') ? true : corsOrigins,
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' })); // base64 images need headroom
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
