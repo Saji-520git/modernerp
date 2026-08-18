@@ -275,6 +275,7 @@ instance — only a full process restart does.
 | After any code change | Kill server (Ctrl+C) → `npm run dev` |
 | After `prisma generate` | Restart server — old DLL stays in memory until process exits |
 | Before committing | `npm run typecheck` on both backend and frontend |
+| Before packaging | `npm run build:win` (or `npm run build`) — never `npm run electron`, which does NOT compile |
 | New session | Read CLAUDE.md sections 7 + 13 before writing any code |
 
 ---
@@ -507,6 +508,27 @@ After completing a module:
 | 2 | Shift time not updating after new shift | posStore | HIGH | Resolved |
 | 3 | 3 pre-existing TypeScript errors | ContactsPage/UsersPage/api.ts | LOW | Resolved |
 | 4 | Dev DB carries 21 v2 tables + 5 columns not in this branch | shared dev `modernerp` DB | INFO | Accepted (Option a) — leave alone |
+| 5 | Receipt/label print silently skipped in Electron — `win.close()` raced `win.print()` | printWindow.ts / POSPage / BarcodeLabelsPage | HIGH | Resolved 2026-08-18 |
+| 6 | Invoice numbers derived from row count — skip, and collide after a delete | sales.service / pos.service | HIGH | Resolved 2026-08-18 |
+| 7 | `npm run build` packaged a stale dist — shipped fixes were invisible | package.json | HIGH | Resolved 2026-08-18 |
+| 8 | Eight other doc-number generators still count rows (PO/CRN/GRN/SPAY/quotation/stocktake/purchase-return/write-off) | see §12.2 | MEDIUM | Open |
+
+### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
+
+**1. A "rebuild" that rebuilds nothing.** The Electron app loads
+`frontend/dist/index.html` and `backend/dist/server.js` from disk. npm pre-hooks
+match the script name EXACTLY, so the old `prebuild:win` fired only for
+`build:win` — `npm run build` packaged whatever dist was lying around. A July
+bundle was still shipping in August: fixes were written, committed, "rebuilt",
+and the packaged app carried none of them, with no error to say so. Both paths
+now delegate to `npm run compile`. **If a fix does not appear, grep the built
+bundle for a string only the new code contains before debugging anything else.**
+
+**2. `window.print()` is modal in a browser, async in Electron.** Any
+`win.print(); win.close();` pair works in dev at :5173 and silently loses the job
+in the packaged app. Print documents must close themselves on `afterprint` —
+use `autoPrintScript()` from `frontend/src/utils/printWindow.ts`. Never call
+`print()`/`close()` on a popup from the opener.
 
 ### 12.1 ⚠️ Dev Database Drift — DO NOT run `migrate dev` (verified 2026-07-09)
 
