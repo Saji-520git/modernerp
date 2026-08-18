@@ -6,18 +6,19 @@ import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 import type { CreateSaleInput, ListSalesInput, RecordPaymentInput } from './sales.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Spans ALL sales (POS + invoices): one shared INV- sequence.
+//
+// Derived from the HIGHEST number already issued, never from a row count. A
+// count drops when a sale is deleted, so the next invoice is handed a number
+// that still exists — and `number` is @unique, so the insert throws and the
+// invoice fails outright. See utils/doc-number.ts.
 async function generateInvoiceNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `INV-${year}-`;
-  // Count ALL sales (POS + invoices) to share the number sequence
-  const count = await prisma.sale.count({
-    where: { number: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.sale, `INV-${new Date().getFullYear()}-`);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -201,8 +202,6 @@ export const salesService = {
       throw new HttpError(400, 'One or more products not found or inactive');
     }
 
-    const number = await generateInvoiceNumber();
-
     // Compute line and order totals (all integer cents). Totals stay computed on
     // the DISPLAY qty × DISPLAY unit price (e.g. 2 boxes × box-price) — unchanged.
     // Additionally resolve baseQty via unit conversion when a non-base unit is
@@ -234,9 +233,13 @@ export const salesService = {
     const discountCents = computedLines.reduce((s, l) => s + l.discountCents, 0);
     const totalCents = subtotalCents + taxCents - discountCents;
 
-    return prisma.sale.create({
+    // The number is issued INSIDE the retry, as late as possible. Two writers
+    // can read the same maximum before either has committed; the database
+    // settles that on the unique constraint and the retry takes the next free
+    // number rather than failing the invoice.
+    return withNumberRetry(async () => prisma.sale.create({
       data: {
-        number,
+        number: await generateInvoiceNumber(),
         isPos: false,
         customerId: input.customerId || null,
         warehouseId: input.warehouseId,
@@ -273,7 +276,7 @@ export const salesService = {
           },
         },
       },
-    });
+    }));
   },
 
   // ── Confirm invoice → deduct stock ─────────────────────────────────────────

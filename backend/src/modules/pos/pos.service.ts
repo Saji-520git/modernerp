@@ -11,16 +11,21 @@ import { computePromotions, type AppliedPromo } from '../promotions/promotions.e
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { nextDocNumber, withNumberRetry, type NumberedDelegate } from '../../utils/doc-number.js';
 import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
 
 // ─── Sale number generator ────────────────────────────────────────────────────
 
-async function generateSaleNumber(): Promise<string> {
-  const year   = new Date().getFullYear();
-  const prefix = `INV-${year}-`;
-  const count  = await prisma.sale.count({ where: { number: { startsWith: prefix } } });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+// Shares the INV- sequence with Sales — same prefix, same rules.
+//
+// Derived from the HIGHEST number issued, never from a row count: a count drops
+// when a sale is deleted, so the next checkout is handed a number that already
+// exists, and `number` is @unique — the insert throws and THE SALE FAILS AT THE
+// TILL. Takes the client so it can run on the transaction that inserts, keeping
+// the read and the write in one unit. See utils/doc-number.ts.
+async function generateSaleNumber(client: { sale: NumberedDelegate }): Promise<string> {
+  return nextDocNumber(client.sale, `INV-${new Date().getFullYear()}-`);
 }
 
 // ─── Credit helpers ───────────────────────────────────────────────────────────
@@ -504,8 +509,6 @@ export const posService = {
     const splitPaymentStatus: 'PARTIAL' | 'PAID' | null = isSplitCredit
       ? (paidCents >= totalCents ? 'PAID' : 'PARTIAL')
       : null;
-    const number     = await generateSaleNumber();
-
     // Verify an open shift exists for this user+warehouse before entering the transaction
     const shift = await prisma.posShift.findFirst({
       where: { userId, warehouseId, status: 'OPEN' },
@@ -521,9 +524,15 @@ export const posService = {
     });
     const warehouseName = warehouseRow?.name ?? '';
 
-    logger.info({ number, totalCents, items: items.length, shiftId: shift.id }, 'POS checkout starting');
+    logger.info({ totalCents, items: items.length, shiftId: shift.id }, 'POS checkout starting');
 
-    const sale = await prisma.$transaction(async (tx) => {
+    // Everything above is read-only; every write lives inside this transaction,
+    // so a rollback leaves nothing behind and re-running is safe. That is what
+    // lets withNumberRetry exist: on a duplicate number the transaction has
+    // already unwound, and the retry re-reads the maximum and takes the next
+    // free one instead of dropping the sale on the cashier.
+    const sale = await withNumberRetry(() => prisma.$transaction(async (tx) => {
+      const number = await generateSaleNumber(tx);
       const created = await tx.sale.create({
         data: {
           number,
@@ -665,7 +674,7 @@ export const posService = {
       });
 
       return created;
-    });
+    }));
 
     logger.info({ saleId: sale.id, number: sale.number }, 'POS checkout completed');
 
