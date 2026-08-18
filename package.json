@@ -40,7 +40,14 @@
       {
         "from": "backend/node_modules",
         "to": "app/backend/node_modules",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*",
+          "!**/*.tmp*",
+          "!**/*.map",
+          "!**/test/**",
+          "!**/tests/**",
+          "!**/__tests__/**"
+        ]
       },
       {
         "from": "backend/dist",
