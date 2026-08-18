@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { productsApi, formatCents, type Product } from '../../services/products';
+import { autoPrintScript } from '../../utils/printWindow';
 import { useAppSettings } from '../../context/SettingsContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -277,25 +278,20 @@ export default function BarcodeLabelsPage() {
 </head>
 <body>
   <div class="label-grid">${labelsHtml}</div>
+${autoPrintScript()}
 </body>
 </html>`;
 
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) { alert('Please allow popups for this site to print labels.'); return; }
 
-    // Guard against double-trigger (onload + fallback timeout)
-    let triggered = false;
-    const triggerPrint = () => {
-      if (triggered) return;
-      triggered = true;
-      setTimeout(() => { win.print(); win.close(); }, 400);
-    };
-
     win.document.write(html);
     win.document.close();
-    win.onload = triggerPrint;
-    // Fallback: onload may have fired before we attached the handler
-    setTimeout(triggerPrint, 1400);
+    win.focus();
+    // The document prints and closes ITSELF — see utils/printWindow.ts. The
+    // opener used to do it on a timer, but win.close() raced win.print() in
+    // Electron and killed the job before it was spooled. The load-timing dance
+    // this replaces is also handled inside that script.
   };
 
   const cfg = FORMAT_CONFIG[format];

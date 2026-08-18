@@ -2936,7 +2936,15 @@ export default function POSPage() {
   // return null — which previously returned silently, so Print appeared to
   // "do nothing" with no feedback to the cashier.
   const printReceiptDoc = useCallback(async (receipt: Receipt, changeCents: number) => {
-    if (!appSettings) return;
+    if (!appSettings) {
+      // Was a silent return: the cashier pressed Print and nothing at all
+      // happened. Settings drive every part of the receipt (paper width,
+      // currency, language, logo), so there is nothing to print without them —
+      // but that must be said out loud, not swallowed.
+      setQuickAddToast('⚠ Receipt settings have not loaded yet — try Print again in a moment.');
+      setTimeout(() => setQuickAddToast(null), 5000);
+      return;
+    }
     const win = window.open('', '_blank', 'width=420,height=640');
     if (!win) {
       setQuickAddToast('⚠ Print window was blocked — allow pop-ups for this app and try again.');
@@ -2953,7 +2961,10 @@ export default function POSPage() {
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 600);
+    // The document prints and closes ITSELF — generateReceiptHtml embeds
+    // autoPrintScript(). Do not call win.print()/win.close() from here: in
+    // Electron print() returns before the job is spooled, so the close raced it
+    // and the receipt silently never printed. See utils/printWindow.ts.
   }, [appSettings]);
 
   const printReceipt = useCallback(async () => {

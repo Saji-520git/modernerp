@@ -1,4 +1,5 @@
 import JsBarcode from 'jsbarcode';
+import { autoPrintScript } from './printWindow';
 import { receiptLabels, type ReceiptLang } from './receiptI18n';
 import type { Receipt } from '../services/pos';
 import type { AppSettings } from '../services/settings';
@@ -317,6 +318,7 @@ ${divider()}
 ${itemsTable}
 ${totalsTable}
 ${footer}
+${autoPrintScript()}
 </body>
 </html>`;
 }
