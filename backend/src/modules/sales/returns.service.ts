@@ -4,6 +4,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { resolveOpenShiftId } from '../pos/resolve-shift.js';
 import type { CreateReturnInput, ListReturnsInput } from './returns.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -185,6 +186,15 @@ export const returnsService = {
     const number = await generateReturnNumber();
     const totalCents = input.lines.reduce((s, l) => s + l.lineTotalCents, 0);
 
+    // Which till this refund comes out of. Resolved before the transaction so
+    // the lookup does not hold it open, and only for CASH: a store-credit or
+    // card refund never touches the drawer, so tying it to a shift would make
+    // the close subtract money that never left. Null when no shift is open,
+    // which is the normal back-office case.
+    const refundShiftId = input.refundMethod === 'CASH' && input.refundedCents > 0
+      ? await resolveOpenShiftId(userId, sale.warehouseId)
+      : null;
+
     return prisma.$transaction(async (tx) => {
       // 1. Create return record + lines
       const ret = await tx.saleReturn.create({
@@ -192,6 +202,7 @@ export const returnsService = {
           number,
           saleId: input.saleId,
           warehouseId: sale.warehouseId,
+          shiftId: refundShiftId,
           reason: input.reason,
           totalCents,
           refundMethod: input.refundMethod,

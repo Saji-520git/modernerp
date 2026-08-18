@@ -77,7 +77,11 @@ export const closeShiftSchema = z.object({
 });
 
 export const forceCloseShiftSchema = z.object({
-  note: z.string().max(500).optional(),
+  // Optional: an admin force-closing someone else's till may not have counted
+  // the drawer. Supplied means the variance gets recorded exactly as a normal
+  // close would; omitted leaves it null rather than inventing a number.
+  closingCash: z.number().min(0).optional(),
+  note:        z.string().max(500).optional(),
 });
 
 export const listShiftsSchema = z.object({

@@ -12,6 +12,7 @@ import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { checkCreditLimit } from './credit-limit.js';
+import { expectedCashCents, cashVarianceCents } from './shift-cash.js';
 import { nextDocNumber, withNumberRetry, type NumberedDelegate } from '../../utils/doc-number.js';
 import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
@@ -27,6 +28,71 @@ import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput,
 // the read and the write in one unit. See utils/doc-number.ts.
 async function generateSaleNumber(client: { sale: NumberedDelegate }): Promise<string> {
   return nextDocNumber(client.sale, `INV-${new Date().getFullYear()}-`);
+}
+
+// Every cash movement through one till, gathered in one place so closeShift and
+// forceCloseShift cannot drift apart — they previously carried two copies of
+// this aggregation and only one of them recorded a variance.
+async function aggregateShift(shiftId: string) {
+  const salesByMethod = await prisma.$queryRaw<
+    { paymentMethod: string; total: bigint; cnt: bigint }[]
+  >`
+    SELECT "paymentMethod", SUM("totalCents")::bigint AS total, COUNT(*)::bigint AS cnt
+    FROM "Sale"
+    WHERE "shiftId" = ${shiftId} AND status = 'CONFIRMED' AND "deletedAt" IS NULL
+    GROUP BY "paymentMethod"
+  `;
+
+  let cashSalesCents    = 0;
+  let cardSalesCents    = 0;
+  let bankTransferCents = 0;
+  let qrPayCents        = 0;
+  let creditSalesCents  = 0;
+  let totalSalesCents   = 0;
+  let saleCount         = 0;
+
+  for (const row of salesByMethod) {
+    const amount = Number(row.total);
+    totalSalesCents += amount;
+    saleCount       += Number(row.cnt);
+    switch (row.paymentMethod) {
+      case 'CASH':          cashSalesCents    = amount; break;
+      case 'CARD':          cardSalesCents    = amount; break;
+      case 'BANK_TRANSFER': bankTransferCents = amount; break;
+      case 'QR_PAY':        qrPayCents        = amount; break;
+      case 'CREDIT':        creditSalesCents  = amount; break;
+    }
+  }
+
+  // Cash taken up-front on split cash+credit sales. The row's method is CREDIT,
+  // but paidCents is money that physically entered the drawer.
+  const split = await prisma.sale.aggregate({
+    where: { shiftId, status: 'CONFIRMED', deletedAt: null, paymentMethod: 'CREDIT', paidCents: { gt: 0 } },
+    _sum:  { paidCents: true },
+  });
+
+  // Credit bills settled in cash at this till. CREDIT_APPLIED is store credit
+  // being consumed, not money changing hands, so it is excluded.
+  const settlements = await prisma.customerPayment.aggregate({
+    where: { shiftId, isActive: true, paymentMethod: 'CASH', paymentType: { not: 'CREDIT_APPLIED' } },
+    _sum:  { amountCents: true },
+  });
+
+  // Cash paid back out. The SaleReturn row is authoritative; the negative
+  // Payment row written alongside it documents the same event and must not be
+  // counted a second time.
+  const refunds = await prisma.saleReturn.aggregate({
+    where: { shiftId, refundMethod: 'CASH' },
+    _sum:  { refundedCents: true },
+  });
+
+  return {
+    cashSalesCents, cardSalesCents, bankTransferCents, qrPayCents, creditSalesCents,
+    totalSalesCents, saleCount,
+    splitCashCents:       split._sum.paidCents ?? 0,
+    cashSettlementsCents: settlements._sum.amountCents ?? 0,
+    cashRefundsCents:     refunds._sum.refundedCents ?? 0,
+  };
 }
 
 // ─── Credit helpers ───────────────────────────────────────────────────────────
@@ -901,6 +967,7 @@ export const posService = {
     return { success: true };
   },
 
+
   // ── Shift management ──────────────────────────────────────────────────────
 
   async openShift(userId: string, input: OpenShiftInput) {
@@ -928,6 +995,11 @@ export const posService = {
         status: 'OPEN',
         ...(warehouseId ? { warehouseId } : {}),
       },
+      // A cashier can hold an open shift in more than one warehouse, and an
+      // unordered findFirst returned whichever the planner happened to yield —
+      // so an unscoped call and a warehouse-scoped one could name DIFFERENT
+      // shifts. Newest wins, deterministically.
+      orderBy: { openedAt: 'desc' },
       include: {
         user:      { select: { id: true, fullName: true } },
         warehouse: { select: { id: true, name: true, code: true } },
@@ -942,40 +1014,18 @@ export const posService = {
     });
     if (!shift) throw new HttpError(404, 'No open shift found');
 
-    // Aggregate linked sales by payment method
-    const salesByMethod = await prisma.$queryRaw<
-      { paymentMethod: string; total: bigint; cnt: bigint }[]
-    >`
-      SELECT "paymentMethod", SUM("totalCents")::bigint AS total, COUNT(*)::bigint AS cnt
-      FROM "Sale"
-      WHERE "shiftId" = ${shift.id} AND status = 'CONFIRMED'
-      GROUP BY "paymentMethod"
-    `;
+    const agg = await aggregateShift(shift.id);
 
-    let cashSalesCents    = 0;
-    let cardSalesCents    = 0;
-    let bankTransferCents = 0;
-    let qrPayCents        = 0;
-    let creditSalesCents  = 0;
-    let totalSalesCents   = 0;
-    let saleCount         = 0;
-
-    for (const row of salesByMethod) {
-      const amount = Number(row.total);
-      const count  = Number(row.cnt);
-      totalSalesCents += amount;
-      saleCount       += count;
-      switch (row.paymentMethod) {
-        case 'CASH':          cashSalesCents    = amount; break;
-        case 'CARD':          cardSalesCents    = amount; break;
-        case 'BANK_TRANSFER': bankTransferCents = amount; break;
-        case 'QR_PAY':        qrPayCents        = amount; break;
-        case 'CREDIT':        creditSalesCents  = amount; break;
-      }
-    }
-
-    const expectedCashCents = shift.openingCashCents + cashSalesCents;
-    const varianceCents     = closingCashCents - expectedCashCents;
+    // Expected cash counts every movement through the drawer, not just sales
+    // whose payment method happened to be CASH — see shift-cash.ts.
+    const expected = expectedCashCents({
+      openingFloatCents:    shift.openingCashCents,
+      cashSalesCents:       agg.cashSalesCents,
+      splitCashCents:       agg.splitCashCents,
+      cashSettlementsCents: agg.cashSettlementsCents,
+      cashRefundsCents:     agg.cashRefundsCents,
+    });
+    const varianceCents = cashVarianceCents(closingCashCents, expected);
 
     const closed = await prisma.posShift.update({
       where: { id: shift.id },
@@ -983,14 +1033,14 @@ export const posService = {
         closedAt: new Date(),
         status:   'CLOSED',
         closingCashCents,
-        cashSalesCents,
-        cardSalesCents,
-        bankTransferCents,
-        qrPayCents,
-        creditSalesCents,
-        totalSalesCents,
-        saleCount,
-        expectedCashCents,
+        cashSalesCents:    agg.cashSalesCents,
+        cardSalesCents:    agg.cardSalesCents,
+        bankTransferCents: agg.bankTransferCents,
+        qrPayCents:        agg.qrPayCents,
+        creditSalesCents:  agg.creditSalesCents,
+        totalSalesCents:   agg.totalSalesCents,
+        saleCount:         agg.saleCount,
+        expectedCashCents: expected,
         varianceCents,
         note: input.note ?? null,
       },
@@ -999,7 +1049,7 @@ export const posService = {
         warehouse: { select: { id: true, name: true, code: true } },
       },
     });
-    logger.info({ shiftId: shift.id, userId, totalSalesCents, varianceCents }, 'POS shift closed');
+    logger.info({ shiftId: shift.id, userId, totalSalesCents: agg.totalSalesCents, varianceCents }, 'POS shift closed');
     return closed;
   },
 
@@ -1009,55 +1059,41 @@ export const posService = {
     });
     if (!shift) throw new HttpError(404, 'Shift not found or already closed');
 
-    // Aggregate linked sales same as closeShift
-    const salesByMethod = await prisma.$queryRaw<
-      { paymentMethod: string; total: bigint; cnt: bigint }[]
-    >`
-      SELECT "paymentMethod", SUM("totalCents")::bigint AS total, COUNT(*)::bigint AS cnt
-      FROM "Sale"
-      WHERE "shiftId" = ${shiftId} AND status = 'CONFIRMED'
-      GROUP BY "paymentMethod"
-    `;
+    const agg = await aggregateShift(shiftId);
 
-    let cashSalesCents    = 0;
-    let cardSalesCents    = 0;
-    let bankTransferCents = 0;
-    let qrPayCents        = 0;
-    let creditSalesCents  = 0;
-    let totalSalesCents   = 0;
-    let saleCount         = 0;
+    const expected = expectedCashCents({
+      openingFloatCents:    shift.openingCashCents,
+      cashSalesCents:       agg.cashSalesCents,
+      splitCashCents:       agg.splitCashCents,
+      cashSettlementsCents: agg.cashSettlementsCents,
+      cashRefundsCents:     agg.cashRefundsCents,
+    });
 
-    for (const row of salesByMethod) {
-      const amount = Number(row.total);
-      const count  = Number(row.cnt);
-      totalSalesCents += amount;
-      saleCount       += count;
-      switch (row.paymentMethod) {
-        case 'CASH':          cashSalesCents    = amount; break;
-        case 'CARD':          cardSalesCents    = amount; break;
-        case 'BANK_TRANSFER': bankTransferCents = amount; break;
-        case 'QR_PAY':        qrPayCents        = amount; break;
-        case 'CREDIT':        creditSalesCents  = amount; break;
-      }
-    }
-
-    const expectedCashCents = shift.openingCashCents + cashSalesCents;
+    // A force-close previously wrote no closingCashCents and no varianceCents,
+    // so an admin closing a stuck till left it permanently unreconciled and the
+    // shifts table showed "—" forever. The drawer count is optional here — the
+    // admin may not have one — but when it is given the variance is recorded
+    // exactly as a normal close would.
+    const counted  = input.closingCash === undefined ? null : Math.round(input.closingCash * 100);
+    const variance = counted === null ? null : cashVarianceCents(counted, expected);
 
     const closed = await prisma.posShift.update({
       where: { id: shiftId },
       data: {
-        closedAt:         new Date(),
-        status:           'CLOSED',
-        cashSalesCents,
-        cardSalesCents,
-        bankTransferCents,
-        qrPayCents,
-        creditSalesCents,
-        totalSalesCents,
-        saleCount,
-        expectedCashCents,
-        forceClosedById:  adminUserId,
-        note:             input.note ?? null,
+        closedAt:          new Date(),
+        status:            'CLOSED',
+        closingCashCents:  counted,
+        varianceCents:     variance,
+        cashSalesCents:    agg.cashSalesCents,
+        cardSalesCents:    agg.cardSalesCents,
+        bankTransferCents: agg.bankTransferCents,
+        qrPayCents:        agg.qrPayCents,
+        creditSalesCents:  agg.creditSalesCents,
+        totalSalesCents:   agg.totalSalesCents,
+        saleCount:         agg.saleCount,
+        expectedCashCents: expected,
+        forceClosedById:   adminUserId,
+        note:              input.note ?? null,
       },
       include: {
         user:          { select: { id: true, fullName: true } },
@@ -1065,7 +1101,7 @@ export const posService = {
         forceClosedBy: { select: { id: true, fullName: true } },
       },
     });
-    logger.info({ shiftId, adminUserId, totalSalesCents }, 'POS shift force-closed');
+    logger.info({ shiftId, adminUserId, totalSalesCents: agg.totalSalesCents }, 'POS shift force-closed');
     return closed;
   },
 

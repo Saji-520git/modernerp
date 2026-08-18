@@ -263,15 +263,8 @@ export const posApi = {
   getCustomerCredit: (customerId: string): Promise<CustomerCreditInfo> =>
     api.get(`/pos/customer-credit/${customerId}`).then((r) => r.data),
 
-  // ── Shifts ──
-  shiftsOpen: (openingCash: number): Promise<PosShift> =>
-    api.post('/pos/shifts/open', { openingCash }).then((r) => r.data),
-
-  shiftsClose: (closingCash: number): Promise<PosShift & { totalSalesCents: number }> =>
-    api.post('/pos/shifts/close', { closingCash }).then((r) => r.data),
-
-  shiftsCurrent: (): Promise<PosShift | null> =>
-    api.get('/pos/shifts/current').then((r) => r.data),
+  // Shift calls live in services/shifts.ts — they need a warehouseId, which the
+  // helpers that used to sit here never sent.
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

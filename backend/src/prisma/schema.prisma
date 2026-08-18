@@ -500,6 +500,11 @@ model SaleReturn {
   totalCents    Int              @default(0)
   refundMethod  String           @default("NONE") // NONE | CASH | CARD | BANK (NONE = store credit only)
   refundedCents Int              @default(0)       // actual amount refunded to customer
+  // Till this refund came out of. A CASH refund empties the drawer, so the
+  // shift must subtract it — without this link, closing showed a shortage the
+  // cashier could not account for. Null for back-office returns.
+  shiftId       String?
+  shift         PosShift?        @relation(fields: [shiftId], references: [id])
   createdById   String
   createdBy     User             @relation(fields: [createdById], references: [id])
   lines         SaleReturnLine[]
@@ -507,6 +512,7 @@ model SaleReturn {
   updatedAt     DateTime         @updatedAt
 
   @@index([createdAt])
+  @@index([shiftId])
 }
 
 model SaleReturnLine {
@@ -611,7 +617,10 @@ model PosShift {
   forceClosedById String?
   forceClosedBy   User?      @relation("ShiftForceClose", fields: [forceClosedById], references: [id])
 
-  sales     Sale[]
+  sales            Sale[]
+  // Cash movements that are not sales but still pass through this till.
+  saleReturns      SaleReturn[]
+  customerPayments CustomerPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -885,6 +894,8 @@ model CustomerPayment {
   paymentDate   DateTime
   notes         String?
   // Groups the N rows created by one lump-sum payment. Null = standalone payment.
+  shiftId       String?
+  shift         PosShift?     @relation(fields: [shiftId], references: [id])
   allocationGroupId String?
   createdBy     String
   createdByUser User          @relation("CPAYCreatedByUser", fields: [createdBy], references: [id])
@@ -893,6 +904,7 @@ model CustomerPayment {
   updatedAt     DateTime      @updatedAt
 
   @@index([allocationGroupId])
+  @@index([shiftId])
   @@map("customer_payments")
 }
 

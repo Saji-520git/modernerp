@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { resolveOpenShiftId } from '../pos/resolve-shift.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,12 @@ export const customerPaymentService = {
     const newStatus = computePaymentStatus(effectiveTotal, newPaid);
     const number    = await nextPaymentNumber();
 
+    // Till this payment was taken at, if the user has one open. Settling a
+    // credit bill in cash fills the drawer, so the shift close must add it —
+    // previously that cash appeared from nowhere and read as a surplus.
+    // Null for back-office settlements, which belong to no till.
+    const shiftId = await resolveOpenShiftId(createdBy);
+
     const [payment] = await prisma.$transaction([
       (prisma as any).customerPayment.create({
         data: {
@@ -129,6 +136,7 @@ export const customerPaymentService = {
           paymentDate:  new Date(paymentDate),
           notes:        notes       ?? null,
           createdBy,
+          shiftId,
         },
         include: { createdByUser: { select: { id: true, fullName: true } } },
       }),
@@ -174,6 +182,12 @@ export const customerPaymentService = {
 
     const allocationGroupId = randomUUID();
     const paidDate          = new Date(paymentDate);
+
+    // Till this settlement was taken at. Resolved before the transaction so the
+    // lookup does not hold it open. Recorded whenever a shift is open; the
+    // shift close counts only CASH and ignores CREDIT_APPLIED, which is store
+    // credit being consumed rather than money crossing the counter.
+    const shiftId = await resolveOpenShiftId(createdBy);
 
     return prisma.$transaction(async (tx) => {
       // Oldest-first: by invoice date, then sequential number as tie-break.
@@ -221,6 +235,7 @@ export const customerPaymentService = {
             paymentDate:  paidDate,
             notes:        notes       ?? null,
             createdBy,
+            shiftId,
             allocationGroupId,
           },
         });
@@ -301,6 +316,12 @@ export const customerPaymentService = {
     const allocationGroupId = randomUUID();
     const paidDate          = new Date(paymentDate);
 
+    // Till this settlement was taken at. Resolved before the transaction so the
+    // lookup does not hold it open. Recorded whenever a shift is open; the
+    // shift close counts only CASH and ignores CREDIT_APPLIED, which is store
+    // credit being consumed rather than money crossing the counter.
+    const shiftId = await resolveOpenShiftId(createdBy);
+
     return prisma.$transaction(async (tx) => {
       // Re-read the balance INSIDE the tx to prevent concurrent overdraw.
       const fresh = await (tx as any).customer.findUnique({
@@ -356,6 +377,7 @@ export const customerPaymentService = {
             paymentDate:  paidDate,
             notes:        notes ?? null,
             createdBy,
+            shiftId,
             allocationGroupId,
           },
         });
