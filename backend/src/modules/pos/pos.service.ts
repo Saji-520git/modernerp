@@ -11,6 +11,7 @@ import { computePromotions, type AppliedPromo } from '../promotions/promotions.e
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { checkCreditLimit } from './credit-limit.js';
 import { nextDocNumber, withNumberRetry, type NumberedDelegate } from '../../utils/doc-number.js';
 import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
@@ -163,7 +164,10 @@ export const posService = {
     // The remainder becomes the customer's outstanding balance.
     const splitCashCents = paymentMethod === 'CREDIT' && (cashAmountCents ?? 0) > 0 ? (cashAmountCents as number) : 0;
 
-    // Credit sale validation
+    // Credit sale validation — cheap guards only. The LIMIT cannot be judged
+    // here: nothing has looked a product up yet, so the sale total is unknown.
+    // It is enforced further down, the moment totalCents is final.
+    let creditCustomer: { creditLimitCents: number; creditAlertPct: number } | null = null;
     if (paymentMethod === 'CREDIT') {
       if (!canSellOnCredit) throw new HttpError(403, 'You do not have permission to make credit sales');
       if (!customerId) throw new HttpError(400, 'Credit sales require a customer');
@@ -171,25 +175,10 @@ export const posService = {
       const customer = await prisma.customer.findUnique({ where: { id: customerId } });
       if (!customer?.creditEnabled) throw new HttpError(400, 'This customer does not have credit enabled');
 
-      if (customer.creditLimitCents > 0) {
-        const existing = await getCustomerCreditBalance(customerId);
-        // We'll compute the new sale total after product lookup — do a pre-check with a rough estimate.
-        // For split payments only the credit portion (total − cash paid now) counts against the limit.
-        const roughTotal = items.reduce((s, i) => s + i.qty * (i.unitPriceCents ?? 0), 0) - splitCashCents;
-
-        const alertThreshold = Math.round(customer.creditLimitCents * (customer.creditAlertPct / 100));
-        const newBalance = existing + roughTotal;
-
-        if (newBalance > customer.creditLimitCents) {
-          throw new HttpError(
-            400,
-            `Credit limit exceeded. Limit: Rs. ${(customer.creditLimitCents / 100).toFixed(2)}. Used: Rs. ${(existing / 100).toFixed(2)}. This sale would exceed by Rs. ${((newBalance - customer.creditLimitCents) / 100).toFixed(2)}.`,
-          );
-        }
-        if (newBalance > alertThreshold && newBalance <= customer.creditLimitCents) {
-          logger.warn({ customerId, newBalance, limit: customer.creditLimitCents }, 'Customer near credit limit');
-        }
-      }
+      creditCustomer = {
+        creditLimitCents: customer.creditLimitCents,
+        creditAlertPct:   customer.creditAlertPct,
+      };
     }
 
     // 0. Load app settings — resolve expiredStockPolicy
@@ -500,6 +489,43 @@ export const posService = {
         earnedPoints = pointsForAmount(totalCents, rates); // earn on the net amount paid
       }
     }
+    // ── Credit limit, against the REAL total ─────────────────────────────────
+    //
+    // This check used to run before product lookup, against a total summed from
+    // item.unitPriceCents. That field is the optional price OVERRIDE — POS sends
+    // it only when a cashier with adjust_sale_price edits a line — so on an
+    // ordinary sale it is undefined and `?? 0` made the total ZERO. The limit
+    // never saw the sale being rung up. It rejected only customers already over
+    // their limit, which is to say only after the money was gone: a Rs. 1.00
+    // limit accepted a Rs. 175.00 credit sale.
+    //
+    // It runs here because this is the first point totalCents is final — past
+    // line discounts, cart discount, tax and any loyalty redemption. Only the
+    // credit portion counts; on a split payment the cash is settled at the till.
+    if (paymentMethod === 'CREDIT' && creditCustomer) {
+      const creditPortion = totalCents - splitCashCents;
+      const existing      = await getCustomerCreditBalance(customerId as string);
+      const verdict       = checkCreditLimit({
+        limitCents:         creditCustomer.creditLimitCents,
+        alertPct:           creditCustomer.creditAlertPct,
+        existingCents:      existing,
+        creditPortionCents: creditPortion,
+      });
+
+      if (!verdict.allowed) {
+        throw new HttpError(
+          400,
+          `Credit limit exceeded. Limit: Rs. ${(creditCustomer.creditLimitCents / 100).toFixed(2)}. `
+          + `Already owed: Rs. ${(existing / 100).toFixed(2)}. This sale adds Rs. ${(Math.max(0, creditPortion) / 100).toFixed(2)}, `
+          + `taking the balance Rs. ${(verdict.overByCents / 100).toFixed(2)} over the limit.`,
+        );
+      }
+      if (verdict.nearLimit) {
+        logger.warn({ customerId, newBalance: verdict.newBalanceCents, limit: creditCustomer.creditLimitCents },
+          'Customer near credit limit');
+      }
+    }
+
     // Split (cash + credit): cash portion paid now; otherwise full credit = 0 paid, all else = paid in full.
     const isSplitCredit = splitCashCents > 0;
     const paidCents     = isSplitCredit
