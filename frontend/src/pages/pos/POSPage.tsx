@@ -2025,6 +2025,20 @@ export default function POSPage() {
   const [quickAddToast,       setQuickAddToast]        = useState<string | null>(null);
   const [barcodeLoading,      setBarcodeLoading]       = useState(false);
   const [batchCapToast,       setBatchCapToast]       = useState<string | null>(null);
+
+  // Cap messages are raised from inside setCart(prev => …) updaters, and React
+  // runs an updater during the RENDER phase — so calling setBatchCapToast there
+  // is a setState-while-rendering violation ("Cannot update a component while
+  // rendering a different component", blamed on CartLine). Under concurrent
+  // rendering an updater may also run more than once, firing the toast twice.
+  //
+  // Scheduling it keeps the updater pure and moves the state change out of the
+  // render phase. Deliberately not fixed by hoisting the checks out of the
+  // updater: they need `prev` to resolve the existing line and its batch cap,
+  // and the closure's `cart` would be stale.
+  const flashCap = useCallback((msg: string) => {
+    queueMicrotask(() => setBatchCapToast(msg));
+  }, []);
   // Checkout timeout warning — shown in the main POS view after the payment
   // modal closes when a checkout request times out (sale may have committed).
   const [checkoutError,       setCheckoutError]       = useState<string | null>(null);
@@ -2337,7 +2351,7 @@ export default function POSPage() {
           const factor      = getBaseFactor(product, line.unitId);
           const maxFromBatch = Math.floor(line.batchQty / factor);
           if (newQty > maxFromBatch) {
-            setBatchCapToast(
+            flashCap(
               maxFromBatch > 0
                 ? `Only ${maxFromBatch} left in this batch — add the rest from another batch`
                 : 'This batch is finished — pick another batch',
@@ -2346,14 +2360,14 @@ export default function POSPage() {
           }
         } else if (maxQty !== null && newQty > maxQty) {
           if (maxQty === 0) {
-            setBatchCapToast('No stock available');
+            flashCap('No stock available');
           } else {
-            setBatchCapToast(`Only ${maxQty} available`);
+            flashCap(`Only ${maxQty} available`);
           }
           return prev; // don't add
         } else if (maxQty === null && newQty > availableQty) {
           // Non-batch products: cap at total physical stock
-          setBatchCapToast(`Only ${availableQty} available`);
+          flashCap(`Only ${availableQty} available`);
           return prev;
         }
         const next = [...prev];
@@ -2361,7 +2375,7 @@ export default function POSPage() {
         return syncServiceCharges(next);
       }
       if (maxQty !== null && maxQty <= 0) {
-        setBatchCapToast('No stock available');
+        flashCap('No stock available');
         return prev;
       }
       // Default the line to the base/legacy unit
@@ -2503,13 +2517,13 @@ export default function POSPage() {
           : availableStockFor(posProduct);   // BASE units either way
 
         if (available <= 0) {
-          setBatchCapToast(isBatchLine ? 'This batch is finished — pick another batch' : 'No stock available');
+          flashCap(isBatchLine ? 'This batch is finished — pick another batch' : 'No stock available');
           return prev; // no change
         }
         const maxUnits = Math.floor(available / factor);
         if (cappedQty > maxUnits) {
           cappedQty = maxUnits;
-          setBatchCapToast(
+          flashCap(
             isBatchLine
               ? (maxUnits > 0
                   ? `Only ${maxUnits} left in this batch — add the rest from another batch`
