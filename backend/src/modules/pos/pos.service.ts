@@ -1011,13 +1011,26 @@ export const posService = {
     });
     if (existing) throw new HttpError(409, 'A shift is already open for this warehouse');
 
-    const shift = await prisma.posShift.create({
-      data: { userId, warehouseId: input.warehouseId, openingCashCents, status: 'OPEN' },
-      include: {
-        user:      { select: { id: true, fullName: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
-      },
-    });
+    // The check above is a check-then-act: two requests arriving together both
+    // read "none open" and both insert. A partial unique index on
+    // (userId, warehouseId) WHERE status = 'OPEN' settles that in the database —
+    // see migration 20260819120000_one_open_shift_per_till. The loser surfaces
+    // as P2002, which means the same thing the guard above means, so it is
+    // reported the same way rather than as a 500.
+    let shift;
+    try {
+      shift = await prisma.posShift.create({
+        data: { userId, warehouseId: input.warehouseId, openingCashCents, status: 'OPEN' },
+        include: {
+          user:      { select: { id: true, fullName: true } },
+          warehouse: { select: { id: true, name: true, code: true } },
+        },
+      });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'P2002') throw new HttpError(409, 'A shift is already open for this warehouse');
+      throw err;
+    }
     logger.info({ shiftId: shift.id, userId, warehouseId: input.warehouseId }, 'POS shift opened');
     return shift;
   },
