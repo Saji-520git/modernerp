@@ -1,4 +1,5 @@
 import { prisma } from '../../config/prisma.js';
+import { toLocalYMD } from '../../utils/local-date.js';
 
 // ─── Reports Service ──────────────────────────────────────────────────────────
 
@@ -834,7 +835,11 @@ export const reportsService = {
     );
 
     const last7Days = days.map((day, i) => ({
-      date:       day.toISOString().split('T')[0],
+      // `day` is LOCAL midnight. toISOString() rendered it in UTC, which is the
+      // previous day for any timezone ahead of UTC — so every bar was labelled
+      // one day early and today's takings appeared under yesterday. The buckets
+      // themselves were always right; only the labels lied.
+      date:       toLocalYMD(day),
       salesCents: Math.max(0, (day7Results[i]._sum.totalCents ?? 0) - (day7Returns[i]._sum.totalCents ?? 0)),
       salesCount: day7Results[i]._count.id ?? 0,
     }));

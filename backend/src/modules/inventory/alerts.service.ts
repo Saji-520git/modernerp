@@ -69,7 +69,6 @@ export async function generateAlerts(): Promise<void> {
             threshold:   level,
             message,
             updatedAt:   now,
-            isDismissed: false,
           },
         );
       } else {
@@ -107,7 +106,6 @@ export async function generateAlerts(): Promise<void> {
           threshold:   p.reorderLevel,
           message,
           updatedAt:   now,
-          isDismissed: false,
         },
       );
     }
@@ -164,7 +162,6 @@ export async function generateAlerts(): Promise<void> {
           expiryDate:  batch.expiryDate,
           message,
           updatedAt:   now,
-          isDismissed: false,
         },
       );
     }

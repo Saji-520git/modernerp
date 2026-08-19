@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
+import { toLocalYMD, localOffsetMinutes, localMidnightDaysAgo } from '../../utils/local-date.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,27 +188,37 @@ export const dashboardService = {
   revenueChart: async (days: 30 | 60 | 90 = 30) => {
     const interval = `${days} days`;
 
+    // Bucket by the SHOP's day, not UTC. Timestamps are stored in UTC, so a bare
+    // DATE_TRUNC grouped by UTC day while the "Today" KPI on the same screen used
+    // local midnight — the hero card read "Today Rs. 350" while the chart's today
+    // bar read zero and yesterday carried the 350. Shifting by the local offset
+    // before truncating makes each bucket a local calendar day.
+    const tzMin = localOffsetMinutes();
+    // One extra day of raw rows so the earliest local day is not clipped by the
+    // UTC-based window boundary. The assembly loop still emits exactly `days`.
+    const span  = days + 1;
+
     const [salesRows, expenseRows, cogsRows, returnsRows] = await Promise.all([
       prisma.$queryRaw<DailyRevenue[]>`
         SELECT
-          DATE_TRUNC('day', date)::date AS day,
+          DATE_TRUNC('day', date + INTERVAL '1 minute' * ${tzMin})::date AS day,
           COALESCE(SUM("totalCents"), 0)::bigint AS revenue,
           COUNT(*)::bigint AS orders
         FROM "Sale"
         WHERE status = 'CONFIRMED'
           AND "deletedAt" IS NULL
-          AND date >= NOW() - INTERVAL '1 day' * ${days}
-        GROUP BY DATE_TRUNC('day', date)
+          AND date >= NOW() - INTERVAL '1 day' * ${span}
+        GROUP BY 1
         ORDER BY day ASC
       `,
       prisma.$queryRaw<{ day: Date; total: bigint }[]>`
-        SELECT DATE_TRUNC('day', date)::date AS day,
+        SELECT DATE_TRUNC('day', date + INTERVAL '1 minute' * ${tzMin})::date AS day,
           COALESCE(SUM(amount), 0)::bigint AS total
         FROM "expenses"
         WHERE "isRecurring" = false
           AND "deletedAt" IS NULL
-          AND date >= NOW() - INTERVAL '1 day' * ${days}
-        GROUP BY DATE_TRUNC('day', date)
+          AND date >= NOW() - INTERVAL '1 day' * ${span}
+        GROUP BY 1
         ORDER BY day ASC
       `,
       // Daily COGS (qty × cost of goods actually sold) so the chart can show a
@@ -215,15 +226,15 @@ export const dashboardService = {
       // Previously the footer computed "Net Profit" as revenue − expenses only,
       // silently ignoring COGS and overstating profit.
       prisma.$queryRaw<{ day: Date; cogs: bigint }[]>`
-        SELECT DATE_TRUNC('day', s.date)::date AS day,
+        SELECT DATE_TRUNC('day', s.date + INTERVAL '1 minute' * ${tzMin})::date AS day,
           COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
         FROM "Sale" s
         JOIN "SaleLine" sl ON sl."saleId" = s.id
         JOIN "Product" p ON p.id = sl."productId"
         WHERE s.status = 'CONFIRMED'
           AND s."deletedAt" IS NULL
-          AND s.date >= NOW() - INTERVAL '1 day' * ${days}
-        GROUP BY DATE_TRUNC('day', s.date)
+          AND s.date >= NOW() - INTERVAL '1 day' * ${span}
+        GROUP BY 1
         ORDER BY day ASC
       `,
       // Daily sales returns, so the chart/footer can show TRUE net revenue
@@ -231,11 +242,11 @@ export const dashboardService = {
       // return-netting, overstating both Revenue and Net Profit on the
       // Dashboard's first screen). SaleReturn has no soft-delete.
       prisma.$queryRaw<{ day: Date; returned: bigint }[]>`
-        SELECT DATE_TRUNC('day', "createdAt")::date AS day,
+        SELECT DATE_TRUNC('day', "createdAt" + INTERVAL '1 minute' * ${tzMin})::date AS day,
           COALESCE(SUM("totalCents"), 0)::bigint AS returned
         FROM "SaleReturn"
-        WHERE "createdAt" >= NOW() - INTERVAL '1 day' * ${days}
-        GROUP BY DATE_TRUNC('day', "createdAt")
+        WHERE "createdAt" >= NOW() - INTERVAL '1 day' * ${span}
+        GROUP BY 1
         ORDER BY day ASC
       `,
     ]);
@@ -260,10 +271,9 @@ export const dashboardService = {
 
     const result: { date: string; revenue: number; orders: number; expensesCents: number; cogsCents: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setUTCHours(0, 0, 0, 0);
-      d.setUTCDate(d.getUTCDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      // Local days, matching the buckets above. Walking UTC days here while the
+      // SQL grouped locally would silently drop or duplicate a bar.
+      const key = toLocalYMD(localMidnightDaysAgo(i));
       const grossRevenue = salesMap.get(key)?.revenue ?? 0;
       result.push({
         date:          key,
