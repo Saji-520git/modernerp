@@ -13,11 +13,21 @@ export const reportsService = {
     const prevTo      = new Date(from.getTime() - 1);          // day before from
     const prevFrom    = new Date(from.getTime() - durationMs); // same length back
 
-    const [summary, byWarehouseRaw, byPaymentRaw, cogsRaw, topProductsRaw, prevPeriodRaw, returnsByWarehouseRaw, returnsByPaymentRaw, returnsByProduct] = await Promise.all([
+    const [summary, lineDiscountAgg, byWarehouseRaw, byPaymentRaw, cogsRaw, topProductsRaw, prevPeriodRaw, returnsByWarehouseRaw, returnsByPaymentRaw, returnsByProduct] = await Promise.all([
       prisma.sale.aggregate({
         where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
         _sum: { totalCents: true, taxCents: true, discountCents: true, paidCents: true },
         _count: true,
+      }),
+      // Discount is recorded in TWO places: Sale.discountCents holds only the
+      // cart-level discount, while a per-line discount lives on
+      // SaleLine.discountCents. Reporting the header alone understated the
+      // real discount given by every line discount in the period — revenue and
+      // profit were unaffected (both derive from totalCents), but the discount
+      // figure itself was wrong. Sum both.
+      prisma.saleLine.aggregate({
+        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to } } },
+        _sum:  { discountCents: true },
       }),
       prisma.$queryRaw<{ name: string; code: string; revenue: bigint; orders: bigint }[]>`
         SELECT w.name, w.code,
@@ -179,7 +189,7 @@ export const reportsService = {
         totalRevenueCents:      totalRevenue,
         returnedRevenueCents,
         totalTaxCents:          summary._sum.taxCents ?? 0,
-        totalDiscountCents:     summary._sum.discountCents ?? 0,
+        totalDiscountCents:     (summary._sum.discountCents ?? 0) + (lineDiscountAgg._sum.discountCents ?? 0),
         totalPaidCents:         summary._sum.paidCents ?? 0,
         totalCogsCents:         totalCogs,
         orderCount:             count,
@@ -541,11 +551,21 @@ export const reportsService = {
   // ── 6. Profit & Loss ──────────────────────────────────────────────────────────
 
   profitLoss: async (from: Date, to: Date) => {
-    const [salesAgg, cogsRaw, byPeriodRaw, expenseRows] = await Promise.all([
+    const [salesAgg, plLineDiscountAgg, cogsRaw, byPeriodRaw, expenseRows] = await Promise.all([
       prisma.sale.aggregate({
         where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
         _sum: { totalCents: true, taxCents: true, discountCents: true },
         _count: true,
+      }),
+      // Discount is recorded in TWO places: Sale.discountCents holds only the
+      // cart-level discount, while a per-line discount lives on
+      // SaleLine.discountCents. Reporting the header alone understated the
+      // real discount given by every line discount in the period — revenue and
+      // profit were unaffected (both derive from totalCents), but the discount
+      // figure itself was wrong. Sum both.
+      prisma.saleLine.aggregate({
+        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to } } },
+        _sum:  { discountCents: true },
       }),
       prisma.$queryRaw<[{ cogs: bigint }]>`
         SELECT COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
@@ -585,7 +605,7 @@ export const reportsService = {
     const grossRevenueCents = salesAgg._sum.totalCents ?? 0;
     const revenueCents = Math.max(0, grossRevenueCents - returnedRevenueCents);
     const taxCents = salesAgg._sum.taxCents ?? 0;
-    const discountCents = salesAgg._sum.discountCents ?? 0;
+    const discountCents = (salesAgg._sum.discountCents ?? 0) + (plLineDiscountAgg._sum.discountCents ?? 0);
     const cogsCents = Number(cogsRaw[0]?.cogs ?? 0);
     const grossProfitCents = revenueCents - cogsCents;
     const grossMarginPct =
