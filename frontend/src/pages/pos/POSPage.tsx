@@ -1532,7 +1532,30 @@ function ReceiptModal({
   const { settings, businessName, formatMoney } = useAppSettings();
   const waEnabled = useModule('whatsapp');
 
-  if (!settings) return null;
+  // Settings drive the thermal preview (paper width, currency, language, logo),
+  // so it cannot be drawn without them. Returning null here meant the whole
+  // dialog vanished: the sale committed, the payment dialog closed, and the
+  // cashier was left staring at the till with no receipt and nothing to say
+  // why. A missing preview must not swallow the acknowledgement — show the sale
+  // and let them move on.
+  if (!settings) {
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+          <div className="text-emerald-600 text-xl font-bold mb-1">✓ Sale completed</div>
+          <p className="text-sm text-slate-600 mb-1">{receipt.number}</p>
+          <p className="text-xs text-slate-500 mb-6">
+            Receipt settings could not be loaded, so the printable receipt is unavailable.
+            The sale is recorded — reprint it from Sales once settings are back.
+          </p>
+          <button type="button" onClick={onNewSale}
+            className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+            New Sale
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const pmLabel: Record<string, string> = {
     CASH: 'Cash', CARD: 'Card', BANK_TRANSFER: 'Bank Transfer',
