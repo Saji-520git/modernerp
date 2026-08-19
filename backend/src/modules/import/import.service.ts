@@ -1,160 +1,25 @@
-import * as XLSX from 'xlsx';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
-export interface ParsedRow {
-  rowNum:        number;
-  name:          string;
-  sku:           string;
-  barcode:       string | null;
-  category:      string | null;
-  brand:         string | null;
-  unit:          string | null;
-  costPrice:     number;      // already in Rs (not cents)
-  sellPrice:     number;
-  taxPercent:    number;
-  reorderLevel:  number;
-  openingStock:  number;
-  warehouseName: string | null;
-}
+// Parsing rules live in the pure module next door so they can be tested
+// without a database. Re-exported here so callers keep one import site.
+export type { ParsedRow, RowError, ParseResult, ImportSummary } from './import-parse.js';
+export { parseProductsFile } from './import-parse.js';
+import type { ParsedRow, RowError, ImportSummary } from './import-parse.js';
+import { unitProfile } from './import-parse.js';
 
-export interface RowError {
-  row:     number;
-  field:   string;
-  message: string;
-}
-
-export interface ParseResult {
-  valid:  ParsedRow[];
-  errors: RowError[];
-}
-
-export interface ImportSummary {
-  imported:     number;
-  withStock:    number;
-  skipped:      number;
-}
-
-// ─── Column normaliser ────────────────────────────────────────────────────────
-
-const COL_ALIASES: Record<string, string> = {
-  name: 'name', productname: 'name', product: 'name',
-  sku: 'sku', code: 'sku', itemcode: 'sku',
-  barcode: 'barcode', ean: 'barcode', upc: 'barcode',
-  category: 'category', categoryname: 'category',
-  brand: 'brand', brandname: 'brand',
-  unit: 'unit', unitname: 'unit', uom: 'unit',
-  costprice: 'costPrice', cost: 'costPrice', purchaseprice: 'costPrice',
-  sellprice: 'sellPrice', price: 'sellPrice', sellingprice: 'sellPrice', salesprice: 'sellPrice',
-  taxpercent: 'taxPercent', tax: 'taxPercent', vat: 'taxPercent',
-  reorderlevel: 'reorderLevel', reorder: 'reorderLevel', minstock: 'reorderLevel',
-  openingstock: 'openingStock', openingqty: 'openingStock', initialstock: 'openingStock',
-  warehousename: 'warehouseName', warehouse: 'warehouseName', location: 'warehouseName',
-};
-
-function normaliseKey(raw: string): string {
-  return COL_ALIASES[raw.toLowerCase().replace(/[^a-z]/g, '')] ?? raw;
-}
-
-function toNum(v: unknown, fallback = 0): number {
-  const n = parseFloat(String(v ?? '').trim());
-  return isNaN(n) ? fallback : n;
-}
-
-function toStr(v: unknown): string {
-  return String(v ?? '').trim();
-}
-
-// ─── Parse file buffer → rows ─────────────────────────────────────────────────
-
-export function parseProductsFile(buffer: Buffer, mimetype: string): ParseResult {
-  const valid: ParsedRow[]  = [];
-  const errors: RowError[]  = [];
-
-  // Parse workbook
-  const wb  = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const ws  = wb.Sheets[wb.SheetNames[0]];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
-    defval: '',
-    raw:    false,
-  });
-
-  if (raw.length === 0) {
-    errors.push({ row: 0, field: 'file', message: 'File is empty or has no data rows' });
-    return { valid, errors };
+/** A shortCode nothing else has taken — the column is @unique. */
+async function freeShortCode(tx: TxClient, preferred: string): Promise<string> {
+  const base = (preferred || 'unit').slice(0, 8);
+  if (!await tx.unit.findFirst({ where: { shortCode: base }, select: { id: true } })) return base;
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${base.slice(0, 6)}${i}`;
+    if (!await tx.unit.findFirst({ where: { shortCode: candidate }, select: { id: true } })) return candidate;
   }
-
-  // Normalise header keys
-  const rows = raw.map((r) => {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(r)) out[normaliseKey(k)] = v;
-    return out;
-  });
-
-  // Track SKUs seen in this file (for within-file duplicate check)
-  const seenSkus = new Set<string>();
-
-  for (let i = 0; i < rows.length; i++) {
-    const rowNum = i + 2; // 1-based, row 1 = header
-    const r      = rows[i];
-    const rowErrors: RowError[] = [];
-
-    const name  = toStr(r['name']);
-    const sku   = toStr(r['sku']);
-
-    if (!name)  rowErrors.push({ row: rowNum, field: 'name', message: 'Name is required' });
-    if (!sku)   rowErrors.push({ row: rowNum, field: 'sku',  message: 'SKU is required' });
-
-    if (sku && seenSkus.has(sku.toLowerCase())) {
-      rowErrors.push({ row: rowNum, field: 'sku', message: `Duplicate SKU "${sku}" within file` });
-    } else if (sku) {
-      seenSkus.add(sku.toLowerCase());
-    }
-
-    const costPrice    = toNum(r['costPrice']);
-    const sellPrice    = toNum(r['sellPrice']);
-    const taxPercent   = toNum(r['taxPercent']);
-    const reorderLevel = Math.round(toNum(r['reorderLevel']));
-    const openingStock = Math.round(toNum(r['openingStock']));
-
-    if (costPrice < 0)    rowErrors.push({ row: rowNum, field: 'costPrice',    message: 'Cost price must be >= 0' });
-    if (sellPrice < 0)    rowErrors.push({ row: rowNum, field: 'sellPrice',    message: 'Sell price must be >= 0' });
-    if (taxPercent < 0 || taxPercent > 100) {
-      rowErrors.push({ row: rowNum, field: 'taxPercent', message: 'Tax % must be 0–100' });
-    }
-    if (openingStock < 0) rowErrors.push({ row: rowNum, field: 'openingStock', message: 'Opening stock must be >= 0' });
-
-    const warehouseName = toStr(r['warehouseName']) || null;
-    if (openingStock > 0 && !warehouseName) {
-      rowErrors.push({ row: rowNum, field: 'warehouseName', message: 'Warehouse name is required when opening stock > 0' });
-    }
-
-    if (rowErrors.length > 0) {
-      errors.push(...rowErrors);
-      continue;
-    }
-
-    valid.push({
-      rowNum,
-      name,
-      sku,
-      barcode:       toStr(r['barcode'])   || null,
-      category:      toStr(r['category'])  || null,
-      brand:         toStr(r['brand'])     || null,
-      unit:          toStr(r['unit'])      || null,
-      costPrice,
-      sellPrice,
-      taxPercent,
-      reorderLevel,
-      openingStock,
-      warehouseName,
-    });
-  }
-
-  return { valid, errors };
+  return `${base.slice(0, 4)}${Date.now().toString(36).slice(-4)}`;
 }
 
 // ─── DB validation (check SKU uniqueness against DB) ─────────────────────────
@@ -166,6 +31,18 @@ export async function validateAgainstDb(rows: ParsedRow[]): Promise<RowError[]> 
     select: { sku: true },
   });
   const existingSet = new Set(existing.map((p) => p.sku.toLowerCase()));
+
+  // Barcode is @unique too. Without this the insert was the first thing to
+  // notice a clash, which fails the ENTIRE file with a raw constraint error and
+  // no row number — after preview had already called the file clean.
+  const barcodes = rows.map((r) => r.barcode).filter((b): b is string => !!b);
+  const existingBarcodes = barcodes.length > 0
+    ? await prisma.product.findMany({
+        where:  { barcode: { in: barcodes } },
+        select: { barcode: true, sku: true },
+      })
+    : [];
+  const barcodeOwner = new Map(existingBarcodes.map((p) => [p.barcode as string, p.sku]));
 
   // Validate warehouse names
   const warehouseNames = [...new Set(rows.filter((r) => r.warehouseName).map((r) => r.warehouseName as string))];
@@ -182,6 +59,12 @@ export async function validateAgainstDb(rows: ParsedRow[]): Promise<RowError[]> 
     if (existingSet.has(row.sku.toLowerCase())) {
       errors.push({ row: row.rowNum, field: 'sku', message: `SKU "${row.sku}" already exists in database` });
     }
+    if (row.barcode && barcodeOwner.has(row.barcode)) {
+      errors.push({
+        row: row.rowNum, field: 'barcode',
+        message: `Barcode "${row.barcode}" already belongs to product ${barcodeOwner.get(row.barcode)}`,
+      });
+    }
     if (row.warehouseName && !warehouseSet.has(row.warehouseName.toLowerCase())) {
       errors.push({ row: row.rowNum, field: 'warehouseName', message: `Warehouse "${row.warehouseName}" not found or inactive` });
     }
@@ -194,6 +77,7 @@ export async function validateAgainstDb(rows: ParsedRow[]): Promise<RowError[]> 
 export async function importProducts(rows: ParsedRow[], userId: string): Promise<ImportSummary> {
   let imported  = 0;
   let withStock = 0;
+  let skipped   = 0;
 
   // Pre-load warehouses to avoid per-row lookups
   const warehouseNames = [...new Set(rows.filter((r) => r.warehouseName).map((r) => r.warehouseName as string))];
@@ -213,23 +97,25 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
       // ── find-or-create Category ──
       let categoryId: string | null = null;
       if (row.category) {
-        const cat = await tx.category.upsert({
-          where:  { name: row.category },
-          create: { name: row.category },
-          update: {},
+        // Case-insensitive, the way Unit already resolves. An exact-match upsert
+        // filed "Dairy" and "dairy" as two separate categories.
+        const found = await tx.category.findFirst({
+          where: { name: { equals: row.category, mode: 'insensitive' } },
         });
-        categoryId = cat.id;
+        categoryId = found
+          ? found.id
+          : (await tx.category.create({ data: { name: row.category } })).id;
       }
 
       // ── find-or-create Brand ──
       let brandId: string | null = null;
       if (row.brand) {
-        const brand = await tx.brand.upsert({
-          where:  { name: row.brand },
-          create: { name: row.brand },
-          update: {},
+        const found = await tx.brand.findFirst({
+          where: { name: { equals: row.brand, mode: 'insensitive' } },
         });
-        brandId = brand.id;
+        brandId = found
+          ? found.id
+          : (await tx.brand.create({ data: { name: row.brand } })).id;
       }
 
       // ── find-or-create Unit ──
@@ -241,8 +127,15 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
         if (existing) {
           unitId = existing.id;
         } else {
+          const profile = unitProfile(row.unit);
           const created = await tx.unit.create({
-            data: { name: row.unit, shortCode: row.unit.slice(0, 6).toLowerCase(), type: 'COUNT', isActive: true },
+            data: {
+              name:         row.unit,
+              shortCode:    await freeShortCode(tx, profile.short),
+              type:         profile.type,
+              allowDecimal: profile.allowDecimal,
+              isActive:     true,
+            },
           });
           unitId = created.id;
         }
@@ -250,7 +143,10 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
 
       if (!unitId) {
         if (!defaultUnit) {
+          // Counted, not swallowed: the summary used to hardcode skipped: 0
+          // while this branch quietly dropped rows.
           logger.warn({ sku: row.sku }, 'No default unit found — skipping row');
+          skipped++;
           continue;
         }
         unitId = defaultUnit.id;
@@ -297,5 +193,5 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
     }
   }, { timeout: 60_000 });
 
-  return { imported, withStock, skipped: 0 };
+  return { imported, withStock, skipped };
 }
