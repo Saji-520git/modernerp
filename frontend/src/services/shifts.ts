@@ -26,6 +26,30 @@ export interface PosShift {
   forceClosedBy?: { id: string; fullName: string } | null;
 }
 
+/**
+ * Live cash position of an OPEN shift, computed server-side.
+ *
+ * The close dialog must never work expected cash out for itself: the per-method
+ * columns on PosShift are only written AT close, so on an open shift they are
+ * all zero. Reading them mid-shift told the cashier to expect just the opening
+ * float. This is the same aggregate the close commits.
+ */
+export interface ShiftPreview {
+  shiftId:              string;
+  openingCashCents:     number;
+  cashSalesCents:       number;
+  cardSalesCents:       number;
+  bankTransferCents:    number;
+  qrPayCents:           number;
+  creditSalesCents:     number;
+  totalSalesCents:      number;
+  saleCount:            number;
+  splitCashCents:       number;
+  cashSettlementsCents: number;
+  cashRefundsCents:     number;
+  expectedCashCents:    number;
+}
+
 export interface ShiftWithSales extends PosShift {
   sales: {
     id: string;
@@ -66,6 +90,9 @@ export const shiftsApi = {
 
   close: (data: CloseShiftPayload) =>
     api.post<PosShift>('/pos/shifts/close', data).then((r) => r.data),
+
+  preview: (id: string) =>
+    api.get<ShiftPreview>(`/pos/shifts/${id}/preview`).then((r) => r.data),
 
   forceClose: (id: string, note?: string) =>
     api.post<PosShift>(`/pos/shifts/${id}/force-close`, { note }).then((r) => r.data),

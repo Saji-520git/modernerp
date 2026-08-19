@@ -29,4 +29,5 @@ router.get('/shifts/current',        ctrl.getCurrentShift);
 router.post('/shifts/close',         h(ctrl.closeShift));
 router.post('/shifts/:id/force-close', requireRole('ADMIN'), h(ctrl.forceCloseShift));
 router.get('/shifts',                ctrl.listShifts);
+router.get('/shifts/:id/preview',    h(ctrl.previewShift));
 router.get('/shifts/:id',            ctrl.getShift);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, X } from 'lucide-react';
 import { shiftsApi, formatShiftDuration, type PosShift } from '../../services/shifts';
 
@@ -10,7 +10,9 @@ function formatMoney(cents: number): string {
 interface Props {
   shift:          PosShift;
   onClose:        () => void;
-  onShiftClosed:  () => void;
+  // Receives the CLOSED shift so the caller can show what was just settled —
+  // expected, counted, variance — instead of a toast that vanishes.
+  onShiftClosed:  (closed: PosShift) => void;
 }
 
 export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props) {
@@ -19,9 +21,25 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
   const [error, setError]           = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const actualCents    = Math.round((parseFloat(actualCash) || 0) * 100);
-  const expectedCents  = shift.openingCashCents + shift.cashSalesCents;
-  const varianceCents  = actualCash !== '' ? actualCents - expectedCents : null;
+  // Every figure below comes from the server. This dialog used to compute
+  // expected cash as `openingCashCents + shift.cashSalesCents`, which was wrong
+  // twice over: it is the old formula, blind to split cash, credit settlements
+  // and refunds; and the per-method columns are only written AT close, so on an
+  // OPEN shift they are all zero. The cashier was shown a breakdown of zeros and
+  // told to expect only the opening float, so an honest count always looked like
+  // a large surplus.
+  const { data: preview, isLoading: previewLoading, isError: previewError } = useQuery({
+    queryKey: ['shift-preview', shift.id],
+    queryFn:  () => shiftsApi.preview(shift.id),
+    // The drawer is being counted right now; a stale figure is worse than none.
+    staleTime: 0,
+  });
+
+  const actualCents   = Math.round((parseFloat(actualCash) || 0) * 100);
+  const expectedCents = preview?.expectedCashCents ?? null;
+  const varianceCents = actualCash !== '' && expectedCents !== null
+    ? actualCents - expectedCents
+    : null;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -30,10 +48,10 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
         closingCash:  parseFloat(actualCash) || 0,
         note:         note.trim() || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (closed) => {
       qc.invalidateQueries({ queryKey: ['current-shift'] });
       qc.invalidateQueries({ queryKey: ['shifts'] });
-      onShiftClosed();
+      onShiftClosed(closed);
     },
     onError: (err: any) => {
       setError(err?.response?.data?.message ?? 'Failed to close shift. Please try again.');
@@ -61,12 +79,22 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
   const duration    = formatShiftDuration(shift.openedAt, null);
 
   const payRows = [
-    { label: 'Cash sales',    value: shift.cashSalesCents },
-    { label: 'Card sales',    value: shift.cardSalesCents },
-    { label: 'QR Pay',        value: shift.qrPayCents },
-    { label: 'Bank Transfer', value: shift.bankTransferCents },
-    { label: 'Credit sales',  value: shift.creditSalesCents },
+    { label: 'Cash sales',    value: preview?.cashSalesCents    ?? 0 },
+    { label: 'Card sales',    value: preview?.cardSalesCents    ?? 0 },
+    { label: 'QR Pay',        value: preview?.qrPayCents        ?? 0 },
+    { label: 'Bank Transfer', value: preview?.bankTransferCents ?? 0 },
+    { label: 'Credit sales',  value: preview?.creditSalesCents  ?? 0 },
   ];
+
+  // The movements that are not plain cash sales but still change the drawer.
+  // Shown only when non-zero, so an ordinary shift's dialog stays as short as
+  // it is today — but a cashier who took a split payment or gave a refund can
+  // see exactly why the expected figure is what it is.
+  const cashMovementRows = [
+    { label: '+ Cash on split payments', value: preview?.splitCashCents       ?? 0 },
+    { label: '+ Credit settled in cash', value: preview?.cashSettlementsCents ?? 0 },
+    { label: '− Cash refunds paid out',  value: -(preview?.cashRefundsCents   ?? 0) },
+  ].filter(r => r.value !== 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
@@ -76,7 +104,7 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
           <div>
             <h2 className="text-lg font-bold text-slate-800">Close Shift</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Started {openedTime} · {duration} · {shift.saleCount} sale{shift.saleCount !== 1 ? 's' : ''}
+              Started {openedTime} · {duration} · {preview?.saleCount ?? shift.saleCount} sale{(preview?.saleCount ?? shift.saleCount) !== 1 ? 's' : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
@@ -89,11 +117,11 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
           <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-500">Total Sales</span>
-              <span className="font-semibold text-slate-800">{formatMoney(shift.totalSalesCents)}</span>
+              <span className="font-semibold text-slate-800">{formatMoney(preview?.totalSalesCents ?? shift.totalSalesCents)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Transactions</span>
-              <span className="font-semibold text-slate-800">{shift.saleCount}</span>
+              <span className="font-semibold text-slate-800">{preview?.saleCount ?? shift.saleCount}</span>
             </div>
           </div>
 
@@ -111,7 +139,7 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
               ))}
               <div className="flex justify-between px-4 py-2.5 bg-slate-50 text-sm font-semibold">
                 <span className="text-slate-700">Total Sales</span>
-                <span className="text-slate-800">{formatMoney(shift.totalSalesCents)}</span>
+                <span className="text-slate-800">{formatMoney(preview?.totalSalesCents ?? 0)}</span>
               </div>
             </div>
           </div>
@@ -123,15 +151,25 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
             </p>
             <div className="flex justify-between text-slate-600">
               <span>Opening Float</span>
-              <span>{formatMoney(shift.openingCashCents)}</span>
+              <span>{formatMoney(preview?.openingCashCents ?? shift.openingCashCents)}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>+ Cash Sales</span>
-              <span>{formatMoney(shift.cashSalesCents)}</span>
+              <span>{formatMoney(preview?.cashSalesCents ?? 0)}</span>
             </div>
+            {cashMovementRows.map((row) => (
+              <div key={row.label} className="flex justify-between text-slate-600">
+                <span>{row.label}</span>
+                <span>{formatMoney(Math.abs(row.value))}</span>
+              </div>
+            ))}
             <div className="flex justify-between font-bold text-slate-800 border-t border-indigo-200 pt-1.5 mt-1">
               <span>Expected</span>
-              <span>{formatMoney(expectedCents)}</span>
+              <span>
+                {previewLoading ? 'Calculating…'
+                  : previewError || expectedCents === null ? 'Unavailable'
+                  : formatMoney(expectedCents)}
+              </span>
             </div>
           </div>
 
@@ -190,7 +228,13 @@ export default function CloseShiftModal({ shift, onClose, onShiftClosed }: Props
             </button>
             <button
               type="submit"
-              disabled={mutation.isPending || actualCash === ''}
+              // Not while the expected figure is still resolving — closing is
+              // committed and irreversible, and a cashier should see what they
+              // are being measured against before they commit to a count. A
+              // failed preview does NOT block: the server recomputes expected
+              // cash at close regardless, and trapping the cashier would be
+              // worse than closing without the on-screen figure.
+              disabled={mutation.isPending || actualCash === '' || previewLoading}
               className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {mutation.isPending ? 'Closing…' : 'Close Shift'}

@@ -88,6 +88,11 @@ export const closeShift: RequestHandler = async (req, res) => {
   res.json(shift);
 };
 
+export const previewShift: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new HttpError(401, 'Not authenticated');
+  res.json(await posService.previewShift(req.params.id));
+};
+
 export const forceCloseShift: RequestHandler = async (req, res) => {
   if (!req.auth) throw new HttpError(401, 'Not authenticated');
   const { id } = req.params;

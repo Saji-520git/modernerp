@@ -19,7 +19,7 @@ import DiscountInput, { type DiscountInputHandle } from '../../components/pos/Di
 import BatchPickerModal from '../../components/common/BatchPickerModal';
 import { categoriesApi, brandsApi, type Category, type Brand } from '../../services/masterData';
 import NewReturnModal from '../../components/returns/NewReturnModal';
-import { shiftsApi } from '../../services/shifts';
+import { shiftsApi, type PosShift } from '../../services/shifts';
 import { useAppSettings } from '../../context/SettingsContext';
 import {
   fillTemplate, openWhatsApp, buildItemsList,
@@ -1959,6 +1959,10 @@ export default function POSPage() {
   const [showWhDropdown,      setShowWhDropdown]      = useState(false);
   const [showQuickAddCustomer,setShowQuickAddCustomer]= useState(false);
   const [showCloseShift,      setShowCloseShift]      = useState(false);
+  // The shift just closed on this terminal. While set, POS shows what was
+  // settled and three ways out instead of instantly demanding a new shift —
+  // closing a till is the END of a session, not a state to recover from.
+  const [justClosedShift,     setJustClosedShift]     = useState<PosShift | null>(null);
   const [exitAfterShiftClose, setExitAfterShiftClose] = useState(false);
   const [showSignOutShift,    setShowSignOutShift]    = useState(false);
   const [signOutCash,         setSignOutCash]         = useState('');
@@ -2832,6 +2836,26 @@ export default function POSPage() {
     }));
   }, [isStaffSale]);
 
+  // Closing settles the drawer and ends the session, so it must not happen with
+  // a sale half-rung or bills parked. Nothing stopped either before: the cart
+  // was simply abandoned and the held bills outlived the shift that owned them.
+  const blockedFromClosingShift = useCallback((): string | null => {
+    if (cart.length > 0)  return `Finish or hold the ${cart.length} item${cart.length !== 1 ? 's' : ''} in the cart before closing the shift`;
+    if (holds.length > 0) return `${holds.length} held bill${holds.length !== 1 ? 's' : ''} still open — complete or void ${holds.length !== 1 ? 'them' : 'it'} before closing the shift`;
+    return null;
+  }, [cart.length, holds.length]);
+
+  const requestCloseShift = useCallback((exitAfter: boolean) => {
+    const blocked = blockedFromClosingShift();
+    if (blocked) {
+      setQuickAddToast('⚠ ' + blocked);
+      setTimeout(() => setQuickAddToast(null), 4000);
+      return;
+    }
+    setExitAfterShiftClose(exitAfter);
+    setShowCloseShift(true);
+  }, [blockedFromClosingShift]);
+
   const handleCheckout = useCallback((method: AllPaymentMethods, receivedCents = 0, cashAmountCents?: number) => {
     // Second guard, at the outermost point a sale can start. The payment dialog
     // has its own, but Enter and a button click can arrive in the same tick from
@@ -3053,8 +3077,14 @@ export default function POSPage() {
           exitPOS();
           navigate('/');
         } else if (currentShift) {
-          setExitAfterShiftClose(true);
-          setShowCloseShift(true);
+          requestCloseShift(true);
+        } else {
+          // No shift to close. This branch did nothing, which is precisely when
+          // a cashier needed it: straight after closing, the only escape was an
+          // admin-only shortcut, so a cashier was stuck on the terminal.
+          exitPOS();
+          logout();
+          navigate('/login');
         }
         return;
       }
@@ -3222,6 +3252,10 @@ export default function POSPage() {
       showHolds, showReceipt, showCustomer, showCancelConfirm, showReturn, quickAddBarcode, reprintReceipt,
       cart, user, clearCart, refocusBarcode, updateQty, removeFromCart, currentShift, printReceipt, newSale,
       checkoutMutation.isPending, hasOversoldItem,
+      // Ctrl+Shift+X routes through requestCloseShift, whose guard reads the
+      // live cart and holds counts — a stale closure here would let a shift
+      // close over a cart the handler could no longer see.
+      requestCloseShift, exitPOS, logout, navigate,
       anyModalOpen, cartSelectedKey, sellableLines, targetLine]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -3238,13 +3272,77 @@ export default function POSPage() {
 
   // If warehouse is selected and shift query has returned with no open shift → block POS
   const selectedWarehouseName = (warehouses as { id: string; name: string }[]).find(w => w.id === warehouseId)?.name ?? 'Warehouse';
-  const needsShiftOpen = !!warehouseId && !shiftLoading && currentShift === null;
+  // Auto-prompt only when arriving at POS with no shift — never straight after
+  // closing one. That sequence used to render a modal with no cancel, no Escape
+  // and no route past it, over the header's Exit POS and Sign out.
+  const needsShiftOpen = !!warehouseId && !shiftLoading && currentShift === null && justClosedShift === null;
 
   return (
     <div
       className="h-screen w-screen overflow-hidden bg-slate-50"
       style={{ display: 'grid', gridTemplateRows: 'auto 1fr' }}
     >
+      {/* Shift settled — what was counted, and the ways out. Sits above the
+          open-shift prompt, which is suppressed while this is showing. */}
+      {justClosedShift && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-bold text-slate-800">Shift Closed</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {justClosedShift.saleCount} sale{justClosedShift.saleCount !== 1 ? 's' : ''}
+                {' · '}{formatCents(justClosedShift.totalSalesCents)} total
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 rounded-xl p-4 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Expected in drawer</span>
+                  <span className="font-semibold text-slate-800">{formatCents(justClosedShift.expectedCashCents ?? 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Counted</span>
+                  <span className="font-semibold text-slate-800">{formatCents(justClosedShift.closingCashCents ?? 0)}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1">
+                  <span className="text-slate-500">Variance</span>
+                  <span className={cls('font-bold',
+                    (justClosedShift.varianceCents ?? 0) === 0 ? 'text-emerald-600'
+                    : (justClosedShift.varianceCents ?? 0) > 0 ? 'text-amber-600' : 'text-red-600')}>
+                    {(justClosedShift.varianceCents ?? 0) === 0
+                      ? '✓ Balanced'
+                      : (justClosedShift.varianceCents ?? 0) > 0
+                        ? `▲ ${formatCents(justClosedShift.varianceCents ?? 0)} over`
+                        : `▼ ${formatCents(Math.abs(justClosedShift.varianceCents ?? 0))} short`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <button type="button"
+                  onClick={() => { exitPOS(); logout(); navigate('/login'); }}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition">
+                  Sign out
+                </button>
+                <button type="button"
+                  onClick={() => setJustClosedShift(null)}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+                  Open a new shift
+                </button>
+                {isAdmin && (
+                  <button type="button"
+                    onClick={() => { setJustClosedShift(null); exitPOS(); navigate('/'); }}
+                    className="w-full py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+                    Exit POS
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Block POS and prompt cashier to open a shift */}
       {needsShiftOpen && (
         <OpenShiftModal
@@ -3254,6 +3352,9 @@ export default function POSPage() {
             storeOpenShift(shift.id);
             qc.setQueryData(['current-shift', warehouseId], shift);
           }}
+          // Never a dead end. This modal covers the header, so without a way out
+          // a cashier who does not want a shift had none.
+          onCancel={() => { exitPOS(); logout(); navigate('/login'); }}
         />
       )}
       {/* ═══════════════════════════════════════════════════════════════
@@ -3558,7 +3659,7 @@ export default function POSPage() {
 
               {/* Close Shift — Ctrl+Shift+X */}
               <button type="button"
-                onClick={() => setShowCloseShift(true)}
+                onClick={() => requestCloseShift(false)}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: '#fff', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
                 ⏱ Close Shift
                 <span style={{ fontSize: 10, color: '#fca5a5', background: '#fff1f2', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
@@ -4167,7 +4268,7 @@ export default function POSPage() {
         <CloseShiftModal
           shift={liveShift}
           onClose={() => { setShowCloseShift(false); setExitAfterShiftClose(false); }}
-          onShiftClosed={() => {
+          onShiftClosed={(closed) => {
             storeCloseShift();
             qc.setQueryData(['current-shift', warehouseId], null);
             setShowCloseShift(false);
@@ -4177,8 +4278,10 @@ export default function POSPage() {
               logout();
               navigate('/login');
             } else {
-              setQuickAddToast('✓ Shift closed');
-              setTimeout(() => setQuickAddToast(null), 3000);
+              // Land on the settled figures with explicit exits, rather than a
+              // toast that disappears while an unclosable "open a shift" modal
+              // takes over the screen.
+              setJustClosedShift(closed);
             }
           }}
         />

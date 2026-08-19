@@ -1137,6 +1137,41 @@ export const posService = {
     return { total, page, pageSize, data };
   },
 
+  // What the drawer should hold RIGHT NOW, for an open shift.
+  //
+  // The close dialog used to work this out itself as
+  // `openingCashCents + shift.cashSalesCents`. Two things were wrong with that:
+  // it is the old formula, blind to split cash, settlements and refunds; and
+  // cashSalesCents is only written AT close, so on an open shift it is 0 and the
+  // dialog told every cashier to expect just the opening float. Their real count
+  // then read as a large surplus, every single time.
+  //
+  // Expected cash is now derived in exactly one place — this is the same
+  // aggregate closeShift commits, so the figure previewed is the figure stored.
+  async previewShift(id: string) {
+    const shift = await prisma.posShift.findFirst({
+      where:  { id, status: 'OPEN' },
+      select: { id: true, openingCashCents: true },
+    });
+    if (!shift) throw new HttpError(404, 'No open shift found');
+
+    const agg = await aggregateShift(shift.id);
+    const expected = expectedCashCents({
+      openingFloatCents:    shift.openingCashCents,
+      cashSalesCents:       agg.cashSalesCents,
+      splitCashCents:       agg.splitCashCents,
+      cashSettlementsCents: agg.cashSettlementsCents,
+      cashRefundsCents:     agg.cashRefundsCents,
+    });
+
+    return {
+      shiftId:           shift.id,
+      openingCashCents:  shift.openingCashCents,
+      ...agg,
+      expectedCashCents: expected,
+    };
+  },
+
   async getShift(id: string) {
     const shift = await prisma.posShift.findFirst({
       where: { id },

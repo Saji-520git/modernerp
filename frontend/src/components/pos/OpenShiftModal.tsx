@@ -4,12 +4,18 @@ import { ShoppingCart, AlertCircle } from 'lucide-react';
 import { shiftsApi, type PosShift } from '../../services/shifts';
 
 interface Props {
+  /**
+   * Way out for a cashier who does not want to open a shift — after closing at
+   * end of day, most obviously. Optional: when omitted the modal stays blocking,
+   * which is right for a terminal that has no shift and no other route out.
+   */
+  onCancel?: () => void;
   warehouseId:   string;
   warehouseName: string;
   onShiftOpened: (shift: PosShift) => void;
 }
 
-export default function OpenShiftModal({ warehouseId, warehouseName, onShiftOpened }: Props) {
+export default function OpenShiftModal({ warehouseId, warehouseName, onShiftOpened, onCancel }: Props) {
   const [openingCash, setOpeningCash] = useState('0');
   const [error, setError]             = useState<string | null>(null);
   const qc = useQueryClient();
@@ -91,6 +97,17 @@ export default function OpenShiftModal({ warehouseId, warehouseName, onShiftOpen
           >
             {mutation.isPending ? 'Opening shift…' : 'Open Shift →'}
           </button>
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={mutation.isPending}
+              className="w-full py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition disabled:opacity-60"
+            >
+              Not now — sign out
+            </button>
+          )}
         </form>
       </div>
     </div>
