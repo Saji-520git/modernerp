@@ -170,7 +170,14 @@ export default function ThermalReceipt({
               {line.product.name}
             </span>
             <span style={{ width: 44, textAlign: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>{line.qty}{line.unitShortCode ? ` ${line.unitShortCode}` : ''}</span>
-            <span style={{ width: 56, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmt(line.lineTotalCents)}</span>
+            {/* NET of this line's own discount. Printing the gross here made the
+                receipt unreconcilable: the totals below carry only the CART
+                discount, so a line discount vanished and the arithmetic came up
+                short — Rs. 20.00 less Rs. 1.75 shown against a Rs. 15.75 total,
+                with Rs. 2.50 unaccounted for on a document a customer can read.
+                generateReceiptHtml already nets the amount column; this is the
+                on-screen preview of that same receipt and must agree with it. */}
+            <span style={{ width: 56, textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmt(line.lineTotalCents - line.discountCents)}</span>
           </div>
           {settings.receiptShowSku && (
             <p style={{ fontSize: 8, color: '#666', margin: 0, paddingLeft: 2 }}>{line.product.sku}</p>
