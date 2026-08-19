@@ -17,6 +17,7 @@ import {
 } from '../../services/pos';
 import DiscountInput, { type DiscountInputHandle } from '../../components/pos/DiscountInput';
 import BatchPickerModal from '../../components/common/BatchPickerModal';
+import SetPriceModal from '../../components/pos/SetPriceModal';
 import { categoriesApi, brandsApi, type Category, type Brand } from '../../services/masterData';
 import NewReturnModal from '../../components/returns/NewReturnModal';
 import { shiftsApi, type PosShift } from '../../services/shifts';
@@ -118,6 +119,30 @@ interface UnitOption {
   discountType:  string | null;
   discountValue: number | null;
 }
+/**
+ * What a line will actually be charged at, before any manual edit.
+ *
+ * Extracted because the zero-price guard has to make this judgement BEFORE the
+ * cart updater runs (a state updater must stay pure — it cannot open a dialog or
+ * call an API), while the cart line computes the same thing when it is built.
+ * Two copies would eventually disagree about what "free" means.
+ *
+ * A zero batch price means "no price recorded", not "free", so it never wins
+ * over the product price — the same rule the backend checkout applies.
+ */
+function resolveLinePrice(
+  product:     PosProduct,
+  chosenBatch: ProductBatch | undefined,
+  isStaffSale: boolean,
+): number {
+  const opts     = getUnitOptions(product);
+  const baseOpt  = opts.find(o => o.isBase) ?? opts[0];
+  const batchBuy = (chosenBatch?.sellingPriceCents ?? 0) > 0 ? chosenBatch!.sellingPriceCents : undefined;
+  return isStaffSale
+    ? (chosenBatch?.unitCostCents ?? product.costCents ?? product.priceCents)
+    : (batchBuy ?? baseOpt.priceCents);
+}
+
 function getUnitOptions(product: PosProduct): UnitOption[] {
   const baseUnitId = product.baseUnitId ?? product.unitId;
   const baseUnit   = product.baseUnit ?? product.unit;
@@ -1912,6 +1937,10 @@ export default function POSPage() {
   // Multi-batch product awaiting a cashier's batch pick — set by
   // handleProductClick, cleared once BatchPickerModal resolves.
   const [pendingBatchProduct, setPendingBatchProduct] = useState<PosProduct | null>(null);
+  // A product the cashier tried to sell that has no price yet. Held here with
+  // the batch they picked, so the sale resumes exactly where it stopped once a
+  // price is entered.
+  const [pendingPrice, setPendingPrice] = useState<{ product: PosProduct; batch?: ProductBatch } | null>(null);
   const [cartDiscountType, setCartDiscountType] = useState<'percent' | 'amount'>('amount');
   const [cartDiscountValue, setCartDiscountValue] = useState(0);
   const [isStaffSale, setIsStaffSale]           = useState(false);
@@ -2193,7 +2222,7 @@ export default function POSPage() {
     showPayment || showReceipt || showHoldModal || showHolds || showCustomer ||
     showCloseShift || showSignOutShift || showShortcuts || showExitBlocked ||
     showQuickAddCustomer || showCancelConfirm || showReturn ||
-    !!quickAddBarcode || !!reprintReceipt || !!pendingBatchProduct;
+    !!quickAddBarcode || !!reprintReceipt || !!pendingBatchProduct || !!pendingPrice;
 
   // The line +/-/Del apply to: the selected one, else the newest. Falling back
   // to the newest also covers a selection whose line has since been removed.
@@ -2237,6 +2266,30 @@ export default function POSPage() {
       setTimeout(() => barcodeRef.current?.focus(), 100);
       return;
     }
+
+    // ── Nothing leaves the shop for free ──────────────────────────────────────
+    // Runs AFTER the stock check on purpose: asking a cashier to price an item
+    // and only then telling them it is out of stock wastes the customer's time.
+    // 753 products arrived from the catalogue import with no price, and checkout
+    // resolves a line straight to product.priceCents with no zero check — so
+    // they would have rung up at Rs. 0.00 in silence. Ask for the price instead.
+    //
+    // Judged on the RESOLVED price, not product.priceCents: a batch carrying its
+    // own price is already priced and must not be interrupted.
+    const effectivePrice = resolveLinePrice(product, chosenBatch, isStaffSale);
+    if (effectivePrice <= 0) {
+      if (isStaffSale) {
+        // Staff sales charge cost, so a sale price would not fix this line —
+        // say what is actually missing rather than asking the wrong question.
+        setQuickAddToast(`${product.name} has no cost price — cannot sell at staff price`);
+        setTimeout(() => setQuickAddToast(null), 4000);
+        setTimeout(() => barcodeRef.current?.focus(), 100);
+        return;
+      }
+      setPendingPrice({ product, batch: chosenBatch });
+      return;
+    }
+
     const bs       = product.batchSummary;
     const policy   = (appSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
     const rawTotal = totalStock(product);
@@ -2299,10 +2352,7 @@ export default function POSPage() {
       // product price. `??` would let 0 through; the explicit check does not.
       // Mirrors the same guard in the backend checkout, which sets the price
       // that is actually charged.
-      const batchPrice   = (chosenBatch?.sellingPriceCents ?? 0) > 0 ? chosenBatch!.sellingPriceCents : undefined;
-      const priceToUse   = isStaffSale
-        ? (chosenBatch?.unitCostCents ?? product.costCents ?? product.priceCents)
-        : (batchPrice ?? baseOpt.priceCents);
+      const priceToUse   = resolveLinePrice(product, chosenBatch, isStaffSale);
       // Seed the line discount from the selected unit (per-unit override) or the
       // product-level default. Cashier can override afterward.
       const seed         = discountSeedFromOption(baseOpt, product, appSettings?.posApplyDefaultDiscount !== false);
@@ -3097,6 +3147,7 @@ export default function POSPage() {
 
       // Escape — close topmost modal/panel
       if (e.key === 'Escape') {
+        if (pendingPrice)         { setPendingPrice(null); refocusBarcode(); return; }
         if (showCloseShift)       { setShowCloseShift(false);       return; }
         // Customer pickers sit ABOVE the payment dialog when opened from it, so
         // they must close first — otherwise Esc dismisses the payment behind
@@ -4308,6 +4359,24 @@ export default function POSPage() {
 
       {/* Batch picker — mounted whenever a multi-batch product is added;
           resolves itself silently for 0/1 batches, or shows a picker. */}
+      {/* No price on the product — ask, save it, then resume the sale. */}
+      {pendingPrice && (
+        <SetPriceModal
+          product={pendingPrice.product}
+          onCancel={() => { setPendingPrice(null); refocusBarcode(); }}
+          onSaved={(priceCents) => {
+            const { product, batch } = pendingPrice;
+            setPendingPrice(null);
+            // Hand addToCart the UPDATED product directly: refetching is async and
+            // the cashier is mid-sale, so the line must be priced from what was
+            // just saved rather than from whatever the grid still holds.
+            addToCart({ ...product, priceCents }, batch);
+            // Bring the grid and any other reader back in step.
+            qc.invalidateQueries({ queryKey: ['pos-products'] });
+          }}
+        />
+      )}
+
       {pendingBatchProduct && (
         <BatchPickerModal
           productId={pendingBatchProduct.id}

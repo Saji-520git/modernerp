@@ -259,6 +259,11 @@ export const posApi = {
   deleteDraft: (id: string): Promise<{ success: boolean }> =>
     api.delete(`/pos/drafts/${id}`).then((r) => r.data),
 
+  // Fill in a sale price the catalogue never had. Rejected server-side if the
+  // product already has one — this is not a price override.
+  setProductPrice: (productId: string, priceCents: number): Promise<{ id: string; name: string; priceCents: number }> =>
+    api.patch(`/pos/products/${productId}/price`, { priceCents }).then((r) => r.data),
+
   // ── Customer credit ──
   getCustomerCredit: (customerId: string): Promise<CustomerCreditInfo> =>
     api.get(`/pos/customer-credit/${customerId}`).then((r) => r.data),

@@ -10,6 +10,9 @@ router.use(requireAuth);
 router.get('/warehouses', ctrl.getWarehouses);
 router.get('/products', requirePermission('view_products'), ctrl.searchProducts);
 router.get('/products/:productId/batches', requirePermission('view_products'), h(ctrl.getProductBatches));
+// Anyone who can ring up a sale can fill in a price the catalogue is missing —
+// the service refuses to touch a product that already has one.
+router.patch('/products/:productId/price', requirePermission('pos_checkout'), h(ctrl.setProductPrice));
 router.get('/sales', requirePermission('view_sales'), ctrl.listSales);
 router.get('/receipt/:id', requirePermission('view_sales'), ctrl.getReceipt);
 

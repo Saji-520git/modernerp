@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { posService } from './pos.service.js';
-import { checkoutSchema, productSearchSchema, listSalesSchema, saveDraftSchema, openShiftSchema, closeShiftSchema, forceCloseShiftSchema, listShiftsSchema } from './pos.schema.js';
+import { checkoutSchema, productSearchSchema, listSalesSchema, saveDraftSchema, openShiftSchema, closeShiftSchema, forceCloseShiftSchema, listShiftsSchema, setProductPriceSchema } from './pos.schema.js';
 import { HttpError } from '../../middleware/error-handler.js';
 
 export const searchProducts: RequestHandler = async (req, res) => {
@@ -72,6 +72,12 @@ export const openShift: RequestHandler = async (req, res) => {
   const input = openShiftSchema.parse(req.body);
   const shift = await posService.openShift(req.auth.userId, input);
   res.status(201).json(shift);
+};
+
+export const setProductPrice: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new HttpError(401, 'Not authenticated');
+  const { priceCents } = setProductPriceSchema.parse(req.body);
+  res.json(await posService.setMissingPrice(req.params.productId, priceCents, req.auth.userId));
 };
 
 export const getCurrentShift: RequestHandler = async (req, res) => {

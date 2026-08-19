@@ -968,6 +968,40 @@ export const posService = {
   },
 
 
+  // ── Fill in a missing sale price ──────────────────────────────────────────
+  //
+  // A product imported without a price sells for Rs. 0: checkout resolves the
+  // line to product.priceCents and nothing stops a zero. That is a giveaway, so
+  // the till asks for a price instead of ringing the item up free.
+  //
+  // This ONLY fills a gap. If a price already exists, changing it is a different
+  // act — that is what adjust_sale_price and the Products page are for — so this
+  // refuses rather than letting the till quietly rewrite the catalogue.
+  //
+  // Batches need no special case: checkout already reads
+  // `batch.sellingPriceCents > 0 ? batch : product.priceCents`, so a batch with
+  // its own price is untouched by this, and a batch without one inherits the
+  // price set here. Nothing writes to StockBatch.
+  async setMissingPrice(productId: string, priceCents: number, userId: string) {
+    const product = await prisma.product.findUnique({
+      where:  { id: productId },
+      select: { id: true, name: true, priceCents: true, isActive: true },
+    });
+    if (!product) throw new HttpError(404, 'Product not found');
+    if (!product.isActive) throw new HttpError(400, `${product.name} is inactive`);
+    if (product.priceCents > 0) {
+      throw new HttpError(409, `${product.name} already has a price — change it from Products.`);
+    }
+
+    const updated = await prisma.product.update({
+      where:  { id: productId },
+      data:   { priceCents },
+      select: { id: true, name: true, priceCents: true },
+    });
+    logger.info({ productId, priceCents, userId }, 'Missing sale price set from POS');
+    return updated;
+  },
+
   // ── Shift management ──────────────────────────────────────────────────────
 
   async openShift(userId: string, input: OpenShiftInput) {

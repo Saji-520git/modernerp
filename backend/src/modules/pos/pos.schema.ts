@@ -84,6 +84,13 @@ export const forceCloseShiftSchema = z.object({
   note:        z.string().max(500).optional(),
 });
 
+// Filling in a price the catalogue never had. Deliberately not a general price
+// edit — see setMissingPrice in the service for why it refuses a product that
+// already has one.
+export const setProductPriceSchema = z.object({
+  priceCents: z.number().int().positive('Enter a price greater than zero'),
+});
+
 export const listShiftsSchema = z.object({
   page:        z.coerce.number().int().min(1).default(1),
   pageSize:    z.coerce.number().int().min(1).max(100).default(20),
@@ -104,3 +111,4 @@ export type OpenShiftInput       = z.infer<typeof openShiftSchema>;
 export type CloseShiftInput      = z.infer<typeof closeShiftSchema>;
 export type ForceCloseShiftInput = z.infer<typeof forceCloseShiftSchema>;
 export type ListShiftsInput      = z.infer<typeof listShiftsSchema>;
+export type SetProductPriceInput = z.infer<typeof setProductPriceSchema>;
