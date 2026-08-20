@@ -17,6 +17,7 @@ import { useAppSettings } from '../../context/SettingsContext';
 import type { ModuleKey } from '../../config/modules';
 import { alertsApi } from '../../services/alerts';
 import { shiftsApi } from '../../services/shifts';
+import ThemeToggle from '../common/ThemeToggle';
 
 type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STAFF';
 
@@ -295,6 +296,18 @@ export default function AppShell() {
                 </span>
               )}
             </button>
+          )}
+          {/* Theme control. ThemeToggle already existed and was mounted only on
+              the login screen, so once signed in there was no way to change
+              theme for the rest of the session. It lives here now, above Sign
+              out, where a settings-ish control is looked for. Hidden while the
+              rail is collapsed — the three-state segment needs the width, and
+              the choice persists regardless. */}
+          {!collapsed && (
+            <div className="px-2 py-1 flex items-center justify-between">
+              <span className="text-xs text-slate-500">Theme</span>
+              <ThemeToggle />
+            </div>
           )}
           <button
             onClick={handleLogout}

@@ -170,6 +170,168 @@
   display: none;
 }
 
+/* ── Dark theme, system-wide ───────────────────────────────────────────────────
+   53 pages were written against fixed Tailwind palette classes (bg-white,
+   text-slate-500, border-slate-200) — 6,119 of them. In dark mode that produced
+   a white sidebar and a light page with dark cards floating on it.
+
+   Converting all 6,119 by hand would mean editing POSPage, the checkout path and
+   every money screen to change a colour. This block remaps the palette instead:
+   it is CSS only, no component is touched, and deleting it restores the previous
+   behaviour exactly. Pages migrated to semantic tokens (the Dashboard) already
+   theme themselves and simply do not match these selectors.
+
+   Specificity: `[data-theme="dark"] .bg-white` is (0,2,0) against a utility's
+   (0,1,0), so it wins without !important. The block sits after @tailwind
+   utilities, so source order backs that up.
+
+   Scoped to `screen` on purpose. Printing must stay on paper colours whatever
+   the screen theme is — a dark invoice or barcode sheet would flood the page
+   with ink. In-app print (Sales, Reports, Barcode Labels) uses the live DOM, so
+   without this guard it would print the dark theme.
+
+   NOT remapped, deliberately:
+     text-white / border-white  — they sit on filled colour buttons and badges,
+                                  which stay coloured in dark; their foreground
+                                  must not follow the page
+     bg-black                   — modal scrims, already correct
+     bg-*-500/600/700           — solid brand and status fills read correctly on
+                                  a dark ground as they are
+     bg-white/NN                — opacity variants compile to a different class
+                                  (.bg-white\/20) and are untouched by the
+                                  .bg-white selector above
+   ─────────────────────────────────────────────────────────────────────────── */
+@media screen {
+  /* surfaces */
+  [data-theme="dark"] .bg-white              { background-color: var(--surface); }
+  [data-theme="dark"] .bg-slate-50           { background-color: var(--surface-inset); }
+  [data-theme="dark"] .bg-slate-100          { background-color: var(--surface-2); }
+  [data-theme="dark"] .bg-slate-200          { background-color: var(--line); }
+  [data-theme="dark"] .bg-slate-300          { background-color: var(--line-strong); }
+  [data-theme="dark"] .bg-gray-50            { background-color: var(--surface-inset); }
+  [data-theme="dark"] .bg-gray-100           { background-color: var(--surface-2); }
+
+  [data-theme="dark"] .hover\:bg-white:hover      { background-color: var(--surface-2); }
+  [data-theme="dark"] .hover\:bg-slate-50:hover   { background-color: var(--surface-2); }
+  [data-theme="dark"] .hover\:bg-slate-100:hover  { background-color: var(--surface-2); }
+  [data-theme="dark"] .hover\:bg-slate-200:hover  { background-color: var(--line); }
+  [data-theme="dark"] .focus\:bg-white:focus      { background-color: var(--surface); }
+
+  /* lines */
+  [data-theme="dark"] .border-slate-50       { border-color: var(--line); }
+  [data-theme="dark"] .border-slate-100      { border-color: var(--line); }
+  [data-theme="dark"] .border-slate-200      { border-color: var(--line); }
+  [data-theme="dark"] .border-slate-300      { border-color: var(--line-strong); }
+  [data-theme="dark"] .border-gray-200       { border-color: var(--line); }
+  [data-theme="dark"] .hover\:border-slate-300:hover { border-color: var(--line-strong); }
+  [data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line); }
+  [data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line); }
+
+  /* text */
+  [data-theme="dark"] .text-slate-900        { color: var(--content); }
+  [data-theme="dark"] .text-slate-800        { color: var(--content); }
+  [data-theme="dark"] .text-slate-700        { color: var(--content-secondary); }
+  [data-theme="dark"] .text-slate-600        { color: var(--content-secondary); }
+  [data-theme="dark"] .text-slate-500        { color: var(--content-secondary); }
+  [data-theme="dark"] .text-slate-400        { color: var(--content-muted); }
+  [data-theme="dark"] .text-slate-300        { color: var(--content-muted); }
+  [data-theme="dark"] .text-gray-500         { color: var(--content-secondary); }
+  [data-theme="dark"] .text-gray-600         { color: var(--content-secondary); }
+  [data-theme="dark"] .hover\:text-slate-600:hover { color: var(--content-secondary); }
+  [data-theme="dark"] .hover\:text-slate-700:hover { color: var(--content); }
+  [data-theme="dark"] .hover\:text-slate-800:hover { color: var(--content); }
+  [data-theme="dark"] .hover\:text-slate-900:hover { color: var(--content); }
+  [data-theme="dark"] .placeholder\:text-slate-400::placeholder { color: var(--content-muted); }
+
+  /* tinted status grounds — the -50/-100 shades are near-white and would glare */
+  [data-theme="dark"] .bg-red-50,
+  [data-theme="dark"] .bg-red-100,
+  [data-theme="dark"] .bg-rose-50,
+  [data-theme="dark"] .bg-rose-100            { background-color: var(--danger-subtle); }
+  [data-theme="dark"] .bg-green-50,
+  [data-theme="dark"] .bg-green-100,
+  [data-theme="dark"] .bg-emerald-50,
+  [data-theme="dark"] .bg-emerald-100         { background-color: var(--success-subtle); }
+  [data-theme="dark"] .bg-amber-50,
+  [data-theme="dark"] .bg-amber-100,
+  [data-theme="dark"] .bg-orange-50,
+  [data-theme="dark"] .bg-orange-100,
+  [data-theme="dark"] .bg-yellow-50,
+  [data-theme="dark"] .bg-yellow-100          { background-color: var(--warning-subtle); }
+  [data-theme="dark"] .bg-indigo-50,
+  [data-theme="dark"] .bg-indigo-100,
+  [data-theme="dark"] .bg-blue-50,
+  [data-theme="dark"] .bg-blue-100,
+  [data-theme="dark"] .bg-sky-50,
+  [data-theme="dark"] .bg-cyan-50             { background-color: var(--brand-subtle); }
+  [data-theme="dark"] .bg-violet-50,
+  [data-theme="dark"] .bg-violet-100,
+  [data-theme="dark"] .bg-purple-50,
+  [data-theme="dark"] .bg-purple-100          { background-color: var(--brand-subtle); }
+
+  [data-theme="dark"] .hover\:bg-red-50:hover,
+  [data-theme="dark"] .hover\:bg-red-100:hover     { background-color: var(--danger-subtle); }
+  [data-theme="dark"] .hover\:bg-green-50:hover,
+  [data-theme="dark"] .hover\:bg-emerald-50:hover  { background-color: var(--success-subtle); }
+  [data-theme="dark"] .hover\:bg-amber-50:hover,
+  [data-theme="dark"] .hover\:bg-orange-50:hover   { background-color: var(--warning-subtle); }
+  [data-theme="dark"] .hover\:bg-indigo-50:hover,
+  [data-theme="dark"] .hover\:bg-blue-50:hover     { background-color: var(--brand-subtle); }
+
+  /* status text — the 600/700/800 shades are tuned for white and go muddy on a
+     dark ground, so they lift to the token, which has a dark-theme value */
+  [data-theme="dark"] .text-red-600,
+  [data-theme="dark"] .text-red-700,
+  [data-theme="dark"] .text-red-800,
+  [data-theme="dark"] .text-rose-600,
+  [data-theme="dark"] .text-rose-700          { color: var(--danger); }
+  [data-theme="dark"] .text-green-600,
+  [data-theme="dark"] .text-green-700,
+  [data-theme="dark"] .text-green-800,
+  [data-theme="dark"] .text-emerald-600,
+  [data-theme="dark"] .text-emerald-700       { color: var(--success); }
+  [data-theme="dark"] .text-amber-600,
+  [data-theme="dark"] .text-amber-700,
+  [data-theme="dark"] .text-amber-800,
+  [data-theme="dark"] .text-orange-600,
+  [data-theme="dark"] .text-orange-700,
+  [data-theme="dark"] .text-yellow-700        { color: var(--warning); }
+  [data-theme="dark"] .text-indigo-600,
+  [data-theme="dark"] .text-indigo-700,
+  [data-theme="dark"] .text-indigo-800,
+  [data-theme="dark"] .text-blue-600,
+  [data-theme="dark"] .text-blue-700,
+  [data-theme="dark"] .text-blue-800          { color: var(--brand); }
+
+  /* the app frame itself */
+  [data-theme="dark"] body                    { background-color: var(--bg-app); }
+  [data-theme="dark"] .erp-content            { background-color: var(--bg-app); }
+
+  /* Native form controls. These carry no bg-* class, so their white comes from
+     the browser's own stylesheet and nothing above reaches them. Specificity is
+     (0,1,1) — above a bare utility but BELOW `[data-theme="dark"] .bg-*` (0,2,0),
+     so a field that deliberately sets its own background still wins. */
+  [data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  [data-theme="dark"] select,
+  [data-theme="dark"] textarea {
+    background-color: var(--surface-2);
+    color: var(--content);
+    border-color: var(--line);
+  }
+  [data-theme="dark"] input::placeholder,
+  [data-theme="dark"] textarea::placeholder { color: var(--content-muted); }
+  [data-theme="dark"] option { background-color: var(--surface-2); color: var(--content); }
+}
+
+/* Tells the browser this is a dark UI, so the things CSS cannot reach follow:
+   scrollbars, form-control chrome, date and colour pickers, autofill, spellcheck
+   underlines. Without it a dark ERP still shows light scrollbars and a white
+   date picker, which is what makes a theme feel half-finished. Outside the
+   `screen` block above because it is a hint, not a paint, and costs nothing in
+   print. */
+:root                    { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
 @media print {
   /* Hide sidebar, nav, header, action UI */
   nav, aside,

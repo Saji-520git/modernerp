@@ -348,13 +348,13 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
         {/* Top-right badge: all-expired (BLOCK shows EXP, WARN/ALLOW show orange Exp) */}
         {allExpired && policy === 'BLOCK' && (
           <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, fontWeight: 700,
-            background: '#FCEBEB', color: '#A32D2D', padding: '1px 5px', borderRadius: 3 }}>
+            background: 'var(--danger-subtle)', color: 'var(--danger)', padding: '1px 5px', borderRadius: 3 }}>
             EXP
           </span>
         )}
         {allExpired && policy !== 'BLOCK' && (
           <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, fontWeight: 700,
-            background: '#FEF3C7', color: '#92400E', padding: '1px 5px', borderRadius: 3 }}>
+            background: 'var(--warning-subtle)', color: 'var(--warning)', padding: '1px 5px', borderRadius: 3 }}>
             Expired
           </span>
         )}
@@ -376,7 +376,7 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
         {/* Row 2: product name */}
         <p style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          color: '#1e293b', marginBottom: 3 }}>
+          color: 'var(--content)', marginBottom: 3 }}>
           {product.name}
         </p>
 
@@ -393,7 +393,7 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
 
         {/* Row 4: expired batch warning when some sellable + some expired */}
         {status === 'has_expired_batch' && expiredQty > 0 && sellableQty > 0 && (
-          <div style={{ fontSize: 9, color: '#A32D2D', fontWeight: 600, marginTop: 2 }}>
+          <div style={{ fontSize: 9, color: 'var(--danger)', fontWeight: 600, marginTop: 2 }}>
             ⚠ {expiredQty} expired
           </div>
         )}
@@ -570,7 +570,7 @@ const CartLine = forwardRef<CartLineHandle, {
   };
 
   const qtyBoxStyle: React.CSSProperties = {
-    background: '#f8fafc', border: '1px solid #e2e8f0',
+    background: 'var(--surface-inset)', border: '1px solid var(--line)',
     borderRadius: 7, padding: '3px 4px',
     fontSize: 13, fontWeight: 700,
     width: '100%', textAlign: 'center', color: '#1e1b4b',
@@ -587,7 +587,7 @@ const CartLine = forwardRef<CartLineHandle, {
       style={{
         // Selected line: an indigo edge and tint, so the cashier can see which
         // row +/-/Del will act on before pressing anything.
-        background: selected ? '#eef2ff' : '#fff',
+        background: selected ? 'var(--brand-subtle)' : 'var(--surface)',
         borderBottom: CART_COL_BORDER,
         boxShadow: selected ? 'inset 3px 0 0 #4f46e5' : undefined,
       }}
@@ -606,7 +606,7 @@ const CartLine = forwardRef<CartLineHandle, {
         {/* 1 — Product name (service charge gets amber styling) */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
           <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
-            {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
+            {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: 'var(--warning-subtle)', color: 'var(--warning)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
             {item.product.name}
           </span>
         </div>
@@ -618,14 +618,14 @@ const CartLine = forwardRef<CartLineHandle, {
               value={item.unitId}
               onChange={e => onChangeUnit(e.target.value)}
               className="text-xs border rounded px-1 py-0.5 bg-white"
-              style={{ color: '#475569', borderColor: '#cbd5e1', width: '100%', boxSizing: 'border-box' }}
+              style={{ color: 'var(--content-secondary)', borderColor: 'var(--line-strong)', width: '100%', boxSizing: 'border-box' }}
             >
               {unitOpts.map(opt => (
                 <option key={opt.unitId} value={opt.unitId}>{opt.label}</option>
               ))}
             </select>
           ) : (
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--content-secondary)', background: 'var(--surface-2)', borderRadius: 5, padding: '2px 7px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
               {unitOpts[0]?.label ?? ''}
             </span>
           )}
@@ -633,7 +633,7 @@ const CartLine = forwardRef<CartLineHandle, {
 
         {/* 3 — Unit price */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderRight: CART_COL_BORDER }}>
-          <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 12, color: 'var(--content-secondary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
             {formatCents(item.unitPriceCents)}
           </span>
         </div>
@@ -671,7 +671,7 @@ const CartLine = forwardRef<CartLineHandle, {
                   onNavigateToBarcode();
                 }
               }}
-              style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text', background: '#fff', borderColor: '#818cf8', boxShadow: '0 0 0 2px rgba(129,140,248,0.2)' }}
+              style={{ ...qtyBoxStyle, outline: 'none', cursor: 'text', background: 'var(--surface)', borderColor: '#818cf8', boxShadow: '0 0 0 2px rgba(129,140,248,0.2)' }}
             />
           ) : (
             <button type="button" onClick={startEdit} style={{ ...qtyBoxStyle, cursor: 'pointer' }}>
@@ -731,7 +731,7 @@ const CartLine = forwardRef<CartLineHandle, {
             <button
               type="button"
               onClick={() => setShowDiscount(true)}
-              style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', cursor: 'pointer', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '3px 0', width: '100%', letterSpacing: 0.2 }}
+              style={{ fontSize: 10, fontWeight: 700, color: 'var(--content-muted)', cursor: 'pointer', background: 'var(--surface-inset)', border: '1px solid var(--line)', borderRadius: 6, padding: '3px 0', width: '100%', letterSpacing: 0.2 }}
               title="Add item discount"
             >
               + disc
@@ -751,7 +751,7 @@ const CartLine = forwardRef<CartLineHandle, {
 
         {/* 7 — Total (post-discount line total — B1 fix: was showing pre-discount subtotal) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderRight: CART_COL_BORDER }}>
-          <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--content)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
             {formatCents(lineTotal)}
           </span>
         </div>
@@ -771,7 +771,7 @@ const CartLine = forwardRef<CartLineHandle, {
 
       {/* Amber warning when qty was capped to max stock */}
       {cappedAt !== null && (
-        <p style={{ fontSize: 11, color: '#854F0B', padding: '1px 14px 4px' }}>
+        <p style={{ fontSize: 11, color: 'var(--warning)', padding: '1px 14px 4px' }}>
           Only {cappedAt} in stock
         </p>
       )}
@@ -3462,20 +3462,20 @@ export default function POSPage() {
         </div>
 
         {/* Separator */}
-        <div style={{ width: 1, height: 20, background: '#e2e8f0', flexShrink: 0 }} />
+        <div style={{ width: 1, height: 20, background: 'var(--line)', flexShrink: 0 }} />
 
         {/* Warehouse custom dropdown */}
         <div ref={whDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button type="button" onClick={() => setShowWhDropdown(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, border: '.5px solid #e2e8f0', borderRadius: 6, padding: '5px 10px', fontSize: 12, color: '#1e293b', background: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            <Building2 size={13} style={{ color: '#94a3b8' }} />
+            style={{ display: 'flex', alignItems: 'center', gap: 6, border: '.5px solid var(--line)', borderRadius: 6, padding: '5px 10px', fontSize: 12, color: 'var(--content)', background: 'var(--surface)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <Building2 size={13} style={{ color: 'var(--content-muted)' }} />
             {selectedWarehouse
               ? `${selectedWarehouse.isDefault ? '★ ' : ''}${selectedWarehouse.name} (${selectedWarehouse.code || String(selectedWarehouse.name).slice(0, 4).toUpperCase()})`
               : 'Warehouse'}
-            <ChevronDown size={11} style={{ color: '#94a3b8' }} />
+            <ChevronDown size={11} style={{ color: 'var(--content-muted)' }} />
           </button>
           {showWhDropdown && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '.5px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.08)', zIndex: 50, minWidth: 200, padding: 4 }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--surface)', border: '.5px solid var(--line)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,.08)', zIndex: 50, minWidth: 200, padding: 4 }}>
               {warehouses.map(w => (
                 <button key={w.id} type="button"
                   onClick={() => { setWarehouseId(w.id); setShowWhDropdown(false); try { localStorage.setItem('pos_warehouse_id', w.id); } catch { /* ignore */ } }}
@@ -3501,22 +3501,22 @@ export default function POSPage() {
             display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
             border: customer ? '.5px solid #a5b4fc' : '.5px solid #e2e8f0',
             borderRadius: 6, padding: '5px 10px', fontSize: 12,
-            color: '#1e293b', background: customer ? '#f0f4ff' : '#fff', cursor: 'pointer',
+            color: 'var(--content)', background: customer ? 'var(--brand-subtle)' : 'var(--surface)', cursor: 'pointer',
           }}>
           <User size={13} style={{ color: customer ? '#6366f1' : '#94a3b8' }} />
           {customer
             ? (customer.name.length > 16 ? customer.name.slice(0, 16) + '…' : customer.name)
             : 'Walk-in'}
-          <ChevronDown size={11} style={{ color: '#94a3b8' }} />
+          <ChevronDown size={11} style={{ color: 'var(--content-muted)' }} />
         </button>
 
         {/* Add Customer [👤+] */}
         <button type="button" onClick={() => { setNewCustName(''); setNewCustPhone(''); setQuickAddError(''); setShowQuickAddCustomer(true); }}
           title="Add new customer"
-          style={{ width: 30, height: 30, border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          style={{ width: 30, height: 30, border: '.5px solid var(--line)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
           onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#f0f4ff'; el.style.borderColor = '#818cf8'; }}
           onMouseLeave={e => { const el = e.currentTarget; el.style.background = '#fff'; el.style.borderColor = '#e2e8f0'; }}>
-          <UserPlus size={14} style={{ color: '#64748b' }} />
+          <UserPlus size={14} style={{ color: 'var(--content-secondary)' }} />
         </button>
 
         <div className="flex-1" />
@@ -3699,25 +3699,25 @@ export default function POSPage() {
                so the checkout column reclaims the full-width footer's height.
                Shortcut handlers (F1/F4/L/Ctrl+Shift+X) live in the global
                keydown effect — independent of where these buttons render. ── */}
-          <footer className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#f8fafc', borderTop: '.5px solid #e2e8f0' }}>
+          <footer className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: 'var(--surface-inset)', borderTop: '.5px solid var(--line)' }}>
 
             {/* Hold — F4 */}
             <button type="button"
               onClick={() => { if (cart.length > 0) setShowHoldModal(true); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid var(--line)', borderRadius: 6, background: 'var(--surface)', fontSize: 12, color: 'var(--content)', cursor: 'pointer', opacity: cart.length === 0 ? 0.4 : 1 }}>
               ⏸ Hold
-              <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F4</span>
+              <span style={{ fontSize: 10, color: 'var(--content-muted)', background: 'var(--surface-2)', padding: '1px 4px', borderRadius: 3, border: '.5px solid var(--line)' }}>F4</span>
             </button>
 
             {/* Drafts — L */}
             <button type="button"
               onClick={() => setShowHolds(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid var(--line)', borderRadius: 6, background: 'var(--surface)', fontSize: 12, color: 'var(--content)', cursor: 'pointer' }}>
               📋 Drafts
               {holds.length > 0 && (
                 <span style={{ background: '#6366f1', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{holds.length}</span>
               )}
-              <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>L</span>
+              <span style={{ fontSize: 10, color: 'var(--content-muted)', background: 'var(--surface-2)', padding: '1px 4px', borderRadius: 3, border: '.5px solid var(--line)' }}>L</span>
             </button>
 
             {/* Last Receipt — v1.0.72 reprint escape hatch (survives page reload) */}
@@ -3725,7 +3725,7 @@ export default function POSPage() {
               onClick={openLastReceipt}
               disabled={!lastSaleInfo || reprintLoading}
               title={lastSaleInfo ? `Reopen ${lastSaleInfo.number}` : 'No completed sale yet'}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #e2e8f0', borderRadius: 6, background: '#fff', fontSize: 12, color: '#1e293b', cursor: lastSaleInfo && !reprintLoading ? 'pointer' : 'not-allowed', opacity: lastSaleInfo ? 1 : 0.4 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid var(--line)', borderRadius: 6, background: 'var(--surface)', fontSize: 12, color: 'var(--content)', cursor: lastSaleInfo && !reprintLoading ? 'pointer' : 'not-allowed', opacity: lastSaleInfo ? 1 : 0.4 }}>
               🧾 {reprintLoading ? 'Loading…' : 'Last Receipt'}
             </button>
 
@@ -3738,19 +3738,19 @@ export default function POSPage() {
                   display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
                   border: showShortcuts ? '.5px solid #818cf8' : '.5px solid #e2e8f0',
                   borderRadius: 6,
-                  background: showShortcuts ? '#eef2ff' : '#fff',
+                  background: showShortcuts ? 'var(--brand-subtle)' : 'var(--surface)',
                   fontSize: 12, color: showShortcuts ? '#4338ca' : '#64748b', cursor: 'pointer',
                 }}>
                 ⌨ Shortcuts
-                <span style={{ fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 3, border: '.5px solid #e2e8f0' }}>F1</span>
+                <span style={{ fontSize: 10, color: 'var(--content-muted)', background: 'var(--surface-2)', padding: '1px 4px', borderRadius: 3, border: '.5px solid var(--line)' }}>F1</span>
               </button>
 
               {/* Close Shift — Ctrl+Shift+X */}
               <button type="button"
                 onClick={() => requestCloseShift(false)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: '#fff', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid #fca5a5', borderRadius: 6, background: 'var(--surface)', fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>
                 ⏱ Close Shift
-                <span style={{ fontSize: 10, color: '#fca5a5', background: '#fff1f2', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
+                <span style={{ fontSize: 10, color: '#fca5a5', background: 'var(--danger-subtle)', padding: '1px 4px', borderRadius: 3, border: '.5px solid #fecaca' }}>⌃⇧X</span>
               </button>
             </div>
           </footer>
@@ -3833,7 +3833,7 @@ export default function POSPage() {
               // header can stay pinned (sticky) and the rounded corners clip cleanly.
               <div
                 className="h-full overflow-y-auto"
-                style={{ borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}
+                style={{ borderRadius: 12, border: '1px solid var(--line)', background: 'var(--surface)', boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}
               >
                 {/* Fixed dark column-header — aligns with every CartLine via CART_GRID */}
                 <div
@@ -4328,16 +4328,16 @@ export default function POSPage() {
                 ] as { label: string; keys: { key: string; desc: string }[] }[]
               ).map(({ label, keys }) => (
                 <div key={label}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--content-muted)', letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
                     {label}
                   </p>
                   <div className="space-y-1.5">
                     {keys.map(({ key, desc }) => (
                       <div key={key + desc} className="flex items-center justify-between gap-3">
-                        <span style={{ fontSize: 12, color: '#475569', flex: 1 }}>{desc}</span>
+                        <span style={{ fontSize: 12, color: 'var(--content-secondary)', flex: 1 }}>{desc}</span>
                         <kbd style={{
-                          fontSize: 10, background: '#f1f5f9', color: '#334155',
-                          border: '1px solid #cbd5e1',
+                          fontSize: 10, background: 'var(--surface-2)', color: 'var(--content-secondary)',
+                          border: '1px solid var(--line-strong)',
                           padding: '2px 7px', borderRadius: 4,
                           fontFamily: 'monospace', whiteSpace: 'nowrap', flexShrink: 0,
                         }}>{key}</kbd>
