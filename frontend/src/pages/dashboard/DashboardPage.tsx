@@ -299,7 +299,7 @@ function StatCard({
   iconBg: string; icon: React.ElementType; to?: string;
 }) {
   const inner = (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition-all group">
+    <div className="bg-card rounded-2xl border border-border p-5 hover:shadow-md transition-all group">
       <div className="flex items-start justify-between mb-3">
         <div className={cls('w-11 h-11 rounded-xl flex items-center justify-center', iconBg)}>
           <Icon size={20} className="text-white" />
@@ -307,16 +307,16 @@ function StatCard({
         {trend !== undefined && (
           <span className={cls(
             'flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full',
-            trend >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600',
+            trend >= 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger',
           )}>
             {trend >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
             {Math.abs(trend)}% vs last month
           </span>
         )}
       </div>
-      <p className="text-2xl font-bold text-slate-800 leading-tight">{value}</p>
-      <p className="text-sm text-slate-500 mt-1">{label}</p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+      <p className="text-2xl font-bold text-content leading-tight">{value}</p>
+      <p className="text-sm text-content-secondary mt-1">{label}</p>
+      {sub && <p className="text-xs text-content-muted mt-0.5">{sub}</p>}
     </div>
   );
   return to ? <Link to={to}>{inner}</Link> : inner;
@@ -332,9 +332,9 @@ function ActivityFeed({ sales }: {
 }) {
   const { formatMoney: formatCurrency } = useAppSettings();
   const pmColor: Record<string, string> = {
-    CASH: 'bg-green-100 text-green-700', CARD: 'bg-blue-100 text-blue-700',
+    CASH: 'bg-success-subtle text-success', CARD: 'bg-accent-subtle text-accent-hover',
     BANK_TRANSFER: 'bg-purple-100 text-purple-700',
-    WALLET: 'bg-orange-100 text-orange-700', OTHER: 'bg-slate-100 text-slate-600',
+    WALLET: 'bg-warning-subtle text-warning', OTHER: 'bg-muted text-content-secondary',
   };
   const pmLabel: Record<string, string> = {
     CASH: 'Cash', CARD: 'Card', BANK_TRANSFER: 'Bank',
@@ -344,28 +344,28 @@ function ActivityFeed({ sales }: {
   return (
     <div className="space-y-1">
       {sales.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-6">No recent activity</p>
+        <p className="text-sm text-content-muted text-center py-6">No recent activity</p>
       ) : (
         sales.map((s) => (
-          <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+          <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors">
             <div className={cls(
               'w-8 h-8 rounded-xl flex items-center justify-center shrink-0',
-              s.isPos ? 'bg-purple-100' : 'bg-blue-100',
+              s.isPos ? 'bg-purple-100' : 'bg-accent-subtle',
             )}>
-              <ShoppingCart size={13} className={s.isPos ? 'text-purple-600' : 'text-blue-600'} />
+              <ShoppingCart size={13} className={s.isPos ? 'text-purple-600' : 'text-accent'} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-xs font-semibold text-slate-800">{s.number}</p>
+                <p className="text-xs font-semibold text-content">{s.number}</p>
                 <span className={cls('text-[10px] font-medium px-1.5 py-0.5 rounded-full', pmColor[s.paymentMethod] ?? pmColor.OTHER)}>
                   {pmLabel[s.paymentMethod] ?? s.paymentMethod}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 truncate">
+              <p className="text-[11px] text-content-muted truncate">
                 {s.customer?.name ?? 'Walk-in'} · {formatDateTime(s.date)}
               </p>
             </div>
-            <p className="text-xs font-bold text-slate-800 shrink-0">{formatCurrency(s.totalCents)}</p>
+            <p className="text-xs font-bold text-content shrink-0">{formatCurrency(s.totalCents)}</p>
           </div>
         ))
       )}
@@ -383,38 +383,38 @@ function RecentOrdersTable({ sales }: {
 }) {
   const { formatMoney: formatCurrency } = useAppSettings();
   const statusMap = (s: { paymentMethod: string; isPos: boolean }) => {
-    if (s.paymentMethod === 'CASH' || s.paymentMethod === 'CARD') return { label: 'Completed', cls: 'bg-green-50 text-green-700' };
-    if (s.paymentMethod === 'BANK_TRANSFER') return { label: 'Processing', cls: 'bg-blue-50 text-blue-700' };
-    return { label: 'Pending', cls: 'bg-amber-50 text-amber-700' };
+    if (s.paymentMethod === 'CASH' || s.paymentMethod === 'CARD') return { label: 'Completed', cls: 'bg-success-subtle text-success' };
+    if (s.paymentMethod === 'BANK_TRANSFER') return { label: 'Processing', cls: 'bg-accent-subtle text-accent-hover' };
+    return { label: 'Pending', cls: 'bg-warning-subtle text-warning' };
   };
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="border-b border-slate-100">
+          <tr className="border-b border-border">
             {['Order ID', 'Customer', 'Amount', 'Status', 'Date'].map(h => (
-              <th key={h} className="pb-2.5 px-2 text-xs font-semibold text-slate-500 whitespace-nowrap first:pl-0 last:pr-0">{h}</th>
+              <th key={h} className="pb-2.5 px-2 text-xs font-semibold text-content-secondary whitespace-nowrap first:pl-0 last:pr-0">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {sales.length === 0 ? (
-            <tr><td colSpan={5} className="text-center text-sm text-slate-400 py-8">No sales yet</td></tr>
+            <tr><td colSpan={5} className="text-center text-sm text-content-muted py-8">No sales yet</td></tr>
           ) : (
             sales.map((s) => {
               const st = statusMap(s);
               return (
-                <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                  <td className="py-3 px-2 pl-0 text-xs font-mono font-semibold text-blue-600">{s.number}</td>
-                  <td className="py-3 px-2 text-xs font-medium text-slate-700 max-w-[120px] truncate">
+                <tr key={s.id} className="border-b border-border hover:bg-muted transition-colors">
+                  <td className="py-3 px-2 pl-0 text-xs font-mono font-semibold text-accent">{s.number}</td>
+                  <td className="py-3 px-2 text-xs font-medium text-content-secondary max-w-[120px] truncate">
                     {s.customer?.name ?? 'Walk-in'}
                   </td>
-                  <td className="py-3 px-2 text-xs font-bold text-slate-800 whitespace-nowrap">{formatCurrency(s.totalCents)}</td>
+                  <td className="py-3 px-2 text-xs font-bold text-content whitespace-nowrap">{formatCurrency(s.totalCents)}</td>
                   <td className="py-3 px-2">
                     <span className={cls('text-[11px] font-semibold px-2 py-0.5 rounded-full', st.cls)}>{st.label}</span>
                   </td>
-                  <td className="py-3 px-2 pr-0 text-[11px] text-slate-400 whitespace-nowrap">{formatDateShort(s.date)}</td>
+                  <td className="py-3 px-2 pr-0 text-[11px] text-content-muted whitespace-nowrap">{formatDateShort(s.date)}</td>
                 </tr>
               );
             })
@@ -430,10 +430,10 @@ function StockList({ items }: { items: { id: string; name: string; reorderLevel:
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-6 gap-2">
-        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-          <Package size={18} className="text-green-600" />
+        <div className="w-10 h-10 bg-success-subtle rounded-xl flex items-center justify-center">
+          <Package size={18} className="text-success" />
         </div>
-        <p className="text-xs font-medium text-green-700">All stock OK</p>
+        <p className="text-xs font-medium text-success">All stock OK</p>
       </div>
     );
   }
@@ -443,20 +443,20 @@ function StockList({ items }: { items: { id: string; name: string; reorderLevel:
         const pct = item.reorderLevel > 0 ? (item.totalQty / item.reorderLevel) * 100 : 0;
         const isOut = item.totalQty <= 0;
         return (
-          <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50">
-            <div className={cls('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', isOut ? 'bg-red-100' : 'bg-amber-100')}>
-              <PackageOpen size={12} className={isOut ? 'text-red-600' : 'text-amber-600'} />
+          <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-muted">
+            <div className={cls('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', isOut ? 'bg-danger-subtle' : 'bg-warning-subtle')}>
+              <PackageOpen size={12} className={isOut ? 'text-danger' : 'text-warning'} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-700 truncate">{item.name}</p>
-              <div className="h-1 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                <div className={cls('h-full rounded-full', isOut ? 'bg-red-500' : pct < 50 ? 'bg-amber-500' : 'bg-yellow-400')}
+              <p className="text-xs font-semibold text-content-secondary truncate">{item.name}</p>
+              <div className="h-1 bg-muted rounded-full mt-1 overflow-hidden">
+                <div className={cls('h-full rounded-full', isOut ? 'bg-danger' : pct < 50 ? 'bg-warning' : 'bg-yellow-400')}
                   style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
             </div>
             <div className="text-right shrink-0">
-              <p className={cls('text-xs font-bold', isOut ? 'text-red-600' : 'text-amber-700')}>{item.totalQty}</p>
-              <p className="text-[10px] text-slate-400">/{item.reorderLevel}</p>
+              <p className={cls('text-xs font-bold', isOut ? 'text-danger' : 'text-warning')}>{item.totalQty}</p>
+              <p className="text-[10px] text-content-muted">/{item.reorderLevel}</p>
             </div>
           </div>
         );
@@ -543,8 +543,8 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="flex items-center gap-3 text-slate-400 text-sm">
-          <div className="w-5 h-5 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+        <div className="flex items-center gap-3 text-content-muted text-sm">
+          <div className="w-5 h-5 border-2 border-border border-t-blue-600 rounded-full animate-spin" />
           Loading dashboard…
         </div>
       </div>
@@ -555,11 +555,11 @@ export default function DashboardPage() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <div className="text-center">
-          <p className="text-slate-600 font-semibold text-sm mb-1">Cannot connect to the server</p>
-          <p className="text-slate-400 text-xs font-mono">cd backend &amp;&amp; npm run dev</p>
+          <p className="text-content-secondary font-semibold text-sm mb-1">Cannot connect to the server</p>
+          <p className="text-content-muted text-xs font-mono">cd backend &amp;&amp; npm run dev</p>
         </div>
         <button onClick={() => refetch()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2">
+          className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:bg-accent-hover transition flex items-center gap-2">
           <RefreshCw size={14} /> Retry
         </button>
       </div>
@@ -572,19 +572,19 @@ export default function DashboardPage() {
       {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <p className="text-xs text-slate-500">{greeting}, {user?.fullName?.split(' ')[0] ?? 'there'}</p>
-          <h1 className="text-xl font-bold text-slate-800 leading-tight">Dashboard</h1>
+          <p className="text-xs text-content-secondary">{greeting}, {user?.fullName?.split(' ')[0] ?? 'there'}</p>
+          <h1 className="text-xl font-bold text-content leading-tight">Dashboard</h1>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-content-muted">
             {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </span>
           <Link to="/dashboard/today"
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 rounded-lg text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-sm">
+            className="flex items-center gap-2 px-3 py-1.5 bg-accent rounded-lg text-xs font-semibold text-white hover:bg-accent-hover transition shadow-sm">
             <Sun size={13} /> Today's Summary
           </Link>
           <button onClick={() => refetch()}
-            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm">
+            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-content-secondary hover:bg-muted transition shadow-sm">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -686,30 +686,30 @@ export default function DashboardPage() {
         <div className="col-span-2 flex flex-col gap-4">
 
           {/* Revenue Chart */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex-shrink-0 overflow-hidden">
-            <div className="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-2">
+          <div className="bg-card rounded-xl border border-border shadow-sm p-4 flex-shrink-0 overflow-hidden">
+            <div className="flex items-center justify-between mb-3 border-b-2 border-border pb-2">
               <div>
-                <h2 className="text-base font-bold text-slate-800">Revenue Overview</h2>
-                <p className="text-xs text-slate-400">Revenue vs expenses</p>
+                <h2 className="text-base font-bold text-content">Revenue Overview</h2>
+                <p className="text-xs text-content-muted">Revenue vs expenses</p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+                <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
                   {([30, 60, 90] as const).map((d) => (
                     <button key={d} onClick={() => setChartDays(d)}
-                      className={`px-2.5 py-1 transition ${chartDays === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                      className={`px-2.5 py-1 transition ${chartDays === d ? 'bg-accent text-white' : 'text-content-secondary hover:bg-muted'}`}>
                       {d}d
                     </button>
                   ))}
                 </div>
                 <Link to="/reports"
-                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition">
+                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-hover bg-accent-subtle px-3 py-1.5 rounded-lg transition">
                   Full Report <ArrowUpRight size={12} />
                 </Link>
               </div>
             </div>
             {chartData
               ? <LineChart data={chartData} />
-              : <div className="h-40 flex items-center justify-center text-slate-400 text-sm">No chart data</div>
+              : <div className="h-40 flex items-center justify-center text-content-muted text-sm">No chart data</div>
             }
           </div>
 
@@ -734,11 +734,11 @@ export default function DashboardPage() {
             </Card>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-3 flex-shrink-0 border-b-2 border-slate-200 pb-2">
-                <h2 className="text-base font-bold text-slate-800">Recent Activity</h2>
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4 flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-3 flex-shrink-0 border-b-2 border-border pb-2">
+                <h2 className="text-base font-bold text-content">Recent Activity</h2>
                 <Link to="/sales"
-                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                  className="text-xs text-accent hover:text-accent-hover font-semibold flex items-center gap-1">
                   View all <ArrowRight size={11} />
                 </Link>
               </div>
@@ -755,37 +755,37 @@ export default function DashboardPage() {
 
           {/* Stock Alerts */}
           {showAlertsInDashboard && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2 border-b-2 border-slate-200 pb-2">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <div className="flex items-center justify-between mb-2 border-b-2 border-border pb-2">
                 <div className="flex items-center gap-2">
-                  <Bell size={14} className="text-indigo-500" />
-                  <h2 className="text-base font-bold text-slate-800">Stock Alerts</h2>
+                  <Bell size={14} className="text-accent" />
+                  <h2 className="text-base font-bold text-content">Stock Alerts</h2>
                   {(alertsData?.unreadCount ?? 0) > 0 && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-danger-subtle text-danger rounded-full">
                       {alertsData!.unreadCount}
                     </span>
                   )}
                 </div>
-                <Link to="/alerts" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+                <Link to="/alerts" className="text-xs text-accent hover:text-accent-hover font-medium flex items-center gap-1">
                   View All <ArrowRight size={10} />
                 </Link>
               </div>
               <div className="space-y-1">
                 {(alertsData?.items ?? []).slice(0, 4).map(alert => (
                   <Link key={alert.id} to="/alerts"
-                    className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition text-xs">
-                    <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${alert.severity === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                    className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-muted transition text-xs">
+                    <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${alert.severity === 'CRITICAL' ? 'bg-danger' : 'bg-warning'}`} />
                     <span className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-slate-800 truncate block">{alert.product.name}</span>
-                      <span className="text-slate-400 truncate block text-[11px]">{alert.message}</span>
+                      <span className="text-sm font-medium text-content truncate block">{alert.product.name}</span>
+                      <span className="text-content-muted truncate block text-[11px]">{alert.message}</span>
                     </span>
-                    <span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${alert.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                    <span className={`shrink-0 text-[9px] font-bold px-1 py-0.5 rounded ${alert.severity === 'CRITICAL' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning'}`}>
                       {alert.severity}
                     </span>
                   </Link>
                 ))}
                 {(alertsData?.items ?? []).length === 0 && (
-                  <div className="text-center py-3 text-emerald-600">
+                  <div className="text-center py-3 text-success">
                     <Package size={20} className="mx-auto mb-1" />
                     <p className="text-xs font-medium">All stock levels OK</p>
                   </div>
@@ -795,8 +795,8 @@ export default function DashboardPage() {
           )}
 
           {/* Quick Actions — 2×2 grid */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-            <h2 className="text-base font-bold text-slate-800 mb-3 border-b-2 border-slate-200 pb-2">Quick Actions</h2>
+          <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+            <h2 className="text-base font-bold text-content mb-3 border-b-2 border-border pb-2">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-2">
               {QUICK.map(q => (
                 <Link key={q.label} to={q.to}
@@ -805,32 +805,32 @@ export default function DashboardPage() {
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: q.color }}>
                     <q.icon size={15} color="white" />
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 leading-tight">{q.label}</span>
+                  <span className="text-xs font-semibold text-content-secondary leading-tight">{q.label}</span>
                 </Link>
               ))}
             </div>
           </div>
 
           {/* Quick Metrics */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-            <h2 className="text-base font-bold text-slate-800 mb-2 border-b-2 border-slate-200 pb-2">Quick Metrics</h2>
+          <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+            <h2 className="text-base font-bold text-content mb-2 border-b-2 border-border pb-2">Quick Metrics</h2>
             <div className="space-y-1.5">
               {[
-                { label: 'Pending Invoices', value: kpis?.pendingOrders ?? 0,                         icon: Receipt,   color: 'text-amber-600 bg-amber-50',   to: '/sales' },
-                { label: 'Open POs',         value: kpis?.openPOs ?? 0,                               icon: Truck,     color: 'text-blue-600 bg-blue-50',     to: '/purchases' },
+                { label: 'Pending Invoices', value: kpis?.pendingOrders ?? 0,                         icon: Receipt,   color: 'text-warning bg-warning-subtle',   to: '/sales' },
+                { label: 'Open POs',         value: kpis?.openPOs ?? 0,                               icon: Truck,     color: 'text-accent bg-accent-subtle',     to: '/purchases' },
                 { label: 'Active Users',     value: kpis?.activeUsers ?? 0,                            icon: UserCheck, color: 'text-purple-600 bg-purple-50', to: '/users' },
-                { label: 'Unpaid Balance',   value: formatCurrencyShort(kpis?.unpaidCents ?? 0),      icon: CreditCard,color: 'text-red-600 bg-red-50',       to: '/sales' },
+                { label: 'Unpaid Balance',   value: formatCurrencyShort(kpis?.unpaidCents ?? 0),      icon: CreditCard,color: 'text-danger bg-danger-subtle',       to: '/sales' },
               ].map(m => (
                 <Link key={m.label} to={m.to}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition group">
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted transition group">
                   <div className={cls('w-6 h-6 rounded-md flex items-center justify-center shrink-0', m.color.split(' ')[1])}>
                     <m.icon size={11} className={m.color.split(' ')[0]} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-slate-500">{m.label}</p>
-                    <p className="text-xs font-bold text-slate-800">{m.value}</p>
+                    <p className="text-[10px] text-content-secondary">{m.label}</p>
+                    <p className="text-xs font-bold text-content">{m.value}</p>
                   </div>
-                  <ArrowUpRight size={10} className="text-slate-300 group-hover:text-slate-500 transition shrink-0" />
+                  <ArrowUpRight size={10} className="text-content-muted group-hover:text-content-secondary transition shrink-0" />
                 </Link>
               ))}
             </div>
@@ -838,12 +838,12 @@ export default function DashboardPage() {
 
           {/* Expiry Alerts — compact, max 2 items */}
           {showAlertsInDashboard && expiryAlerts.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2 border-b-2 border-slate-200 pb-2">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <div className="flex items-center justify-between mb-2 border-b-2 border-border pb-2">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={13} className="text-red-500" />
-                  <h2 className="text-base font-bold text-slate-800">Expiry Alerts</h2>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full">
+                  <AlertTriangle size={13} className="text-danger" />
+                  <h2 className="text-base font-bold text-content">Expiry Alerts</h2>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-danger-subtle text-danger rounded-full">
                     {expiryAlerts.length}
                   </span>
                 </div>
@@ -851,7 +851,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() => dismissExpiredMut.mutate()}
                     disabled={dismissExpiredMut.isPending}
-                    className="text-[10px] text-slate-500 hover:text-red-600 border border-slate-200 rounded px-1.5 py-0.5 transition">
+                    className="text-[10px] text-content-secondary hover:text-danger border border-border rounded px-1.5 py-0.5 transition">
                     Dismiss
                   </button>
                 )}
@@ -859,19 +859,19 @@ export default function DashboardPage() {
               <div className="space-y-1">
                 {expiryAlerts.slice(0, 2).map((a, i) => (
                   <Link key={i} to="/inventory"
-                    className="flex items-center justify-between text-xs hover:bg-slate-50 rounded px-1.5 py-1 transition">
+                    className="flex items-center justify-between text-xs hover:bg-muted rounded px-1.5 py-1 transition">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.expiryStatus === 'has_expired_batch' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                      <span className="font-medium text-slate-700 truncate">{a.product.name}</span>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.expiryStatus === 'has_expired_batch' ? 'bg-danger' : 'bg-warning'}`} />
+                      <span className="font-medium text-content-secondary truncate">{a.product.name}</span>
                     </div>
-                    <span className={`shrink-0 ml-1 font-semibold text-[10px] ${a.expiryStatus === 'has_expired_batch' ? 'text-red-600' : 'text-amber-600'}`}>
+                    <span className={`shrink-0 ml-1 font-semibold text-[10px] ${a.expiryStatus === 'has_expired_batch' ? 'text-danger' : 'text-warning'}`}>
                       {a.expiryStatus === 'has_expired_batch' ? `${a.expiredQty} exp.` : `${a.expiringSoonQty} soon`}
                     </span>
                   </Link>
                 ))}
               </div>
               <Link to="/inventory"
-                className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium">
+                className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-accent hover:underline font-medium">
                 View all <ArrowRight size={10} />
               </Link>
             </div>
