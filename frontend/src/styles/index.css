@@ -38,6 +38,40 @@
     /* radii (theme-independent) */
     --radius-sm:  6px;  --radius-md:  8px;  --radius-lg: 12px;
     --radius-xl: 16px;  --radius-2xl: 20px;
+
+    /* ── shadcn/ui bridge ────────────────────────────────────────────────────
+       shadcn components are written against a fixed set of variable names and
+       expect BARE HSL triplets, because their utilities wrap them as
+       hsl(var(--background)). They are defined here as aliases of the tokens
+       above rather than as a second palette — so a shadcn Card is the same
+       white, the same border and the same radius as everything already shipped,
+       and changing a token still moves the whole app.
+
+       Values are the HSL of the hex a few lines up, NOT new colours:
+         --background 210 40% 98%   is  --bg-app  #f8fafc
+         --primary    243 75% 59%   is  --brand   #4f46e5
+       Keep the two in step when a token changes. */
+    --background:         210 40% 98%;
+    --foreground:         222.2 47.4% 11.2%;
+    --card:               0 0% 100%;
+    --card-foreground:    222.2 47.4% 11.2%;
+    --popover:            0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary:            243.4 75.4% 58.6%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:          210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted:              210 40% 96.1%;
+    --muted-foreground:   215.4 16.3% 46.9%;
+    --accent:             226 100% 96.9%;
+    --accent-foreground:  243.4 75.4% 58.6%;
+    --destructive:        0 72.2% 50.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border:             214.3 31.8% 91.4%;
+    --input:              214.3 31.8% 91.4%;
+    --ring:               243.4 75.4% 58.6%;
+    /* shadcn derives its radii from one value; matched to --radius-lg */
+    --radius:             12px;
   }
 
   [data-theme="dark"] {
@@ -62,6 +96,29 @@
     --shadow-sm:         0 1px 2px rgba(0, 0, 0, 0.40);
     --shadow-md:         0 4px 14px rgba(0, 0, 0, 0.50);
     --shadow-lg:         0 12px 34px rgba(0, 0, 0, 0.60);
+
+    /* shadcn bridge — dark. Same aliasing rule as :root above: every value is
+       the HSL of the dark token beside it, so shadcn components follow the
+       existing theme toggle with no `dark:` variants of their own. */
+    --background:         222 50% 8.4%;
+    --foreground:         210 40% 96.1%;
+    --card:               222.2 47.4% 11.2%;
+    --card-foreground:    210 40% 96.1%;
+    --popover:            222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 96.1%;
+    --primary:            238.7 83.5% 66.7%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:          217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 96.1%;
+    --muted:              217.2 32.6% 17.5%;
+    --muted-foreground:   215.4 16.3% 46.9%;
+    --accent:             217.2 32.6% 17.5%;
+    --accent-foreground:  238.7 83.5% 66.7%;
+    --destructive:        0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border:             217.2 32.6% 17.5%;
+    --input:              217.2 32.6% 17.5%;
+    --ring:               238.7 83.5% 66.7%;
   }
 }
 

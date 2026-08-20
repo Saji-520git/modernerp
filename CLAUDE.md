@@ -51,7 +51,7 @@
 | Layer | Technology |
 |---|---|
 | Frontend framework | React 18 + Vite + TypeScript |
-| UI styling | Tailwind CSS (no component library, custom components) |
+| UI styling | Tailwind CSS + shadcn/ui (copy-in components under `src/components/ui`) |
 | Server state | TanStack Query v5 |
 | Client state | Zustand |
 | HTTP client | Axios |
@@ -62,7 +62,30 @@
 | Auth | JWT (access + refresh) stored in httpOnly cookies + Zustand |
 | Validation | Zod (both sides) |
 | Password hashing | bcryptjs (NOT bcrypt) |
-| Charts | Pure CSS/Tailwind (no chart library installed) |
+| Charts | Pure CSS/Tailwind on legacy pages; Recharts via shadcn Chart on the Dashboard |
+
+### 3.1 shadcn/ui — how it is wired here (read before adding a component)
+
+shadcn is copy-in, not a dependency: components live in `src/components/ui` and
+are OURS to edit. `components.json` is configured so
+`npx shadcn@latest add <name>` drops new ones in correctly.
+
+**`shadcn init` was deliberately NOT run.** It rewrites `index.css` and
+`tailwind.config.js` with its own palette, which would have replaced the design
+tokens in §3 and restyled every existing page. Instead:
+
+- `index.css` carries a **bridge block**: shadcn variable names
+  (`--background`, `--primary`, `--border`, …) defined as HSL ALIASES of the
+  existing hex tokens, in both `:root` and `[data-theme="dark"]`. shadcn
+  components therefore inherit the app palette and follow the existing theme
+  toggle with no `dark:` variants. **Change a token, update its alias.**
+- `tailwind.config.js` adds the shadcn colour names purely additively. No
+  existing name was re-pointed, so pages predating this render unchanged.
+- `accent` already means the indigo brand here, which is NOT what shadcn means
+  by it. Our components hover on `bg-muted` instead. Do not "fix" this by
+  repointing `accent` — it would move every page that already uses it.
+- Card radius and control heights are pinned to the app (`--radius-xl`, 36px),
+  not shadcn defaults, so new components sit beside the old ones.
 
 ---
 
