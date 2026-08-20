@@ -18,9 +18,34 @@ import { useAppSettings } from '../../context/SettingsContext';
 import { inventoryApi } from '../../services/inventory';
 import { expensesApi } from '../../services/expenses';
 import { alertsApi } from '../../services/alerts';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 function cls(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(' ');
+}
+
+/**
+ * Period-over-period delta chip.
+ *
+ * Renders nothing when the figure is absent or zero rather than showing a
+ * neutral "0%" — a KPI card is read at a glance, and a chip that is always
+ * there stops being a signal. `onDark` swaps to translucent-white so the same
+ * component works on the filled lead card.
+ */
+function TrendChip({ pct, onDark = false }: { pct?: number | null; onDark?: boolean }) {
+  if (pct === undefined || pct === null || pct === 0) return null;
+  const up = pct > 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  const tone = onDark
+    ? up ? 'bg-white/20 text-emerald-200' : 'bg-white/20 text-rose-200'
+    : up ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger';
+  return (
+    <span className={cls('inline-flex items-center gap-1 rounded-token-sm px-1.5 py-0.5', tone)}>
+      <Icon size={11} strokeWidth={2.6} />
+      <span className="text-[11px] font-bold">{Math.abs(pct)}%</span>
+    </span>
+  );
 }
 
 // ─── SVG Line Chart ───────────────────────────────────────────────────────────
@@ -528,28 +553,93 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── 6 KPI tiles ────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 flex-shrink-0">
-        {([
-          { label: 'Total Revenue',    value: formatCurrencyShort(kpis?.monthRevenueCents ?? 0),           bg: 'bg-blue-50',    iconColor: 'text-blue-600',    borderColor: '#2563EB', Icon: BarChart2,   to: '/sales' },
-          { label: "Today's Orders",   value: String(kpis?.todayOrders ?? 0),                              bg: 'bg-violet-50',  iconColor: 'text-violet-600',  borderColor: '#7C3AED', Icon: ShoppingCart,to: '/sales' },
-          { label: 'Inventory Value',  value: formatCurrencyShort(kpis?.inventoryValueCents ?? 0),         bg: 'bg-emerald-50', iconColor: 'text-emerald-600', borderColor: '#059669', Icon: Warehouse,   to: '/inventory' },
-          { label: 'Low Stock',        value: String(lowStockData?.total ?? 0),                            bg: 'bg-amber-50',   iconColor: 'text-amber-600',   borderColor: '#D97706', Icon: PackageOpen, to: '/inventory' },
-          { label: 'Receivables',      value: formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0), bg: 'bg-cyan-50', iconColor: 'text-cyan-600',  borderColor: '#0891B2', Icon: CreditCard,  to: '/sales' },
-          { label: 'Payables',         value: formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0),   bg: 'bg-rose-50', iconColor: 'text-rose-600',   borderColor: '#E11D48', Icon: Truck,       to: '/purchases' },
-        ] as const).map(({ label, value, bg, iconColor, borderColor, Icon, to }) => (
-          <Link key={label} to={to} className="block">
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3 flex items-center gap-3 hover:shadow-md transition-shadow" style={{ borderLeft: `3px solid ${borderColor}` }}>
-              <div className={cls('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', bg)}>
-                <Icon size={18} className={iconColor} />
+      {/* ── KPI row ────────────────────────────────────────────────────────────
+          Four figures instead of six tiles: the two that were dropped (orders
+          count, payables) now ride as sub-lines on the card they belong to, so
+          each card answers one question and carries its own context.
+
+          The lead card is filled with the brand colour rather than the near-black
+          of the design mock. Near-black cannot survive the theme toggle — it
+          would have to inverse to near-white in dark and take its text with it —
+          whereas `bg-accent` is indigo in both themes and its white foreground
+          stays legible. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+
+        <Link to="/sales" className="block">
+          <Card className="bg-accent border-transparent p-[18px] h-full hover:shadow-token-md transition-shadow">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <div className="w-8 h-8 rounded-token-md bg-white/15 flex items-center justify-center shrink-0">
+                <BarChart2 size={16} className="text-white" />
               </div>
-              <div className="min-w-0">
-                <p className="text-sm text-slate-500 truncate">{label}</p>
-                <p className="text-xl font-bold text-slate-800 leading-tight">{value}</p>
-              </div>
+              <span className="text-[13px] font-semibold text-white/80">Revenue this month</span>
             </div>
-          </Link>
-        ))}
+            <p className="text-[28px] font-extrabold tracking-[-0.03em] leading-none text-white">
+              {formatCurrencyShort(kpis?.monthRevenueCents ?? 0)}
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <TrendChip pct={kpis?.trends?.monthRevenue} onDark />
+              <span className="text-[11.5px] text-white/60">{kpis?.monthOrders ?? 0} orders</span>
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/sales" className="block">
+          <Card className="bg-success-subtle border-transparent p-[18px] h-full hover:shadow-token-md transition-shadow">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <div className="w-8 h-8 rounded-token-md bg-success/15 flex items-center justify-center shrink-0">
+                <TrendingUp size={16} className="text-success" />
+              </div>
+              <span className="text-[13px] font-semibold text-content">Today's sales</span>
+            </div>
+            <p className="text-[28px] font-extrabold tracking-[-0.03em] leading-none text-content">
+              {formatCurrencyShort(kpis?.todayRevenueCents ?? 0)}
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <TrendChip pct={kpis?.trends?.todayRevenue} />
+              <span className="text-[11.5px] text-content-secondary">{kpis?.todayOrders ?? 0} orders today</span>
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/sales" className="block">
+          <Card className="bg-warning-subtle border-transparent p-[18px] h-full hover:shadow-token-md transition-shadow">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <div className="w-8 h-8 rounded-token-md bg-warning/15 flex items-center justify-center shrink-0">
+                <CreditCard size={16} className="text-warning" />
+              </div>
+              <span className="text-[13px] font-semibold text-content">Receivables</span>
+            </div>
+            <p className="text-[28px] font-extrabold tracking-[-0.03em] leading-none text-content">
+              {formatCurrencyShort(liveStats?.outstandingReceivablesCents ?? 0)}
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <Badge variant="warning">owed to us</Badge>
+              <span className="text-[11.5px] text-content-secondary">
+                {formatCurrencyShort(liveStats?.outstandingPayablesCents ?? 0)} payable
+              </span>
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/inventory" className="block">
+          <Card className="p-[18px] h-full hover:shadow-token-md transition-shadow">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <div className="w-8 h-8 rounded-token-md bg-accent-subtle flex items-center justify-center shrink-0">
+                <Warehouse size={16} className="text-accent" />
+              </div>
+              <span className="text-[13px] font-semibold text-content-secondary">Inventory value</span>
+            </div>
+            <p className="text-[28px] font-extrabold tracking-[-0.03em] leading-none text-content">
+              {formatCurrencyShort(kpis?.inventoryValueCents ?? 0)}
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              {(lowStockData?.total ?? 0) > 0
+                ? <Badge variant="destructive">{lowStockData?.total} low</Badge>
+                : <Badge variant="success">stock healthy</Badge>}
+              <span className="text-[11.5px] text-content-muted">{data?.counts?.products ?? 0} products</span>
+            </div>
+          </Card>
+        </Link>
       </div>
 
       {/* ── Main 2-column layout ───────────────────────────────────────────────── */}
