@@ -18,8 +18,12 @@ import { useAppSettings } from '../../context/SettingsContext';
 import { inventoryApi } from '../../services/inventory';
 import { expensesApi } from '../../services/expenses';
 import { alertsApi } from '../../services/alerts';
+import {
+  Area, AreaChart, CartesianGrid, Cell, Line, Pie, PieChart, Tooltip, XAxis, YAxis,
+} from 'recharts';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ChartContainer, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 function cls(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(' ');
@@ -49,203 +53,236 @@ function TrendChip({ pct, onDark = false }: { pct?: number | null; onDark?: bool
 }
 
 // ─── SVG Line Chart ───────────────────────────────────────────────────────────
+/**
+ * Revenue, expenses and orders over the selected window.
+ *
+ * Replaces ~130 lines of hand-computed SVG (manual scales, path strings, a
+ * hover-index state and a bespoke tooltip). Recharts owns the geometry now; what
+ * remains here is the decision of WHAT to plot.
+ *
+ * Revenue and expenses share the left money axis so they can be compared
+ * honestly — this is the view that shows a single large expense outweighing a
+ * month of takings. Orders are a count, not money, so they get their own right
+ * axis; plotting them against the money scale would draw a line that means
+ * nothing.
+ *
+ * Series colours are CSS variables published by ChartContainer, so the chart
+ * follows the light/dark toggle with no `dark:` variants.
+ */
 function LineChart({ data }: { data: RevenuePoint[] }) {
-  const [hov, setHov] = useState<number | null>(null);
   const { formatMoney: formatCurrency, formatMoneyShort: formatCurrencyShort } = useAppSettings();
-  if (!data.length) return <div className="h-44 flex items-center justify-center text-slate-400 text-sm">No data</div>;
 
-  const W = 560, H = 160;
-  const PAD = { t: 16, r: 12, b: 28, l: 52 };
-  const iW = W - PAD.l - PAD.r;
-  const iH = H - PAD.t - PAD.b;
-  const maxR = Math.max(...data.map(d => Math.max(d.revenue, d.expensesCents ?? 0)), 1);
-  const pts = data.map((d, i) => ({
-    x: PAD.l + (data.length === 1 ? iW / 2 : (i / (data.length - 1)) * iW),
-    y: PAD.t + (1 - d.revenue / maxR) * iH,
-    ...d,
+  if (!data.length) {
+    return (
+      <div className="h-44 flex items-center justify-center text-content-muted text-sm">
+        No data
+      </div>
+    );
+  }
+
+  const config: ChartConfig = {
+    revenue:  { label: 'Revenue',  color: 'hsl(var(--primary))' },
+    expenses: { label: 'Expenses', color: 'var(--warning)' },
+    orders:   { label: 'Orders',   color: 'var(--success)' },
+  };
+
+  // Recharts wants plain numbers; money stays in cents until the axis formats it.
+  const rows = data.map((d) => ({
+    date:     d.date,
+    revenue:  d.revenue,
+    expenses: d.expensesCents,
+    orders:   d.orders,
   }));
 
-  const line = pts.reduce((acc, p, i) => {
-    if (i === 0) return `M${p.x},${p.y}`;
-    const prev = pts[i - 1];
-    const cx = (prev.x + p.x) / 2;
-    return `${acc} C${cx},${prev.y} ${cx},${p.y} ${p.x},${p.y}`;
-  }, '');
-  const fill = `${line} L${pts[pts.length - 1].x},${PAD.t + iH} L${pts[0].x},${PAD.t + iH}Z`;
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
-  const totalRevenue  = data.reduce((s, d) => s + d.revenue, 0);
-  const totalExpenses = data.reduce((s, d) => s + (d.expensesCents ?? 0), 0);
-  const totalCogs     = data.reduce((s, d) => s + (d.cogsCents ?? 0), 0);
-  // True net profit = revenue − COGS − expenses (consistent with the P&L report).
-  const netProfit     = totalRevenue - totalCogs - totalExpenses;
-  const xLabels = pts.filter((_, i) => i % Math.ceil(pts.length / 5) === 0 || i === pts.length - 1);
-
-  // Bar width for expense overlay — each bar spans the per-point column width
-  const colW = data.length > 1 ? (iW / (data.length - 1)) * 0.45 : iW * 0.45;
+  const dayLabel = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 160, overflow: 'visible' }}>
+    <ChartContainer config={config} className="h-[210px]">
+      <AreaChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <defs>
-          <linearGradient id="lg1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#2563EB" stopOpacity="0.01" />
+          <linearGradient id="fillRevenue" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-revenue)" stopOpacity={0.22} />
+            <stop offset="100%" stopColor="var(--color-revenue)" stopOpacity={0.01} />
+          </linearGradient>
+          <linearGradient id="fillExpenses" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-expenses)" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="var(--color-expenses)" stopOpacity={0.01} />
           </linearGradient>
         </defs>
-        {yTicks.map(t => {
-          const y = PAD.t + t * iH;
-          return (
-            <g key={t}>
-              <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#f1f5f9" strokeWidth="1" />
-              <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
-                {formatCurrencyShort(maxR * (1 - t))}
-              </text>
-            </g>
-          );
-        })}
-        {/* Expense bars — orange, 45% column width, behind revenue line */}
-        {pts.map((p, i) => {
-          const exp = data[i].expensesCents ?? 0;
-          if (!exp) return null;
-          const barH = (exp / maxR) * iH;
-          return (
-            <rect
-              key={i}
-              x={p.x - colW / 2}
-              y={PAD.t + iH - barH}
-              width={colW}
-              height={barH}
-              fill="#F97316"
-              opacity="0.55"
-              rx="1"
+
+        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={28}
+          tickFormatter={dayLabel}
+        />
+        <YAxis
+          yAxisId="money"
+          tickLine={false}
+          axisLine={false}
+          width={52}
+          tickFormatter={(v: number) => formatCurrencyShort(v)}
+        />
+        <YAxis
+          yAxisId="count"
+          orientation="right"
+          tickLine={false}
+          axisLine={false}
+          width={30}
+          allowDecimals={false}
+        />
+        <Tooltip
+          cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(l) => dayLabel(String(l))}
+              formatter={(value, key) => (key === 'orders' ? String(value) : formatCurrency(value))}
             />
-          );
-        })}
-        <path d={fill} fill="url(#lg1)" />
-        <path d={line} fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" />
-        {xLabels.map((p, i) => (
-          <text key={i} x={p.x} y={H - 4} textAnchor="middle" fontSize="10" fill="#94a3b8">
-            {formatDateShort(p.date)}
-          </text>
-        ))}
-        {pts.map((p, i) => (
-          <g key={i} onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
-            <circle cx={p.x} cy={p.y} r="14" fill="transparent" style={{ cursor: 'crosshair' }} />
-            {(hov === i || i === pts.length - 1) && (
-              <circle cx={p.x} cy={p.y} r="4.5" fill="white" stroke="#2563EB" strokeWidth="2" />
-            )}
-            {hov === i && (
-              <g>
-                <rect x={p.x - 56} y={p.y - 52} width="112" height="44" rx="6" fill="#1e293b" />
-                <text x={p.x} y={p.y - 34} textAnchor="middle" fontSize="10" fontWeight="700" fill="white">
-                  {formatCurrency(p.revenue)}
-                </text>
-                <text x={p.x} y={p.y - 20} textAnchor="middle" fontSize="10" fill="#94a3b8">
-                  {formatDateShort(p.date)} · {p.orders} orders
-                </text>
-                {(data[i].expensesCents ?? 0) > 0 && (
-                  <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" fill="#fb923c">
-                    exp: {formatCurrencyShort(data[i].expensesCents ?? 0)}
-                  </text>
-                )}
-              </g>
-            )}
-          </g>
-        ))}
-      </svg>
+          }
+        />
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 mt-2 mb-1">
-        <span className="flex items-center gap-1.5 text-sm text-slate-500">
-          <span className="inline-block w-3 h-0.5 rounded bg-blue-600" /> Revenue
-        </span>
-        <span className="flex items-center gap-1.5 text-sm text-slate-500">
-          <span className="inline-block w-3 h-2.5 rounded-sm bg-orange-400 opacity-60" /> Expenses
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 pt-3 border-t border-slate-100">
-        {[
-          { label: 'Total Revenue',  value: formatCurrency(totalRevenue) },
-          { label: 'COGS',           value: formatCurrencyShort(totalCogs) },
-          { label: 'Total Expenses', value: formatCurrencyShort(totalExpenses) },
-          { label: 'Net Profit',     value: formatCurrencyShort(netProfit), color: netProfit >= 0 ? 'text-emerald-700' : 'text-red-600' },
-        ].map(s => (
-          <div key={s.label}>
-            <p className="text-sm text-slate-400">{s.label}</p>
-            <p className={`text-base font-bold mt-0.5 ${s.color ?? 'text-slate-800'}`}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-    </div>
+        <Area
+          yAxisId="money"
+          type="monotone"
+          dataKey="revenue"
+          stroke="var(--color-revenue)"
+          strokeWidth={2}
+          fill="url(#fillRevenue)"
+        />
+        <Area
+          yAxisId="money"
+          type="monotone"
+          dataKey="expenses"
+          stroke="var(--color-expenses)"
+          strokeWidth={2}
+          fill="url(#fillExpenses)"
+        />
+        <Line
+          yAxisId="count"
+          type="monotone"
+          dataKey="orders"
+          stroke="var(--color-orders)"
+          strokeWidth={1.6}
+          strokeDasharray="4 3"
+          dot={false}
+        />
+      </AreaChart>
+    </ChartContainer>
   );
 }
 
 // ─── SVG Donut Chart ──────────────────────────────────────────────────────────
-const DONUT_COLORS = ['#2563EB', '#F59E0B', '#8B5CF6', '#10B981', '#EF4444'];
+/**
+ * Revenue share by product.
+ *
+ * The ring and legend are Recharts now; the hand-rolled version computed arc
+ * paths with trigonometry and tracked its own hover index. The centre label is
+ * kept — total units when idle, the hovered slice's share when not — because
+ * that is the one thing a donut is genuinely good at saying.
+ *
+ * Slice colours come from the app's status tokens rather than the old hardcoded
+ * hex list, so the ring re-themes with everything else.
+ */
+const DONUT_COLORS = [
+  'hsl(var(--primary))',
+  'var(--warning)',
+  'var(--info)',
+  'var(--success)',
+  'var(--danger)',
+];
 
 function DonutChart({ data }: { data: TopProduct[] }) {
   const [hov, setHov] = useState<number | null>(null);
   const { formatMoneyShort: formatCurrencyShort } = useAppSettings();
-  const total = data.reduce((s, p) => s + p.revenueCents, 0) || 1;
-  const R = 58, cx = 75, cy = 75, sw = 22;
-  let angle = -90;
-
-  const arcs = data.slice(0, 5).map((p, i) => {
-    const pct = p.revenueCents / total;
-    const deg = pct * 360;
-    const rad = (a: number) => (a * Math.PI) / 180;
-    const x1 = cx + R * Math.cos(rad(angle));
-    const y1 = cy + R * Math.sin(rad(angle));
-    const x2 = cx + R * Math.cos(rad(angle + deg - 0.4));
-    const y2 = cy + R * Math.sin(rad(angle + deg - 0.4));
-    const path = `M${x1},${y1} A${R},${R} 0 ${deg > 180 ? 1 : 0} 1 ${x2},${y2}`;
-    angle += deg;
-    return { path, color: DONUT_COLORS[i], pct, name: p.name, rev: p.revenueCents, qty: p.qty };
-  });
-
-  const hovItem = hov !== null ? arcs[hov] : null;
-  const totalQty = data.reduce((s, p) => s + p.qty, 0);
 
   if (data.length === 0) {
-    return <div className="h-32 flex items-center justify-center text-slate-400 text-sm">No sales data yet</div>;
+    return (
+      <div className="h-32 flex items-center justify-center text-content-muted text-sm">
+        No sales data yet
+      </div>
+    );
   }
+
+  const slices  = data.slice(0, 5);
+  const total   = slices.reduce((s, p) => s + p.revenueCents, 0) || 1;
+  const totalQty = data.reduce((s, p) => s + p.qty, 0);
+  const hovItem = hov !== null ? slices[hov] : null;
 
   return (
     <div className="flex items-center gap-4">
-      <div className="shrink-0">
-        <svg width="150" height="150" viewBox="0 0 150 150">
-          <circle cx={cx} cy={cy} r={R} fill="none" stroke="#f1f5f9" strokeWidth={sw} />
-          {arcs.map((arc, i) => (
-            <path key={i} d={arc.path} fill="none" stroke={arc.color}
-              strokeWidth={hov === i ? sw + 5 : sw} strokeLinecap="butt"
-              style={{ cursor: 'pointer', transition: 'stroke-width 0.15s' }}
-              onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)} />
-          ))}
-          <text x={cx} y={cy - 8} textAnchor="middle" fontSize="10" fill="#94a3b8" fontWeight="500">Total</text>
-          <text x={cx} y={cy + 10} textAnchor="middle" fontSize="17" fill="#1e293b" fontWeight="700">
-            {hovItem ? `${Math.round(hovItem.pct * 100)}%` : totalQty.toLocaleString()}
-          </text>
+      <div className="shrink-0 relative" style={{ width: 150, height: 150 }}>
+        <ChartContainer config={{}} className="h-[150px] w-[150px]">
+          <PieChart>
+            <Pie
+              data={slices}
+              dataKey="revenueCents"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={47}
+              outerRadius={69}
+              paddingAngle={1}
+              startAngle={90}
+              endAngle={-270}
+              stroke="none"
+              isAnimationActive={false}
+              onMouseEnter={(_, i: number) => setHov(i)}
+              onMouseLeave={() => setHov(null)}
+            >
+              {slices.map((_, i) => (
+                <Cell
+                  key={i}
+                  fill={DONUT_COLORS[i % DONUT_COLORS.length]}
+                  opacity={hov !== null && hov !== i ? 0.45 : 1}
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
+
+        {/* Centre label sits over the ring — Recharts has no first-class slot for it. */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[10px] font-medium text-content-muted">Total</span>
+          <span className="text-[17px] font-bold text-content leading-tight">
+            {hovItem
+              ? `${Math.round((hovItem.revenueCents / total) * 100)}%`
+              : totalQty.toLocaleString()}
+          </span>
           {hovItem && (
-            <text x={cx} y={cy + 24} textAnchor="middle" fontSize="8" fill="#94a3b8">
-              {hovItem.name.length > 10 ? hovItem.name.slice(0, 10) + '…' : hovItem.name}
-            </text>
+            <span className="text-[8px] text-content-muted max-w-[86px] truncate">
+              {hovItem.name}
+            </span>
           )}
-        </svg>
+        </div>
       </div>
+
       <div className="flex-1 space-y-2 min-w-0">
-        {arcs.map((arc, i) => (
-          <div key={i} className="flex items-center justify-between gap-2 cursor-default"
-            style={{ opacity: hov !== null && hov !== i ? 0.45 : 1, transition: 'opacity 0.15s' }}
-            onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
+        {slices.map((p, i) => (
+          <div
+            key={p.productId}
+            className="flex items-center justify-between gap-2 cursor-default transition-opacity"
+            style={{ opacity: hov !== null && hov !== i ? 0.45 : 1 }}
+            onMouseEnter={() => setHov(i)}
+            onMouseLeave={() => setHov(null)}
+          >
             <div className="flex items-center gap-1.5 min-w-0">
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: arc.color }} />
-              <span className="text-xs text-slate-700 font-medium truncate">{arc.name}</span>
+              <div
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+              />
+              <span className="text-xs text-content-secondary font-medium truncate">{p.name}</span>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-xs font-bold text-slate-800">{Math.round(arc.pct * 100)}%</div>
-              <div className="text-[10px] text-slate-400">{formatCurrencyShort(arc.rev)}</div>
+              <div className="text-xs font-bold text-content">
+                {Math.round((p.revenueCents / total) * 100)}%
+              </div>
+              <div className="text-[10px] text-content-muted">{formatCurrencyShort(p.revenueCents)}</div>
             </div>
           </div>
         ))}
@@ -679,41 +716,22 @@ export default function DashboardPage() {
           {/* Bottom row: Top Products + Recent Activity */}
           <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
 
-            {/* Top Products — horizontal bar list */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-2">
-                <h2 className="text-base font-bold text-slate-800">Top Products</h2>
+            {/* Revenue share by product.
+                Was a list of bars scaled to the biggest seller, which answers
+                "which is largest" but not "how concentrated are we" — the
+                question that matters when one product is most of the revenue.
+                The donut answers both, and it finally gives DonutChart a caller:
+                it had been defined and never used. */}
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3 border-b border-border pb-2">
+                <h2 className="text-base font-bold text-content">Revenue by product</h2>
                 <Link to="/products"
-                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                  className="text-xs text-accent hover:text-accent-hover font-semibold flex items-center gap-1">
                   View all <ArrowRight size={11} />
                 </Link>
               </div>
-              {(data?.topProducts ?? []).length === 0 ? (
-                <div className="h-24 flex items-center justify-center text-slate-400 text-sm">No sales data yet</div>
-              ) : (() => {
-                const maxRev = Math.max(...(data?.topProducts ?? []).map(p => p.revenueCents), 1);
-                return (
-                  <div className="space-y-3">
-                    {(data?.topProducts ?? []).slice(0, 4).map(p => (
-                      <div key={p.productId}>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-slate-600 truncate max-w-[140px]">{p.name}</span>
-                          <span className="text-slate-500 font-medium ml-2 flex-shrink-0">
-                            {formatCurrencyShort(p.revenueCents)}
-                          </span>
-                        </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-500 rounded-full"
-                            style={{ width: `${Math.round((p.revenueCents / maxRev) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
+              <DonutChart data={data?.topProducts ?? []} />
+            </Card>
 
             {/* Recent Activity */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex flex-col min-h-0">
