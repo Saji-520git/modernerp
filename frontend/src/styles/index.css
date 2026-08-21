@@ -10,31 +10,44 @@
    class is re-pointed here, so pages not yet converted render unchanged. */
 @layer base {
   :root {
-    /* neutrals */
-    --bg-app:            #f8fafc;
+    /* neutrals — a three-step light scale: recessed ground, white card, a hair
+       of lift for hover. The page used to be #f8fafc against #ffffff cards, a
+       1.046 contrast ratio, so cards did not read as cards; the ground is now
+       slate-100 (1.096) and hover moved up to slate-50 instead of down. */
+    --bg-app:            #f1f5f9;
     --surface:           #ffffff;
-    --surface-2:         #f1f5f9;
-    --surface-inset:     #f8fafc;
+    --surface-2:         #f8fafc;
+    --surface-inset:     #f1f5f9;
     --line:              #e2e8f0;
     --line-strong:       #cbd5e1;
     --content:           #0f172a;
     --content-secondary: #475569;
-    --content-muted:     #94a3b8;
+    /* was #94a3b8 — 2.56:1 on white, which fails WCAG AA outright. This is the
+       colour of every label, caption, SKU and timestamp in the app (551 uses),
+       so it was both unreadable and the reason the light theme looked washed
+       out. slate-500 is 4.76:1 and passes. */
+    --content-muted:     #64748b;
     --content-inverse:   #ffffff;
     /* brand — indigo (approved premium direction) */
     --brand:             #4f46e5;
     --brand-hover:       #4338ca;
     --brand-subtle:      #eef2ff;
     --brand-fg:          #ffffff;
-    /* semantic status */
-    --success:           #16a34a;  --success-subtle: #dcfce7;
+    /* semantic status — success and warning were the 600 shades, 3.30:1 and
+       3.19:1 on white. Status labels render at 10–11px, so "large text" does
+       not excuse them; the 700 shades are 5.02:1 and pass. danger (4.83) and
+       info (5.17) already passed and are unchanged. */
+    --success:           #15803d;  --success-subtle: #dcfce7;
     --danger:            #dc2626;  --danger-subtle:  #fee2e2;
-    --warning:           #d97706;  --warning-subtle: #fef3c7;
+    --warning:           #b45309;  --warning-subtle: #fef3c7;
     --info:              #2563eb;  --info-subtle:    #dbeafe;
-    /* elevation */
-    --shadow-sm:         0 1px 2px rgba(15, 23, 42, 0.06);
-    --shadow-md:         0 4px 14px rgba(15, 23, 42, 0.10);
-    --shadow-lg:         0 10px 30px rgba(15, 23, 42, 0.14);
+    /* elevation — two layers each: a tight contact shadow that reads as the
+       edge sitting on the page, and a wider ambient one for depth. A single
+       6%-alpha blur was effectively invisible, which is what left the UI flat
+       no matter how the cards were spaced. */
+    --shadow-sm:         0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.08);
+    --shadow-md:         0 2px 4px rgba(15, 23, 42, 0.04), 0 6px 16px rgba(15, 23, 42, 0.10);
+    --shadow-lg:         0 4px 8px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(15, 23, 42, 0.12);
     /* radii (theme-independent) */
     --radius-sm:  6px;  --radius-md:  8px;  --radius-lg: 12px;
     --radius-xl: 16px;  --radius-2xl: 20px;
@@ -51,7 +64,7 @@
          --background 210 40% 98%   is  --bg-app  #f8fafc
          --primary    243 75% 59%   is  --brand   #4f46e5
        Keep the two in step when a token changes. */
-    --background:         210 40% 98%;
+    --background:         210 40% 96.1%;
     --foreground:         222.2 47.4% 11.2%;
     --card:               0 0% 100%;
     --card-foreground:    222.2 47.4% 11.2%;
@@ -169,6 +182,41 @@
 .print-header {
   display: none;
 }
+
+/* ── Light theme retune ───────────────────────────────────────────────────────
+   Changing a token only reaches code that consumes tokens. The 53 class-based
+   pages hardcode the palette, so these few rules carry the light-theme fixes
+   across the app without touching a component — the same technique as the dark
+   block below, and equally reversible.
+
+   Only the values that FAILED a contrast check are remapped. Slate-600/700/800
+   text already passed and is left exactly as it was. */
+@media screen {
+  /* 2.56:1 -> 4.76:1. The single biggest legibility win in the app. */
+  :root:not([data-theme="dark"]) .text-slate-400,
+  :root:not([data-theme="dark"]) .text-gray-400    { color: var(--content-muted); }
+  /* 3.30:1 -> 5.02:1 */
+  :root:not([data-theme="dark"]) .text-green-600,
+  :root:not([data-theme="dark"]) .text-emerald-600 { color: var(--success); }
+  /* 3.19:1 -> 5.02:1 */
+  :root:not([data-theme="dark"]) .text-amber-600,
+  :root:not([data-theme="dark"]) .text-orange-600  { color: var(--warning); }
+  /* the recessed ground white cards sit on */
+  :root:not([data-theme="dark"]) .erp-content      { background-color: var(--bg-app); }
+}
+
+/* Elevation, both themes at once — the shadow tokens are already theme-aware,
+   so one rule serves light and dark. Tailwind's own shadow-sm is a single
+   5%-alpha blur that is close to invisible on a light ground; the tokens are
+   two-layer (contact + ambient), which is what actually makes a card read as
+   lifted rather than outlined. */
+.shadow-sm,
+.shadow                       { box-shadow: var(--shadow-sm); }
+.shadow-md                    { box-shadow: var(--shadow-md); }
+.shadow-lg                    { box-shadow: var(--shadow-lg); }
+.hover\:shadow-sm:hover       { box-shadow: var(--shadow-sm); }
+.hover\:shadow-md:hover       { box-shadow: var(--shadow-md); }
+.hover\:shadow-lg:hover       { box-shadow: var(--shadow-lg); }
 
 /* ── Dark theme, system-wide ───────────────────────────────────────────────────
    53 pages were written against fixed Tailwind palette classes (bg-white,
