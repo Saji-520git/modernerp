@@ -38,9 +38,16 @@ function esc(s: string): string {
 export function generateReceiptHtml(
   receipt: Receipt,
   settings: AppSettings,
-  changeCents: number,
+  changeCents: number | null,
   logoBase64: string | null = null,
 ): string {
+  // null = reprinted later, from the Sales list. The cash a customer handed
+  // over is never stored on the sale — only the total is — so a reprint cannot
+  // know it. Printing "Tendered = total, Change = 0.00" would be a plausible
+  // lie: it contradicts the slip the customer already holds, where a Rs. 500
+  // note against a Rs. 450 sale showed Rs. 50 change. The block is dropped
+  // instead, leaving TOTAL, which is the part we can still vouch for.
+  const isReprint = changeCents === null;
   const lang    = (settings.receiptLanguage ?? 'en') as ReceiptLang;
   const L       = receiptLabels[lang];
   const width   = settings.receiptPaperWidth === '58mm' ? '58mm' : '80mm';
@@ -113,6 +120,21 @@ export function generateReceiptHtml(
   meta += row(L.date, dateStr);
   if (receipt.warehouseName) meta += `<p style="font-size:14px;color:#000000;margin:1px 0;">${esc(receipt.warehouseName)}</p>`;
 
+  // A reprint says so, on the slip. Two identical slips for one sale is how a
+  // counter ends up double-counting a refund or a warranty claim; the marker
+  // and its own timestamp make it obvious which one came out of the drawer at
+  // the time of sale. Same reason the Tendered line is dropped above.
+  if (isReprint) {
+    const reprintedAt = new Date().toLocaleString('en-US', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+    meta += `<div style="text-align:center;padding:4px 0 1px;">
+      <span style="display:inline-block;padding:2px 10px;border:1.5px solid #000;border-radius:3px;font-size:14px;font-weight:700;letter-spacing:1px;">${esc(L.reprint)}</span>
+      <div style="font-size:12px;margin-top:2px;">${esc(reprintedAt)}</div>
+    </div>`;
+  }
+
   // ── Items table — 2-line layout: PRODUCT / PRICE / DISC / AMOUNT ───────────
   // Bare-number formatter (no currency symbol) for the price/disc/amount columns.
   const num = (c: number) =>
@@ -156,7 +178,9 @@ export function generateReceiptHtml(
 </table>`;
 
   // ── Totals table ──────────────────────────────────────────────────────────
-  const tenderedCents = receipt.paymentMethod === 'CASH' ? receipt.totalCents + changeCents : 0;
+  const tenderedCents = (receipt.paymentMethod === 'CASH' && !isReprint)
+    ? receipt.totalCents + (changeCents as number)
+    : 0;
 
   let totalsRows = '';
 

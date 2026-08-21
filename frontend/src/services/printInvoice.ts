@@ -89,9 +89,11 @@ export async function printSaleInvoice(sale: Sale): Promise<void> {
  * Reprints the 80mm/58mm till receipt for a POS sale.
  *
  * POS only: GET /pos/receipt/:id filters `isPos: true`, so a back-office invoice
- * 404s here — callers must gate on `sale.isPos`. Change is passed as 0; the cash
- * handed over at the till is not stored on the sale, and printing a made-up
- * figure on a reprint would be worse than omitting it.
+ * 404s here — callers must gate on `sale.isPos`.
+ *
+ * Change is passed as null, not 0: the cash handed over is not stored on the
+ * sale, so this slip drops the Tendered/Change block and marks itself REPRINT
+ * rather than inventing figures that contradict the customer's original.
  */
 export async function printPosReceipt(sale: Sale): Promise<void> {
   const win = openPrintWindow('receipt', 420, 640);
@@ -111,7 +113,7 @@ export async function printPosReceipt(sale: Sale): Promise<void> {
       ? await fetchLogoAsBase64(settings.logoUrl)
       : null;
 
-    writePrintDocument(win, generateReceiptHtml(receipt, settings, 0, logo));
+    writePrintDocument(win, generateReceiptHtml(receipt, settings, null, logo));
   } catch (err) {
     win.close();
     throw err;

@@ -18,6 +18,7 @@ export const receiptLabels: Record<ReceiptLang, {
   balance:     string;
   itemCount:   string;
   creditSale:  string;
+  reprint:     string;
   walkIn:      string;
   thankYou:    string;
   poweredBy:   string;
@@ -40,6 +41,7 @@ export const receiptLabels: Record<ReceiptLang, {
     balance:    'Balance Due',
     itemCount:  'Items',
     creditSale: 'CREDIT SALE',
+    reprint:    'REPRINT',
     walkIn:     'Walk-in',
     thankYou:   'Thank You! Come Again',
     poweredBy:  'Powered by BROcode ERP',
@@ -62,6 +64,7 @@ export const receiptLabels: Record<ReceiptLang, {
     balance:    'ගෙවිය යුතු',
     itemCount:  'භාණ්ඩ ගණන',
     creditSale: 'ණය විකිණීම',
+    reprint:    'නැවත මුද්‍රණය',
     walkIn:     'සාමාන්‍ය ගනුදෙනු',
     thankYou:   'ස්තූතියි! නැවත වඩිනු ලැබේවා',
     poweredBy:  'BROcode ERP මගින් බල ගැන්වේ',
