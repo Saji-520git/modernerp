@@ -16,6 +16,7 @@ import {
 import { customerPaymentsApi, type CustomerPayment, type CreateCustomerPaymentInput } from '../../services/customerPayments';
 import { inventoryApi } from '../../services/inventory';
 import { exportSaleInvoice, exportSaleReturn } from '../../services/pdfExport';
+import { printSaleInvoice, printPosReceipt } from '../../services/printInvoice';
 import {
   fillTemplate, openWhatsApp, buildItemsList,
   DEFAULT_RECEIPT_TEMPLATE,
@@ -1495,6 +1496,8 @@ export default function SalesPage() {
                         { label: 'Confirm Invoice',  icon: <CheckCircle size={14} />,onClick: () => inlineConfirmMutation.mutate(sale.id),  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdminOrManager },
                         { label: 'Delete Draft',     icon: <Trash2 size={14} />,     onClick: () => setDeleteSaleId(sale.id), danger: true,  hidden: sale.status !== 'DRAFT' || sale.isPos || !isAdmin },
                         { label: 'Record Payment',   icon: <CreditCard size={14} />, onClick: () => setPaymentSaleId(sale.id),               hidden: sale.status !== 'CONFIRMED' || (sale.totalCents ?? 0) - (sale.paidCents ?? 0) <= 0 },
+                        { label: 'Print Invoice',    icon: <Printer size={14} />,    onClick: () => printSaleInvoice(sale).catch((e: any) => showToast(e?.message ?? 'Could not print the invoice', false)), hidden: sale.status === 'DRAFT' },
+                        { label: 'Print Receipt',    icon: <Receipt size={14} />,    onClick: () => printPosReceipt(sale).catch((e: any) => showToast(e?.message ?? 'Could not print the receipt', false)), hidden: sale.status === 'DRAFT' || !sale.isPos },
                         { label: 'Download PDF',     icon: <Download size={14} />,   onClick: () => exportSaleInvoice(sale),                 hidden: sale.status === 'DRAFT' },
                         { label: 'Process Return',   icon: <RotateCcw size={14} />,  onClick: () => setReturnId(sale.id),                    hidden: sale.status !== 'CONFIRMED' },
                         { label: 'Cancel Invoice',   icon: <XCircle size={14} />,    onClick: () => inlineCancelMutation.mutate(sale.id), danger: true, hidden: sale.status !== 'CONFIRMED' || !isAdminOrManager },

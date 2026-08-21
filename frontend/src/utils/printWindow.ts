@@ -44,3 +44,44 @@ export function autoPrintScript(fallbackCloseMs = 60_000): string {
 })();
 </script>`;
 }
+
+// ─── Opening the popup ────────────────────────────────────────────────────────
+//
+// Two calls, deliberately, because the popup MUST be opened synchronously inside
+// the click handler. Browsers only grant `window.open` while a user gesture is
+// still on the stack; the first `await` ends that gesture, so opening after the
+// settings fetch gets the window blocked. Callers therefore do:
+//
+//   const win = openPrintWindow();        // sync, inside the handler
+//   if (!win) { …tell the user… }
+//   const html = await buildDocument();   // now free to await
+//   writePrintDocument(win, html);
+//
+// The placeholder text is what the user sees during that await.
+
+/** Opens the print popup and shows a placeholder. Returns null if blocked. */
+export function openPrintWindow(
+  label = 'document',
+  width = 900,
+  height = 720,
+): Window | null {
+  const win = window.open('', '_blank', `width=${width},height=${height}`);
+  if (!win) return null;
+  win.document.write(
+    `<p style="font-family:system-ui,-apple-system,sans-serif;padding:16px;color:#334155">Preparing ${label}…</p>`,
+  );
+  return win;
+}
+
+/**
+ * Writes the finished document into the popup.
+ *
+ * Does NOT call `win.print()` — the HTML is expected to carry
+ * `autoPrintScript()`, for the Electron reason documented above.
+ */
+export function writePrintDocument(win: Window, html: string): void {
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+}
