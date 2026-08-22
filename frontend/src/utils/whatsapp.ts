@@ -151,7 +151,19 @@ export function openWhatsApp(
   msg: string,
   mode: WAOpenMode = 'app',
 ): boolean {
-  const link = mode === 'browser' ? buildWALink(phone, msg) : buildWADesktopLink(phone, msg);
+  // 'app' mode sends a `whatsapp://` URL, which only something outside the page
+  // can act on. In the packaged app that is Electron's setWindowOpenHandler,
+  // which hands it to shell.openExternal — but a plain browser tab has no such
+  // escape hatch and simply drops it: the button appears to do nothing, which
+  // is what it did when tested at localhost:5173.
+  //
+  // So the scheme is chosen by what can actually honour it, not by the setting
+  // alone. Outside Electron the https wa.me link is used regardless of mode —
+  // it works everywhere, and wa.me itself hands off to WhatsApp Desktop when it
+  // is installed, so the only cost is one redirect.
+  const isElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent);
+  const useAppScheme = mode !== 'browser' && isElectron;
+  const link = useAppScheme ? buildWADesktopLink(phone, msg) : buildWALink(phone, msg);
   if (!link) {
     const shown = (phone ?? '').trim();
     emitToast(
@@ -162,7 +174,20 @@ export function openWhatsApp(
     );
     return false;
   }
-  window.open(link, '_blank');
+
+  // An anchor click rather than window.open(): window.open is subject to the
+  // popup blocker and returns null on a custom scheme even when it worked, so
+  // there is nothing reliable to test. A target=_blank anchor is not
+  // popup-blocked, is the standard way to trigger a protocol handler, and in
+  // Electron still routes through setWindowOpenHandler to shell.openExternal.
+  const a = document.createElement('a');
+  a.href   = link;
+  a.target = '_blank';
+  a.rel    = 'noopener noreferrer';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   return true;
 }
 
