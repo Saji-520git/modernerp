@@ -16,6 +16,7 @@ import CustomerDetailPage from './pages/contacts/CustomerDetailPage';
 import SupplierDetailPage from './pages/contacts/SupplierDetailPage';
 import SalesPage from './pages/sales/SalesPage';
 import UsersPage from './pages/users/UsersPage';
+import AuditPage from './pages/audit/AuditPage';
 import DataManagementPage from './pages/data-management/DataManagementPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import TodaySummaryPage from './pages/dashboard/TodaySummaryPage';
@@ -372,6 +373,15 @@ export default function App() {
               <UsersPage />
             </ErrorBoundary>
           </ModuleGuard>
+        } />
+        {/* No ModuleGuard: the trail is not an optional feature. Access is
+            gated on the manage_users permission at the API, and by role in the
+            nav — a system that records who did what should not be switchable
+            off by the people it records. */}
+        <Route path="audit" element={
+          <ErrorBoundary fallbackTitle="Audit Trail failed to load">
+            <AuditPage />
+          </ErrorBoundary>
         } />
         <Route path="data-management" element={
           <ModuleGuard module="dataManagement">

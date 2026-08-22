@@ -597,6 +597,17 @@ For a clean dev DB, build a *separate throwaway* database from files — never m
 **Phase 3 Sprint 18: Purchasing Power-Ups ✓** (2026-05-25)
 **Phase 3 Sprint 19: Attachments, Customer Payments, Purchase Returns, P&L Compare, Dashboard Live Data ✓** (2026-05-25)
 **Phase 3 Sprint 20: Negative Stock (sell past zero) ✓** (2026-08-21)
+**Phase 3 Sprint 21: Document numbering hardening + Audit Trail ✓** (2026-08-23)
+
+Sprint 21 notes:
+- All doc numbers now derive from max+1 (`utils/doc-number.ts`), never a row
+  count — PO, GRN, CRN, QUO, ST, SPAY, WO and product SKU. Closes §12 #8.
+- `AuditLog` + `middleware/audit.ts`: every state-changing API request is
+  recorded (actor, role, action, entity, path, status, redacted body). Reads,
+  4xx and routine noise are skipped; 5xx is kept. Policy lives in
+  `middleware/audit-rules.ts` — pure, covered by `tests/audit-rules.test.ts`.
+- Read-only API at `/api/v1/audit` (gated on `manage_users`) and the Audit Trail
+  page (ADMIN). No write endpoint exists, by design.
 
 Phase 2 sprints completed:
 - Sprint 5: User Management ✓

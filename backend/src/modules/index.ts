@@ -25,12 +25,14 @@ import { router as stockTakeRouter }          from './stocktake/stocktake.routes
 import { router as loyaltyRouter }            from './loyalty/loyalty.routes.js';
 import { router as quotationsRouter }         from './quotations/quotations.routes.js';
 import { router as dataManagementRouter }     from './data-management/data-management.routes.js';
+import { router as auditRouter }              from './audit/audit.routes.js';
 
 export const router: Router = Router();
 
 router.get('/', (_req, res) => res.json({ name: 'BROcode ERP API', version: 'v1' }));
 
 router.use('/auth', authRouter);
+router.use('/audit', auditRouter);
 router.use('/pos', posRouter);
 router.use('/products', productsRouter);
 router.use('/inventory', inventoryRouter);

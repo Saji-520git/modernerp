@@ -264,6 +264,41 @@ model Product {
   updatedAt DateTime @updatedAt
 }
 
+/// Who changed what, and when.
+///
+/// Recorded for every state-changing request by middleware/audit.ts, so it
+/// cannot be forgotten at a call site the way per-service logging is.
+///
+/// The actor's name and role are COPIED here rather than joined. A user can be
+/// renamed, have their role changed or be deactivated, and the trail must keep
+/// saying who acted and with what authority at the time — a join would rewrite
+/// history every time an account changed. userId stays nullable and unlinked
+/// for the same reason: removing a user must never remove or break their trail.
+model AuditLog {
+  id          String   @id @default(cuid())
+  at          DateTime @default(now())
+
+  userId      String?               // no relation on purpose — see above
+  userName    String                // as it read at the time
+  userRole    String
+
+  action      String                // CREATE | UPDATE | DELETE | CONFIRM | CANCEL | LOGIN …
+  entity      String                // sale, purchase, product, settings, user …
+  entityId    String?
+  summary     String                // one human-readable line
+
+  method      String
+  path        String
+  status      Int                   // HTTP status the request finished with
+  ip          String?
+  meta        Json?                 // redacted request body / extra context
+
+  @@index([at])
+  @@index([entity, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
 model Stock {
   id          String   @id @default(cuid())
   productId   String

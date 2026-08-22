@@ -23,6 +23,7 @@ import { logger } from './config/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFound } from './middleware/not-found.js';
 import { router as apiRouter } from './modules/index.js';
+import { auditTrail } from './middleware/audit.js';
 import { prisma } from './config/prisma.js';
 import { inventoryService } from './modules/inventory/inventory.service.js';
 import { productsService } from './modules/products/products.service.js';
@@ -98,6 +99,10 @@ app.use('/api/v1', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+// Records every state-changing API request. Mounted here, ahead of the router,
+// so it covers routes that do not exist yet as well as the ones that do —
+// see middleware/audit.ts for what is and is not recorded.
+app.use('/api/v1', auditTrail);
 app.use('/api/v1', apiRouter);
 
 // Serve React frontend
