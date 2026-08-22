@@ -4,7 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, getUnitPrice } from '../../utils/unit-converter.js';
 import { getBatchSummary, deductBatchesFEFO, getBatchDetail } from '../../utils/batch-expiry.js';
-import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recomputeStockQty, addShortfall } from '../../utils/stock-utils.js';
 import { isModuleEnabled } from '../../config/modules.js';
 import { promotionsService } from '../promotions/promotions.service.js';
 import { computePromotions, type AppliedPromo } from '../promotions/promotions.engine.js';
@@ -174,9 +174,12 @@ export const posService = {
               toUnit:   { select: { id: true, name: true, shortCode: true } },
             },
           },
+          // shortfallQty rides along so the product card can show the counter
+          // what it has already sold ahead of — otherwise a product at 0 with 3
+          // owed looks identical to one that simply ran out.
           stock: warehouseId
-            ? { where: { warehouseId }, select: { qty: true } }
-            : { select: { qty: true, warehouseId: true } },
+            ? { where: { warehouseId }, select: { qty: true, shortfallQty: true } }
+            : { select: { qty: true, shortfallQty: true, warehouseId: true } },
         },
       }),
     ]);
@@ -258,6 +261,12 @@ export const posService = {
       // legacy fallback
       return appSettings?.blockExpiredSales !== false ? 'BLOCK' : 'ALLOW';
     })();
+
+    // Selling past zero. The case this exists for is data lag — the goods are
+    // on the shelf, the GRN has not been keyed in yet — so it is deliberately
+    // POS-only. A back-office invoice for goods you do not hold is a backorder,
+    // which this system does not model.
+    const allowNegativeStock = (appSettings as any)?.allowNegativeStock === true;
 
     // Discount policy (server-authoritative — do not trust the client):
     //   posAllowDiscount        → cashier may key a manual discount at checkout
@@ -386,10 +395,24 @@ export const posService = {
         : available;
 
       // Compared against the product's TOTAL demand, not this line alone.
-      if (effectiveAvailable < productDemand) {
+      //
+      // allowNegativeStock lets the counter sell past this, EXCEPT for
+      // batch-tracked products: an uncovered unit has no lot behind it, so it
+      // would carry no batch number and no expiry. That is unrecoverable after
+      // the fact, and it is the one rule the setting does not override —
+      // the same line SAP B1 draws for batch/serial-managed items.
+      const mayOversell = allowNegativeStock && !product.isBatchTracked && !item.batchId;
+      if (effectiveAvailable < productDemand && !mayOversell) {
         throw new HttpError(
           400,
-          `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${productDemand}`,
+          allowNegativeStock && product.isBatchTracked
+            ? `"${product.name}" is batch-tracked and cannot be sold below stock. Available: ${effectiveAvailable}, requested: ${productDemand}. Receive the delivery first.`
+            : `Insufficient stock for "${product.name}". Available: ${effectiveAvailable}, requested: ${productDemand}`,
+        );
+      }
+      if (effectiveAvailable < productDemand && mayOversell) {
+        checkoutWarnings.push(
+          `"${product.name}" sold past available stock (${effectiveAvailable} on hand, ${productDemand} sold) — settles on the next delivery`,
         );
       }
 
@@ -680,13 +703,22 @@ export const posService = {
           FOR UPDATE
         `;
         const currentQty = locked[0]?.qty ?? 0;
-        if (currentQty < item.baseQty) {
-          const product = products.find((p) => p.id === item.productId)!;
+        const lineProduct = products.find((p) => p.id === item.productId)!;
+        // Re-decided under the lock, not carried from the pre-check: a
+        // concurrent sale may have emptied the shelf since then. The row lock
+        // above covers shortfallQty too — it lives on this same Stock row,
+        // which is why it is not in a table of its own.
+        const lineMayOversell = allowNegativeStock && !lineProduct.isBatchTracked && !item.batchId;
+        if (currentQty < item.baseQty && !lineMayOversell) {
           throw new HttpError(
             400,
-            `Insufficient stock for "${product.name}". Available: ${currentQty}, requested: ${item.baseQty}`,
+            `Insufficient stock for "${lineProduct.name}". Available: ${currentQty}, requested: ${item.baseQty}`,
           );
         }
+        // Units this sale cannot cover — deducted from the shelf as far as it
+        // goes, the remainder filed as a debt below.
+        const uncovered = Math.max(0, Number(item.baseQty) - currentQty);
+        const coverable = Number(item.baseQty) - uncovered;
 
         if (item.batchId) {
           // Manually-picked batch: deduct from exactly that row, re-checked
@@ -713,9 +745,14 @@ export const posService = {
           // Deduct from StockBatch rows in FEFO order (earliest expiry first).
           // If no batch rows exist (pre-batch-tracking stock), this is a no-op and
           // returns 0 units deducted.
-          const deductedFromBatches = await deductBatchesFEFO(
-            tx, item.productId, warehouseId, item.baseQty, expiredStockPolicy !== 'BLOCK',
-          );
+          // `coverable`, not the full line qty: anything the shelf cannot cover
+          // is filed as a shortfall below instead of being deducted from stock
+          // that does not exist.
+          const deductedFromBatches = coverable > 0
+            ? await deductBatchesFEFO(
+                tx, item.productId, warehouseId, coverable, expiredStockPolicy !== 'BLOCK',
+              )
+            : 0;
 
           if (deductedFromBatches > 0) {
             // Batch-tracked product: batches are the source of truth. Recompute the
@@ -731,7 +768,7 @@ export const posService = {
               where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
               select: { qty: true },
             });
-            const newQty = Math.max(0, Number(cur?.qty ?? 0) - Number(item.baseQty));
+            const newQty = Math.max(0, Number(cur?.qty ?? 0) - coverable);
             await tx.stock.upsert({
               where:  { productId_warehouseId: { productId: item.productId, warehouseId } },
               update: { qty: newQty },
@@ -739,6 +776,17 @@ export const posService = {
             });
           }
         }
+
+        // File whatever the shelf could not cover. Stock.qty is already at 0 at
+        // this point, so the debt is what makes the oversell visible — and what
+        // the next delivery pays off before landing on the shelf.
+        if (uncovered > 0) {
+          await addShortfall(tx, item.productId, warehouseId, uncovered);
+        }
+
+        // The movement records the FULL quantity that left the counter,
+        // uncovered units included: that is what the customer walked out with,
+        // and reports read movements, not the shelf.
         await recordStockMovement(tx, {
           productId: item.productId,
           warehouseId,
@@ -747,7 +795,9 @@ export const posService = {
           refType: 'Sale',
           refId:   created.id,
           batchId: item.batchId ?? null,
-          note:    `POS checkout ${number}`,
+          note:    uncovered > 0
+            ? `POS checkout ${number} (${uncovered} sold past stock)`
+            : `POS checkout ${number}`,
         });
       }
 

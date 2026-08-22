@@ -47,7 +47,7 @@ export interface PosProduct {
   baseUnit:   { id: string; shortCode: string; name: string; allowDecimal: boolean } | null;
   salesUnit:  { id: string; shortCode: string; name: string; allowDecimal: boolean } | null;
   unitConversions: PosUnitConversion[];
-  stock: Array<{ qty: string }>;
+  stock: Array<{ qty: string; shortfallQty?: string }>;
   batchSummary: {
     sellableQty:     number;
     expiredQty:      number;

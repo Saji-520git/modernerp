@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { settleShortfall } from '../../utils/stock-utils.js';
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -179,6 +180,11 @@ export async function importProducts(rows: ParsedRow[], userId: string): Promise
             create: { productId: product.id, warehouseId, qty: row.openingStock },
             update: { qty: { increment: row.openingStock } },
           });
+
+          // Opening stock increments rather than sets, so it is a real increase
+          // and settles a debt like any other. Normally a no-op — an import
+          // usually runs before anything has been sold.
+          await settleShortfall(tx, product.id, warehouseId);
           await recordStockMovement(tx, {
             productId:   product.id,
             warehouseId,

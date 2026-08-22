@@ -6,6 +6,7 @@ import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
+import { settleShortfall } from '../../utils/stock-utils.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -309,6 +310,11 @@ export async function createReceipt(
           create: { productId: poLine.productId, warehouseId: purchase.warehouseId, qty: baseReceived },
           update: { qty: { increment: baseReceived } },
         });
+
+        // Pay off anything the counter sold past zero before this delivery,
+        // so the arriving goods do not restock units already carried out of
+        // the shop. No-ops when nothing is owed.
+        await settleShortfall(tx, poLine.productId, purchase.warehouseId);
       }
 
       // 2c. Stock movements — good and accepted-damaged are logged separately so

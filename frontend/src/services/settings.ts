@@ -51,6 +51,8 @@ export interface AppSettings {
   // POS behaviour
   blockExpiredSales: boolean;                         // deprecated — kept for compat
   expiredStockPolicy: 'BLOCK' | 'WARN' | 'ALLOW';
+  /** POS may sell past zero; the shortage settles on the next stock increase. */
+  allowNegativeStock: boolean;
   staffSalesEnabled: boolean;
   // Receipt / Print
   receiptLanguage: 'en' | 'si';

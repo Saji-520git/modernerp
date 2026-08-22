@@ -2,7 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
-import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { resolveOpenShiftId } from '../pos/resolve-shift.js';
 import type { CreateReturnInput, ListReturnsInput } from './returns.schema.js';
@@ -255,6 +255,13 @@ export const returnsService = {
           },
         });
         await recomputeStockQty(tx, line.productId, sale.warehouseId);
+
+        // If the counter owes units, the returned goods pay that down before
+        // they count as stock on hand. Putting them on a shelf the shop is
+        // already short from would restock units it never had — the customer
+        // handing one back is the shortfall arriving, just from the other
+        // direction. No-op when nothing is owed.
+        await settleShortfall(tx, line.productId, sale.warehouseId);
 
         // Stock movement (BASE units, consistent with PURCHASE_IN / sale deduction)
         await recordStockMovement(tx, {

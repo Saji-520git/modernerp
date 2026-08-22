@@ -94,7 +94,10 @@ export const dataManagementService = {
           refType:     'DataManagement',
           note:        'Bulk zero stock',
         });
-        await tx.stock.update({ where: { id: s.id }, data: { qty: 0 } });
+        // shortfallQty goes with it: a debt against stock that has just been
+        // zeroed has nothing left to settle against, and leaving it would make
+        // the next delivery silently vanish into a wipe nobody remembers.
+        await tx.stock.update({ where: { id: s.id }, data: { qty: 0, shortfallQty: 0 } });
         affected.add(s.productId);
       }
       await tx.stockBatch.deleteMany({ where: { productId: { in: [...affected] } } });

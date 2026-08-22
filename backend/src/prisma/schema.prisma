@@ -271,6 +271,11 @@ model Stock {
   warehouseId String
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   qty         Decimal  @default(0) @db.Decimal(18, 4)
+  // Units sold that stock could not cover — a debt, not a negative quantity.
+  // qty stays >= 0 and keeps matching SUM(stock_batches), so valuation,
+  // stock-take, FEFO and reports are unaffected. Screens show qty - shortfallQty.
+  // Settled by the next stock increase (see settleShortfall in utils/stock-utils).
+  shortfallQty Decimal @default(0) @db.Decimal(18, 4)
 
   @@unique([productId, warehouseId])
 }
@@ -1011,6 +1016,10 @@ model AppSettings {
   // POS behaviour
   blockExpiredSales     Boolean  @default(true)   // DEPRECATED — kept for backwards compat; use expiredStockPolicy
   expiredStockPolicy    String   @default("BLOCK") // "BLOCK" | "WARN" | "ALLOW"
+  // Let the POS counter sell past zero when the goods are on the shelf but the
+  // GRN has not been keyed in yet. POS only — a back-office invoice for goods
+  // you do not hold is a backorder, which this system does not model.
+  allowNegativeStock    Boolean  @default(false)
   staffSalesEnabled     Boolean  @default(false)  // when true MANAGER/ADMIN can tag a sale as a staff sale
 
   // Receipt / Print

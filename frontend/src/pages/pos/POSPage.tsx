@@ -105,6 +105,18 @@ function totalStock(p: PosProduct): number {
   return p.stock.reduce((s, r) => s + Number(r.qty), 0);
 }
 
+// Units already sold that stock could not cover. Stored separately from qty so
+// the stored quantity never goes negative (see utils/stock-utils on the server);
+// the counter still needs to see the two combined.
+function totalShortfall(p: PosProduct): number {
+  return p.stock.reduce((s, r) => s + Number(r.shortfallQty ?? 0), 0);
+}
+
+// What the shelf actually owes: negative once the counter has sold ahead.
+function effectiveStock(p: PosProduct): number {
+  return totalStock(p) - totalShortfall(p);
+}
+
 /**
  * Build the list of sellable unit options for a product: the base unit plus
  * any conversion whose toUnit IS the base unit (directly sellable to base).
@@ -290,12 +302,22 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
   // Effective display qty:
   //   BLOCK / no expired: show sellableQty (normal)
   //   WARN / ALLOW + allExpired: show totalQty so cashier sees stock exists
-  const displayQty  = allExpired && policy !== 'BLOCK' ? totalQty : sellableQty;
+  const rawDisplayQty = allExpired && policy !== 'BLOCK' ? totalQty : sellableQty;
+
+  // Selling past zero. Excluded for batch-tracked products: an uncovered unit
+  // has no lot behind it, so it would carry no batch number and no expiry — the
+  // one rule the setting does not override. Mirrors the server-side gate.
+  const mayOversell = (settings?.allowNegativeStock ?? false) && !product.isBatchTracked;
+  const shortfall   = totalShortfall(product);
+
+  // Once the counter is selling ahead, the figure that means anything is the
+  // debt, not the (always zero) stored quantity.
+  const displayQty  = shortfall > 0 ? effectiveStock(product) : rawDisplayQty;
 
   // Card disabled: only when BLOCK and out-of-sellable or genuinely zero stock
   const trueOut     = policy === 'BLOCK' ? (sellableQty <= 0) : (totalQty <= 0);
   const isLow       = !trueOut && displayQty < 10;
-  const isDisabled  = trueOut;
+  const isDisabled  = trueOut && !mayOversell;
 
   // Badge colour
   const badgeBg    = trueOut     ? '#FCEBEB'
@@ -470,6 +492,13 @@ const CartLine = forwardRef<CartLineHandle, {
 }, cartLineRef) {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
+  // Selling past zero lifts the availability cap — but never for a
+  // manually-picked batch (that qty belongs to one specific lot, which really
+  // does run out) and never for batch-tracked products. Mirrors the server.
+  const cartMayOversell =
+    (cartSettings?.allowNegativeStock ?? false) &&
+    !item.product.isBatchTracked &&
+    !item.batchId;
   // Manual discounts off → the per-line discount cell is read-only (presets still show).
   const discountLocked = cartSettings?.posAllowDiscount === false;
 
@@ -543,7 +572,11 @@ const CartLine = forwardRef<CartLineHandle, {
 
     // Batch-aware cap: respect expiredStockPolicy
     const bs = item.product.batchSummary;
-    if (bs && bs.expiryStatus !== 'none') {
+    if (cartMayOversell) {
+      // No cap at all: whatever the shelf cannot cover is recorded as a
+      // shortfall at checkout and settled by the next delivery.
+      setCappedAt(null);
+    } else if (bs && bs.expiryStatus !== 'none') {
       // Effective cap: for BLOCK → sellableQty; for WARN/ALLOW → totalStock (includes expired)
       const effectiveCap = cartPolicy === 'BLOCK' ? bs.sellableQty : stock;
       if (qty > effectiveCap) {
@@ -2288,6 +2321,10 @@ export default function POSPage() {
     for (const [pid, baseQty] of baseByProduct) {
       const posProduct = products.find(p => p.id === pid);
       if (!posProduct) continue; // not in live list (filtered/svc) — let backend guard
+      // Selling past zero is not "oversold" in the sense this flag means — it is
+      // a deliberate, settled-later sale, so it must not block checkout. Still
+      // reported for batch-tracked products, which cannot be sold this way.
+      if ((appSettings?.allowNegativeStock ?? false) && !posProduct.isBatchTracked) continue;
       if (baseQty > availableStockFor(posProduct)) return true;
     }
     return false;
@@ -2295,9 +2332,18 @@ export default function POSPage() {
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: PosProduct, chosenBatch?: ProductBatch) => {
+    // Selling past zero removes the ceiling for this product. Not for a
+    // manually-picked batch — that line draws on one specific lot, which really
+    // does run out — and not for batch-tracked products, where an uncovered
+    // unit would carry no batch number and no expiry. Mirrors the server gate.
+    const addMayOversell =
+      (appSettings?.allowNegativeStock ?? false) &&
+      !product.isBatchTracked &&
+      !chosenBatch;
+
     // Block out-of-stock products
     const availableQty = totalStock(product);
-    if (availableQty <= 0) {
+    if (availableQty <= 0 && !addMayOversell) {
       setQuickAddToast(`${product.name} is out of stock`);
       setTimeout(() => setQuickAddToast(null), 3000);
       setTimeout(() => barcodeRef.current?.focus(), 100);
@@ -2332,9 +2378,12 @@ export default function POSPage() {
     const rawTotal = totalStock(product);
 
     // maxQty: for BLOCK → sellableQty; for WARN/ALLOW → total (includes expired)
-    const maxQty = bs && bs.expiryStatus !== 'none'
-      ? (policy === 'BLOCK' ? bs.sellableQty : rawTotal)
-      : null;
+    // null means "no batch ceiling"; Infinity means "no ceiling at all".
+    const maxQty = addMayOversell
+      ? Infinity
+      : bs && bs.expiryStatus !== 'none'
+        ? (policy === 'BLOCK' ? bs.sellableQty : rawTotal)
+        : null;
 
     setCart(prev => {
       // Match on product AND batch: re-adding the same batch tops up that line,

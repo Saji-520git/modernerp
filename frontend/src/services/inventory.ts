@@ -17,6 +17,11 @@ export interface BatchDetail {
 export interface StockRow {
   id: string;
   qty: number;
+  /** Units sold that stock could not cover (allowNegativeStock). 0 normally. */
+  shortfallQty: number;
+  /** qty − shortfallQty — what the shelf actually owes. Negative when oversold. */
+  effectiveQty: number;
+  isOversold: boolean;
   isLowStock: boolean;
   // Batch expiry fields (populated from getBatchSummary)
   sellableQty:      number;

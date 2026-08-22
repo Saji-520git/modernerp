@@ -3,7 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
-import { recomputeStockQty } from '../../utils/stock-utils.js';
+import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
@@ -433,6 +433,12 @@ export const purchaseService = {
         // aggregate stays in lock-step with the batch source of truth (never
         // negative).
         await recomputeStockQty(tx, line.productId, purchase.warehouseId);
+
+        // Pay off anything the counter sold past zero before this delivery.
+        // Consumes the batch just created, through the ordinary FEFO path, so
+        // the goods never appear on the shelf twice. No-ops when nothing is
+        // owed, which is every case unless allowNegativeStock is on.
+        await settleShortfall(tx, line.productId, purchase.warehouseId);
 
         // Set receivedQty INSIDE the confirm transaction so a purchase return is
         // always possible even if the post-transaction GRN record (createFullReceiptRecord)

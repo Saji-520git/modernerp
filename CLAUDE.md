@@ -218,7 +218,10 @@ Unit          — id, name, shortCode, allowDecimal, type (UnitType), isActive
 ProductUnitConversion — productId, fromUnitId, toUnitId, conversionQty Decimal(18,6), priceCents?, barcode?
 Warehouse     — id, name, code, address, isActive
 Product       — id, sku, barcode, name, costCents, priceCents, taxPercent, reorderLevel, expiryDate, expiryAlertDays
-Stock         — productId + warehouseId (unique), qty Decimal
+Stock         — productId + warehouseId (unique), qty Decimal, shortfallQty Decimal
+                 (qty is NEVER negative and always == SUM(positive batches);
+                  units sold past zero live in shortfallQty and are settled by
+                  the next stock increase — see utils/stock-utils.ts)
 StockMovement — productId, warehouseId, type (enum), qty (signed), refType, refId, batchId?
 StockBatch    — productId, warehouseId, purchaseLineId?, qty, expiryDate?, receivedAt
 AppSettings   — …blockExpiredSales Boolean @default(true)
@@ -592,6 +595,7 @@ For a clean dev DB, build a *separate throwaway* database from files — never m
 **Phase 3 Sprint 17: FEFO + Write-off + Stock Overview ✓** (2026-05-24)
 **Phase 3 Sprint 18: Purchasing Power-Ups ✓** (2026-05-25)
 **Phase 3 Sprint 19: Attachments, Customer Payments, Purchase Returns, P&L Compare, Dashboard Live Data ✓** (2026-05-25)
+**Phase 3 Sprint 20: Negative Stock (sell past zero) ✓** (2026-08-21)
 
 Phase 2 sprints completed:
 - Sprint 5: User Management ✓

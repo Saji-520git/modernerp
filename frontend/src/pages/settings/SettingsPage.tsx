@@ -430,6 +430,7 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
     posPrintReceipt:     settings.posPrintReceipt,
     expiredStockPolicy:  (settings.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW',
     staffSalesEnabled:   settings.staffSalesEnabled ?? false,
+    allowNegativeStock:  settings.allowNegativeStock ?? false,
   });
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     try { return localStorage.getItem('erp_sound') !== 'off'; } catch { return true; }
@@ -448,6 +449,7 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
         posPrintReceipt:    f.posPrintReceipt,
         expiredStockPolicy: f.expiredStockPolicy,
         staffSalesEnabled:  f.staffSalesEnabled,
+        allowNegativeStock: f.allowNegativeStock,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -533,6 +535,23 @@ function PosPanel({ settings, onSave, isPending, readOnly }: {
             </label>
           ))}
         </div>
+      </div>
+
+      {/* Selling past zero */}
+      <div>
+        <Toggle
+          label="Allow selling when stock reaches zero"
+          checked={f.allowNegativeStock}
+          onChange={v => setF(p => ({ ...p, allowNegativeStock: v }))}
+          disabled={readOnly}
+        />
+        <p className="text-xs text-slate-400 mt-1">
+          For when the goods are on the shelf but the delivery has not been entered yet.
+          The cashier can complete the sale, stock shows a negative, and the shortage is
+          cleared automatically by the next purchase, GRN, transfer or stock increase.
+          Batch-tracked products are always excluded — an item sold this way carries no
+          batch number or expiry date. Back-office invoices are unaffected.
+        </p>
       </div>
 
       <p className="text-xs text-slate-400">Receipt layout and footer text are configured in the <strong>Receipt</strong> section.</p>

@@ -223,6 +223,11 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
   };
 
   const statusBadge = () => {
+    // Ranked above Out on purpose: a product that owes units needs a delivery
+    // more urgently than one that has merely run out, and it would otherwise be
+    // indistinguishable from it.
+    if (Number(row.shortfallQty ?? 0) > 0)
+      return <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium"><AlertTriangle className="w-3 h-3" /> Oversold</span>;
     if (row.qty <= 0)
       return <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium"><XCircle className="w-3 h-3" /> Out</span>;
     if (row.isLowStock)
@@ -248,7 +253,14 @@ function StockRow({ row, onAdjust }: { row: import('../../services/inventory').S
         <td className="px-4 py-3 text-slate-500 font-mono text-xs">{row.product.sku}</td>
         <td className="px-4 py-3 text-slate-600">{row.warehouse.name}</td>
         <td className="px-4 py-3 text-right font-semibold">
-          {formatStockDisplay(row.product, Number(row.qty))}
+          {/* Oversold rows show the negative the counter expects. qty itself is
+              never negative — the shortage lives in shortfallQty — so the two are
+              combined only for display. */}
+          {Number(row.shortfallQty ?? 0) > 0
+            ? <span className="text-red-600" title={`${row.qty} on hand, ${row.shortfallQty} sold past stock — clears on the next delivery`}>
+                {formatStockDisplay(row.product, Number(row.effectiveQty ?? 0))}
+              </span>
+            : formatStockDisplay(row.product, Number(row.qty))}
         </td>
         <td className="px-4 py-3 text-right">
           {row.stockValueCents > 0

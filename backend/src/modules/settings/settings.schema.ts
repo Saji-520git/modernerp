@@ -55,6 +55,7 @@ export const updateSettingsSchema = z.object({
   // POS behaviour
   blockExpiredSales:     z.boolean().optional(),                          // deprecated — kept for compat
   expiredStockPolicy:    z.enum(['BLOCK', 'WARN', 'ALLOW']).optional(),
+  allowNegativeStock:    z.boolean().optional(),
   staffSalesEnabled:     z.boolean().optional(),
 
   // Receipt / Print

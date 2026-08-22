@@ -4,7 +4,7 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { convertToBaseUnit, convertFromBaseUnit } from '../../utils/unit-converter.js';
 import { getBatchSummary, getBatchDetail, deductBatchesFEFO } from '../../utils/batch-expiry.js';
-import { recomputeStockQty, repairNegativeStockQty } from '../../utils/stock-utils.js';
+import { recomputeStockQty, repairNegativeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import type {
   StockListInput,
@@ -75,9 +75,16 @@ export const inventoryService = {
     const enriched = await Promise.all(
       searched.map(async (r) => {
         const batch = await getBatchSummary(r.product.id, r.warehouse.id);
+        // Units sold that stock could not cover, and the figure to SHOW.
+        // qty stays as it is — the stored quantity, never negative, still equal
+        // to the batch sum — so valuation below is unaffected. effectiveQty is
+        // what the shelf actually owes: negative when the counter sold ahead.
+        const shortfallQty = Number(r.shortfallQty ?? 0);
         return {
           ...r,
           qty: Number(r.qty),
+          shortfallQty,
+          effectiveQty: Number(r.qty) - shortfallQty,
           ...batch,
           // Stock valuation: based on sellable qty × last cost
           stockValueCents: Math.floor(batch.sellableQty * r.product.costCents),
@@ -85,6 +92,10 @@ export const inventoryService = {
             batch.sellableQty > 0 &&
             r.product.reorderLevel > 0 &&
             batch.sellableQty <= r.product.reorderLevel,
+          // An oversold line is the most urgent restock there is, and it would
+          // otherwise be invisible: isLowStock needs sellableQty > 0, and a
+          // product with no reorderLevel set never qualifies at all.
+          isOversold: shortfallQty > 0,
         };
       }),
     );
@@ -559,6 +570,10 @@ export const inventoryService = {
           update: { qty: newQty },
           create: { productId, warehouseId, qty: newQty },
         });
+
+        // An increase is an increase, whatever its paperwork: settle anything
+        // the counter sold past zero before this stock counts as on hand.
+        await settleShortfall(tx, productId, warehouseId);
       }
 
       // Record movement
@@ -702,6 +717,11 @@ export const inventoryService = {
         update: { qty: { increment: qty } },
         create: { productId, warehouseId: toWarehouseId, qty },
       });
+
+      // Stock arriving at the destination settles a debt owed THERE. The source
+      // warehouse is untouched: transferring out of a shortfall is still
+      // blocked by the availability check above.
+      await settleShortfall(tx, productId, toWarehouseId);
 
       // TRANSFER_OUT movement (stored negative — sign comes from the type)
       await recordStockMovement(tx, {
