@@ -55,6 +55,21 @@ const main = async () => {
   ok('dashboard low-stock count includes it', Number(kpis.lowStockCount ?? 0) > 0,
      `lowStockCount=${kpis.lowStockCount}`);
 
+  // The KPI must be a real count. GROUP BY p.id makes every row one product,
+  // so counting inside the grouped query yields 1 on each row — and the caller
+  // reads the first. The tile could only ever say 1 or 0, whatever the truth
+  // was. It stayed hidden while exactly one product qualified.
+  const qualifying = await prisma.$queryRawUnsafe(
+    'SELECT p.id FROM "Product" p JOIN "Stock" s ON s."productId" = p.id ' +
+    'WHERE p."isActive" = true GROUP BY p.id ' +
+    'HAVING SUM(s."shortfallQty") > 0 ' +
+    'OR ((SELECT "reorderLevel" FROM "Product" WHERE id = p.id) > 0 ' +
+    'AND SUM(s.qty) <= (SELECT "reorderLevel" FROM "Product" WHERE id = p.id))',
+  );
+  ok('low-stock count is a real count, not capped at 1',
+     Number(kpis.lowStockCount) === qualifying.length,
+     `kpi=${kpis.lowStockCount} actual=${qualifying.length}`);
+
   // ── 3. Dashboard list ────────────────────────────────────────────────────
   const list = await dashboardService.lowStockAlerts();
   const listed = list.find((r) => r.id === productId);
@@ -62,8 +77,15 @@ const main = async () => {
      `list=${list.map(r => r.name).join(', ')}`);
   ok('listed with its negative quantity', listed && Number(listed.totalQty) === -3,
      `totalQty=${listed?.totalQty}`);
-  ok('oversold sorts above merely-low products', list[0]?.id === productId,
-     `first=${list[0]?.name}`);
+  // Asserted as a property, not a position: other products may legitimately be
+  // oversold too (real data, or an earlier scenario), and two rows tied on the
+  // sort key have no defined order between them. What must hold is that every
+  // oversold row outranks every merely-low one.
+  const lastOversold  = list.reduce((acc, r, i) => (Number(r.totalQty) < 0 ? i : acc), -1);
+  const firstNotOver  = list.findIndex((r) => Number(r.totalQty) >= 0);
+  ok('every oversold row sorts above every merely-low one',
+     firstNotOver === -1 || lastOversold < firstNotOver,
+     list.map((r) => `${r.name.slice(0, 18)}:${r.totalQty}`).join(' | '));
 
   // ── 4. Once settled, the alert clears ────────────────────────────────────
   await prisma.stock.update({

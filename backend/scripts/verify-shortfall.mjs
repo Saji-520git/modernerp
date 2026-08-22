@@ -37,6 +37,12 @@ const main = async () => {
   if (!stock) throw new Error('no stock row to test against');
   const { productId, warehouseId } = stock;
 
+  // Baseline, not zero. Real trading legitimately leaves debt outstanding, so
+  // the property to hold is that this run changes nothing — asserting an empty
+  // ledger only worked on a freshly seeded database.
+  const baseline = await prisma.stock.aggregate({ _sum: { shortfallQty: true } });
+  const baselineShortfall = Number(baseline._sum.shortfallQty ?? 0);
+
   // 1 — oversell then a delivery that covers it exactly
   await scenario('settles fully when the delivery covers the debt', async (tx) => {
     await tx.stockBatch.deleteMany({ where: { productId, warehouseId } });
@@ -138,8 +144,8 @@ const main = async () => {
 
   // residue check
   const final = await prisma.stock.aggregate({ _sum: { shortfallQty: true } });
-  ok('no residue left behind', Number(final._sum.shortfallQty ?? 0) === 0,
-     `total shortfall in DB = ${Number(final._sum.shortfallQty ?? 0)}`);
+  ok('no residue left behind', Number(final._sum.shortfallQty ?? 0) === baselineShortfall,
+     `total shortfall moved: ${baselineShortfall} -> ${Number(final._sum.shortfallQty ?? 0)}`);
 
   console.log('');
   for (const r of results) {

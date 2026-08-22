@@ -102,19 +102,26 @@ export const dashboardService = {
 
     // Actually count low stock properly via raw query
     const lowStockResult = await prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(DISTINCT p.id)::bigint as count
-      FROM "Product" p
-      JOIN "Stock" s ON s."productId" = p.id
-      WHERE p."isActive" = true
-      GROUP BY p.id
-      -- reorderLevel > 0 moved out of WHERE and into the second branch on
-      -- purpose: an oversold product needs restocking whether or not anyone
-      -- ever set a reorder level, and under the old filter one without a level
-      -- could sit at -5 and never be counted. With no shortfalls anywhere the
-      -- first branch is always false and this returns exactly what it did.
-      HAVING SUM(s."shortfallQty") > 0
-          OR ((SELECT "reorderLevel" FROM "Product" WHERE id = p.id) > 0
-              AND SUM(s.qty) <= (SELECT "reorderLevel" FROM "Product" WHERE id = p.id))
+      -- Counted in an OUTER query over the grouped rows. GROUP BY p.id makes
+      -- each row one product, so COUNT(DISTINCT p.id) inside it is 1 on every
+      -- row — and the caller reads [0].count. The KPI could therefore only ever
+      -- report 1 or 0, however many products were low. It went unnoticed while
+      -- exactly one product qualified; three oversold rows exposed it.
+      SELECT COUNT(*)::bigint AS count FROM (
+        SELECT p.id
+        FROM "Product" p
+        JOIN "Stock" s ON s."productId" = p.id
+        WHERE p."isActive" = true
+        GROUP BY p.id
+        -- reorderLevel > 0 moved out of WHERE and into the second branch on
+        -- purpose: an oversold product needs restocking whether or not anyone
+        -- ever set a reorder level, and under the old filter one without a level
+        -- could sit at -5 and never be counted. With no shortfalls anywhere the
+        -- first branch is always false and this matches the previous rule.
+        HAVING SUM(s."shortfallQty") > 0
+            OR ((SELECT "reorderLevel" FROM "Product" WHERE id = p.id) > 0
+                AND SUM(s.qty) <= (SELECT "reorderLevel" FROM "Product" WHERE id = p.id))
+      ) q
     `;
     const actualLowStock = Number(lowStockResult[0]?.count ?? 0);
 
