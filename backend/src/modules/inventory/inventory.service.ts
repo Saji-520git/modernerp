@@ -805,12 +805,17 @@ export const inventoryService = {
     logger.info({ batchId, productId: batch.productId, warehouseId, qty, reason }, 'Write-off starting');
 
     // ── Generate WO reference number ─────────────────────────────────────────
-    const year    = new Date().getFullYear();
-    const woPrefix = `WO-${year}-`;
-    const woCount  = await (prisma as any).expense.count({
-      where: { reference: { startsWith: woPrefix } },
+    // Highest issued + 1. Expense.reference is not unique, so a repeat here
+    // would not fail — it would quietly give two write-offs the same reference,
+    // which is worse: the number is the only handle anyone has on the record.
+    const woPrefix = `WO-${new Date().getFullYear()}-`;
+    const lastWo   = await (prisma as any).expense.findFirst({
+      where:   { reference: { startsWith: woPrefix } },
+      orderBy: { reference: 'desc' },
+      select:  { reference: true },
     });
-    const woReference = `${woPrefix}${String(woCount + 1).padStart(4, '0')}`;
+    const lastWoSeq   = lastWo?.reference ? Number.parseInt(String(lastWo.reference).slice(woPrefix.length), 10) : 0;
+    const woReference = `${woPrefix}${String((Number.isFinite(lastWoSeq) ? lastWoSeq : 0) + 1).padStart(4, '0')}`;
 
     // ── Find or create "Stock Write-Off" expense category ────────────────────
     let expenseCategory = await (prisma as any).expenseCategory.findFirst({

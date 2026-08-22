@@ -6,16 +6,13 @@ import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { resolveOpenShiftId } from '../pos/resolve-shift.js';
 import type { CreateReturnInput, ListReturnsInput } from './returns.schema.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Highest issued + 1, never a row count — see utils/doc-number.ts.
 async function generateReturnNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `CRN-${year}-`;
-  const count = await prisma.saleReturn.count({
-    where: { number: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.saleReturn, `CRN-${new Date().getFullYear()}-`);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -183,7 +180,6 @@ export const returnsService = {
       }
     }
 
-    const number = await generateReturnNumber();
     const totalCents = input.lines.reduce((s, l) => s + l.lineTotalCents, 0);
 
     // Which till this refund comes out of. Resolved before the transaction so
@@ -195,7 +191,14 @@ export const returnsService = {
       ? await resolveOpenShiftId(userId, sale.warehouseId)
       : null;
 
-    return prisma.$transaction(async (tx) => {
+    // Number issued inside the retry, wrapping the whole transaction: a return
+    // can be raised at the till as well as the back office, so two can collide,
+    // and re-reading the maximum after the database rejects one is the only way
+    // to settle it. Retrying the transaction as a unit keeps the stock and
+    // refund writes together with the number they were issued under.
+    return withNumberRetry(async () => {
+      const number = await generateReturnNumber();
+      return prisma.$transaction(async (tx) => {
       // 1. Create return record + lines
       const ret = await tx.saleReturn.create({
         data: {
@@ -303,6 +306,7 @@ export const returnsService = {
       }
 
       return ret;
+      });
     });
   },
 };

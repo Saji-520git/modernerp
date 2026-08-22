@@ -9,16 +9,15 @@ import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
+import { nextDocNumber } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Highest issued + 1, never a row count. Purchases soft-delete, so a count
+// drops while the number it belonged to stays taken — the next PO would reuse
+// it and die on the unique index. See utils/doc-number.ts.
 async function generatePONumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `PO-${year}-`;
-  const count = await prisma.purchase.count({
-    where: { number: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.purchase, `PO-${new Date().getFullYear()}-`);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

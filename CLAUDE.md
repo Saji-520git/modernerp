@@ -537,7 +537,8 @@ After completing a module:
 | 5 | Receipt/label print silently skipped in Electron — `win.close()` raced `win.print()` | printWindow.ts / POSPage / BarcodeLabelsPage | HIGH | Resolved 2026-08-18 |
 | 6 | Invoice numbers derived from row count — skip, and collide after a delete | sales.service / pos.service | HIGH | Resolved 2026-08-18 |
 | 7 | `npm run build` packaged a stale dist — shipped fixes were invisible | package.json | HIGH | Resolved 2026-08-18 |
-| 8 | Eight other doc-number generators still count rows (PO/CRN/GRN/SPAY/quotation/stocktake/purchase-return/write-off) | see §12.2 | MEDIUM | Open |
+| 8 | Eight other doc-number generators still count rows (PO/CRN/GRN/SPAY/quotation/stocktake/purchase-return/write-off) | see §12.2 | MEDIUM | Resolved 2026-08-23 |
+| 9 | `withNumberRetry` not applied to PO confirm / GRN receipt (max+1 is, so a delete is safe; two *simultaneous* creates could still collide) | purchases.service / purchase-receipt.service | LOW | Open |
 
 ### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
 
@@ -626,7 +627,7 @@ Phase 3 sprints completed:
 **Known open issues (minor):**
 - Expense add with non-Rent categories: test after bug fix
 - P&L report shows expenses section (verify in browser)
-- 3 pre-existing backend TS errors in auth.service + users.service
+- (Backend TS errors: gone — `npm run typecheck` is clean on both sides as of 2026-08-23)
 
 **Tech stack:** React 18 + Vite + TypeScript + Tailwind
   Node.js + Express + Prisma + PostgreSQL

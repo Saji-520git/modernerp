@@ -7,16 +7,14 @@ import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { settleShortfall } from '../../utils/stock-utils.js';
+import { nextDocNumber } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Highest issued + 1, never a row count — see utils/doc-number.ts. The column
+// here is `receiptNumber`, not `number`, hence the explicit field.
 async function generateGRNNumber(): Promise<string> {
-  const year   = new Date().getFullYear();
-  const prefix = `GRN-${year}-`;
-  const count  = await prisma.purchaseReceipt.count({
-    where: { receiptNumber: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.purchaseReceipt, `GRN-${new Date().getFullYear()}-`, 4, 'receiptNumber');
 }
 
 export interface ReceiptLineInput {

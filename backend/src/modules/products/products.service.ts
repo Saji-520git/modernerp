@@ -1,16 +1,19 @@
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import type { ListProductsInput, CreateProductInput, UpdateProductInput } from './products.schema.js';
+import { nextDocNumber } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Highest PRD- SKU issued + 1, scoped to that prefix.
+//
+// This counted EVERY product, prefix or not. With 3,264 products — nearly all
+// imported under their own P0xxxx codes — the next generated SKU came out as
+// PRD-3265 while the PRD sequence stood at 2. Not a failure, since the old
+// collision guard appended a timestamp, but the numbers were arbitrary and the
+// guard produced SKUs like PRD-3364-lq3k2p when they did clash.
 async function generateSku(): Promise<string> {
-  const count = await prisma.product.count();
-  const candidate = `PRD-${String(count + 1).padStart(4, '0')}`;
-  // Ensure uniqueness in case of gaps
-  const existing = await prisma.product.findUnique({ where: { sku: candidate } });
-  if (existing) return `PRD-${String(count + 100).padStart(4, '0')}-${Date.now().toString(36)}`;
-  return candidate;
+  return nextDocNumber(prisma.product, 'PRD-', 4, 'sku');
 }
 
 // ─── Barcode sanitizer ────────────────────────────────────────────────────────

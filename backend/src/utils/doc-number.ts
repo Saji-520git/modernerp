@@ -31,21 +31,40 @@ export type NumberedDelegate = {
 };
 
 /**
+ * Same idea for models whose column is not literally called `number` —
+ * PurchaseReceipt uses `receiptNumber`, SupplierPayment uses `paymentNumber`.
+ * The shape cannot be expressed with a fixed key, so the field is passed in and
+ * the args are built dynamically.
+ */
+// `any` is deliberate and contained here. Prisma types findFirst through
+// SelectSubset<T, ...>, which resolves the allowed keys from a literal argument
+// — a key computed at runtime cannot satisfy it, and every stricter shape is
+// rejected at the call site. The looseness stops at this boundary: `field` is
+// supplied by the two call sites that need it, and the result is read back as a
+// string below.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyNumberedDelegate = { findFirst: (args: any) => Promise<any> };
+
+/**
  * Next sequential document number for a year-scoped prefix, e.g. "INV-2026-".
  * Ordering is lexicographic, which is correct because the suffix is fixed-width
  * and zero-padded.
+ *
+ * @param field the column holding the number, when it is not called `number`
  */
 export async function nextDocNumber(
-  model: NumberedDelegate,
+  model: NumberedDelegate | AnyNumberedDelegate,
   prefix: string,
   pad = 4,
+  field = 'number',
 ): Promise<string> {
-  const last = await model.findFirst({
-    where:   { number: { startsWith: prefix } },
-    orderBy: { number: 'desc' },
-    select:  { number: true },
+  const last = await (model as AnyNumberedDelegate).findFirst({
+    where:   { [field]: { startsWith: prefix } },
+    orderBy: { [field]: 'desc' },
+    select:  { [field]: true },
   });
-  const lastSeq = last ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
+  const raw     = last ? String(last[field] ?? '') : '';
+  const lastSeq = raw ? Number.parseInt(raw.slice(prefix.length), 10) : 0;
   const next    = (Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
   return `${prefix}${String(next).padStart(pad, '0')}`;
 }
@@ -65,7 +84,11 @@ export async function withNumberRetry<T>(attempt: () => Promise<T>, tries = 5): 
       return await attempt();
     } catch (err) {
       const code = (err as Prisma.PrismaClientKnownRequestError)?.code;
-      const target = String((err as { meta?: { target?: unknown } })?.meta?.target ?? '');
+      // Lower-cased before matching: the column is `number` on most documents
+      // but `receiptNumber` on a GRN and `paymentNumber` on a supplier payment,
+      // and a case-sensitive test silently skipped the retry for those two —
+      // the collision would surface as a raw 500 instead of a fresh number.
+      const target = String((err as { meta?: { target?: unknown } })?.meta?.target ?? '').toLowerCase();
       if (code !== 'P2002' || !target.includes('number')) throw err;
       lastErr = err;
     }

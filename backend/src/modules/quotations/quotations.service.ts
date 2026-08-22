@@ -3,12 +3,11 @@ import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { salesService } from '../sales/sales.service.js';
 import type { CreateQuotationInput, UpdateQuotationInput, SetStatusInput } from './quotations.schema.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
+// Highest issued + 1, never a row count — see utils/doc-number.ts.
 async function generateQuotationNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `QUO-${year}-`;
-  const count = await prisma.quotation.count({ where: { number: { startsWith: prefix } } });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.quotation, `QUO-${new Date().getFullYear()}-`);
 }
 
 type LineInput = CreateQuotationInput['lines'][number];
@@ -59,16 +58,21 @@ export const quotationsService = {
 
   create: async (input: CreateQuotationInput, userId: string) => {
     const { computed, subtotalCents, totalCents } = computeTotals(input.lines, input.discountCents, input.taxCents);
-    const number = await generateQuotationNumber();
-    return prisma.quotation.create({
-      data: {
-        number, customerId: input.customerId ?? null, title: input.title ?? null,
-        validUntil: input.validUntil ?? null, note: input.note ?? null, termsConditions: input.termsConditions ?? null,
-        discountCents: input.discountCents, taxCents: input.taxCents, subtotalCents, totalCents,
-        createdById: userId,
-        lines: { create: computed },
-      },
-      include: DETAIL_INCLUDE,
+    // Number read and used inside the retry: two people saving a quotation at
+    // the same instant both see the same maximum, and only the database can
+    // settle which one gets it.
+    return withNumberRetry(async () => {
+      const number = await generateQuotationNumber();
+      return prisma.quotation.create({
+        data: {
+          number, customerId: input.customerId ?? null, title: input.title ?? null,
+          validUntil: input.validUntil ?? null, note: input.note ?? null, termsConditions: input.termsConditions ?? null,
+          discountCents: input.discountCents, taxCents: input.taxCents, subtotalCents, totalCents,
+          createdById: userId,
+          lines: { create: computed },
+        },
+        include: DETAIL_INCLUDE,
+      });
     });
   },
 

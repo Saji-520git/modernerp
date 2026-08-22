@@ -2,16 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import type { PaymentMethod, PurchasePaymentStatus } from '@prisma/client';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Highest issued + 1, never a row count — see utils/doc-number.ts. The column
+// here is `paymentNumber`, not `number`, hence the explicit field.
 async function generateSPAYNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `SPAY-${year}-`;
-  const count = await prisma.supplierPayment.count({
-    where: { paymentNumber: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.supplierPayment, `SPAY-${new Date().getFullYear()}-`, 4, 'paymentNumber');
 }
 
 // Option B — derive against the EFFECTIVE total owed (totalCents minus confirmed
@@ -142,14 +140,17 @@ export const supplierPaymentService = {
       );
     }
 
-    const paymentNumber = await generateSPAYNumber();
     const newPaidCents  = purchase.paidCents + data.amountCents;
     // Derive against effective payable (delivered value minus confirmed return
     // credit), reusing returnedCents computed above for the overpayment guard.
     const effectiveTotalCents = Math.max(0, payableCents - returnedCents);
     const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
-    return prisma.$transaction(async (tx) => {
+    // Number issued inside the retry, wrapping the transaction as a unit so the
+    // payment row and the purchase totals it updates stay together.
+    return withNumberRetry(async () => {
+      const paymentNumber = await generateSPAYNumber();
+      return prisma.$transaction(async (tx) => {
       const payment = await tx.supplierPayment.create({
         data: {
           paymentNumber,
@@ -178,6 +179,7 @@ export const supplierPaymentService = {
       });
 
       return payment;
+      });
     });
   },
 
@@ -201,13 +203,18 @@ export const supplierPaymentService = {
     });
     if (!supplier) throw new HttpError(404, 'Supplier not found');
 
-    // Reserve a contiguous block of SPAY numbers up-front.
-    const year   = new Date().getFullYear();
-    const prefix = `SPAY-${year}-`;
-    const count  = await prisma.supplierPayment.count({
-      where: { paymentNumber: { startsWith: prefix } },
+    // Reserve a contiguous block of SPAY numbers up-front, counted from the
+    // HIGHEST already issued rather than from how many rows exist. A count
+    // reserves a block sitting on top of live numbers as soon as anything has
+    // been deleted, so every payment in the run collides, not just one.
+    const prefix = `SPAY-${new Date().getFullYear()}-`;
+    const lastSpay = await prisma.supplierPayment.findFirst({
+      where:   { paymentNumber: { startsWith: prefix } },
+      orderBy: { paymentNumber: 'desc' },
+      select:  { paymentNumber: true },
     });
-    let seq = count;
+    const lastSpaySeq = lastSpay ? Number.parseInt(lastSpay.paymentNumber.slice(prefix.length), 10) : 0;
+    let seq = Number.isFinite(lastSpaySeq) ? lastSpaySeq : 0;
 
     const allocationGroupId = randomUUID();
     const paidDate          = new Date(paymentDate);
@@ -322,13 +329,18 @@ export const supplierPaymentService = {
       throw new HttpError(400, 'Supplier has no available credit balance');
     }
 
-    // Reserve a contiguous block of SPAY numbers up-front.
-    const year   = new Date().getFullYear();
-    const prefix = `SPAY-${year}-`;
-    const count  = await prisma.supplierPayment.count({
-      where: { paymentNumber: { startsWith: prefix } },
+    // Reserve a contiguous block of SPAY numbers up-front, counted from the
+    // HIGHEST already issued rather than from how many rows exist. A count
+    // reserves a block sitting on top of live numbers as soon as anything has
+    // been deleted, so every payment in the run collides, not just one.
+    const prefix = `SPAY-${new Date().getFullYear()}-`;
+    const lastSpay = await prisma.supplierPayment.findFirst({
+      where:   { paymentNumber: { startsWith: prefix } },
+      orderBy: { paymentNumber: 'desc' },
+      select:  { paymentNumber: true },
     });
-    let seq = count;
+    const lastSpaySeq = lastSpay ? Number.parseInt(lastSpay.paymentNumber.slice(prefix.length), 10) : 0;
+    let seq = Number.isFinite(lastSpaySeq) ? lastSpaySeq : 0;
 
     const allocationGroupId = randomUUID();
     const paidDate          = new Date(paymentDate);

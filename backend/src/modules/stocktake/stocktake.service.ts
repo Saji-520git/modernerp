@@ -5,12 +5,11 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { inventoryService } from '../inventory/inventory.service.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import type { CreateStockTakeInput, SaveCountsInput } from './stocktake.schema.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
+// Highest issued + 1, never a row count — see utils/doc-number.ts.
 async function generateStockTakeNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `ST-${year}-`;
-  const count = await prisma.stockTake.count({ where: { number: { startsWith: prefix } } });
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+  return nextDocNumber(prisma.stockTake, `ST-${new Date().getFullYear()}-`);
 }
 
 const LINE_INCLUDE = {
@@ -69,25 +68,30 @@ export const stockTakeService = {
     });
     if (stockRows.length === 0) throw new HttpError(400, 'No products to count for this warehouse/category');
 
-    const number = await generateStockTakeNumber();
-    const created = await prisma.stockTake.create({
-      data: {
-        number,
-        warehouseId: input.warehouseId,
-        note:        input.note ?? null,
-        createdById: userId,
-        status:      'DRAFT',
-        lines: {
-          create: stockRows.map((r) => ({
-            productId:     r.productId,
-            systemQty:     r.qty,
-            unitCostCents: r.product.costCents,
-          })),
+    // Number read and used inside the retry, so a concurrent create that takes
+    // the same maximum is re-issued rather than failing. `number` is selected
+    // back because it is no longer in scope out here.
+    const created = await withNumberRetry(async () => {
+      const number = await generateStockTakeNumber();
+      return prisma.stockTake.create({
+        data: {
+          number,
+          warehouseId: input.warehouseId,
+          note:        input.note ?? null,
+          createdById: userId,
+          status:      'DRAFT',
+          lines: {
+            create: stockRows.map((r) => ({
+              productId:     r.productId,
+              systemQty:     r.qty,
+              unitCostCents: r.product.costCents,
+            })),
+          },
         },
-      },
-      select: { id: true },
+        select: { id: true, number: true },
+      });
     });
-    logger.info({ id: created.id, number, lines: stockRows.length }, 'Stock-take created');
+    logger.info({ id: created.id, number: created.number, lines: stockRows.length }, 'Stock-take created');
     return stockTakeService.getById(created.id);
   },
 
