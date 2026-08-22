@@ -2,6 +2,8 @@
 // Pure, side-effect-free utilities (except openWhatsApp) for building wa.me deep
 // links and filling message templates. No network, no dependencies.
 
+import { emitToast } from '../lib/toast-bus';
+
 /**
  * Normalise a phone number to the bare digit string wa.me expects (country code
  * + subscriber number, no '+', no spaces).
@@ -132,17 +134,36 @@ export function buildItemsList(lines: WAItemLine[]): string {
  * Open a WhatsApp chat. `mode` decides the target:
  *   'app'     → whatsapp:// deep link → WhatsApp Desktop app directly (default)
  *   'browser' → https://wa.me link → default browser → WhatsApp Web
- * Silent no-op if the phone can't be normalised. In the desktop build, Electron's
- * setWindowOpenHandler routes both schemes to shell.openExternal.
+ * In the desktop build, Electron's setWindowOpenHandler routes both schemes to
+ * shell.openExternal.
+ *
+ * A number that cannot be normalised used to be a SILENT no-op: the cashier
+ * pressed Send and nothing happened at all — no chat, no error, nothing to act
+ * on. The button is only rendered when a phone exists, so reaching here with an
+ * unusable one means the stored number is malformed, and saying so is the only
+ * way anyone will fix it. Reported through the global toast bus rather than
+ * per-page state, so all six call sites get it without wiring.
+ *
+ * @returns true when a chat was opened, false when the number is unusable.
  */
 export function openWhatsApp(
   phone: string | null | undefined,
   msg: string,
   mode: WAOpenMode = 'app',
-): void {
+): boolean {
   const link = mode === 'browser' ? buildWALink(phone, msg) : buildWADesktopLink(phone, msg);
-  if (!link) return;
+  if (!link) {
+    const shown = (phone ?? '').trim();
+    emitToast(
+      shown
+        ? `WhatsApp can't use the number "${shown}" — correct the phone on this contact.`
+        : 'No phone number saved for this contact — add one to send on WhatsApp.',
+      false,
+    );
+    return false;
+  }
   window.open(link, '_blank');
+  return true;
 }
 
 // ─── Default message templates ──────────────────────────────────────────────────
