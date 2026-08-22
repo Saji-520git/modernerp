@@ -46,11 +46,38 @@ export async function generateAlerts(): Promise<void> {
     });
 
     for (const row of stockRows) {
-      const qty      = Number(row.qty);
-      const level    = row.product.reorderLevel;
-      const alertId  = `low_${row.productId}_${row.warehouseId}`;
+      const qty       = Number(row.qty);
+      const shortfall = Number(row.shortfallQty ?? 0);
+      const level     = row.product.reorderLevel;
+      const alertId   = `low_${row.productId}_${row.warehouseId}`;
 
-      if (level > 0 && qty <= level) {
+      // Owing units is the most urgent restock there is, and it was the one
+      // case this loop could not see: the branch below needs reorderLevel > 0,
+      // so a product without one could sit at -5 and raise nothing at all.
+      // Always CRITICAL, and always raised — the shop has already sold goods it
+      // does not have, and the delivery is what clears it.
+      if (shortfall > 0) {
+        const message = `${row.product.name} is oversold by ${shortfall} at ${row.warehouse.name} — sold past available stock, clears on the next delivery`;
+        await saveAlert(
+          alertId,
+          {
+            type:        'LOW_STOCK',
+            severity:    'CRITICAL',
+            productId:   row.productId,
+            warehouseId: row.warehouseId,
+            qty:         qty - shortfall,   // the negative the counter sees
+            threshold:   level,
+            message,
+          },
+          {
+            qty:       qty - shortfall,
+            severity:  'CRITICAL',
+            threshold: level,
+            message,
+            updatedAt: now,
+          },
+        );
+      } else if (level > 0 && qty <= level) {
         const severity = qty === 0 || qty <= level * 0.5 ? 'CRITICAL' : 'WARNING';
         const message = `${row.product.name} stock (${qty}) is below reorder level (${level}) at ${row.warehouse.name}`;
         await saveAlert(

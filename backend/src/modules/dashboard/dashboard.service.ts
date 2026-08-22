@@ -106,9 +106,15 @@ export const dashboardService = {
       FROM "Product" p
       JOIN "Stock" s ON s."productId" = p.id
       WHERE p."isActive" = true
-        AND p."reorderLevel" > 0
       GROUP BY p.id
-      HAVING SUM(s.qty) <= (SELECT "reorderLevel" FROM "Product" WHERE id = p.id)
+      -- reorderLevel > 0 moved out of WHERE and into the second branch on
+      -- purpose: an oversold product needs restocking whether or not anyone
+      -- ever set a reorder level, and under the old filter one without a level
+      -- could sit at -5 and never be counted. With no shortfalls anywhere the
+      -- first branch is always false and this returns exactly what it did.
+      HAVING SUM(s."shortfallQty") > 0
+          OR ((SELECT "reorderLevel" FROM "Product" WHERE id = p.id) > 0
+              AND SUM(s.qty) <= (SELECT "reorderLevel" FROM "Product" WHERE id = p.id))
     `;
     const actualLowStock = Number(lowStockResult[0]?.count ?? 0);
 
@@ -364,13 +370,24 @@ export const dashboardService = {
         p.name,
         p.sku,
         p."reorderLevel",
-        COALESCE(SUM(s.qty), 0)::float AS "totalQty"
+        -- Net of anything sold past stock, so an oversold product reports the
+        -- negative the counter sees rather than a flat zero.
+        (COALESCE(SUM(s.qty), 0) - COALESCE(SUM(s."shortfallQty"), 0))::float AS "totalQty"
       FROM "Product" p
       LEFT JOIN "Stock" s ON s."productId" = p.id
-      WHERE p."isActive" = true AND p."reorderLevel" > 0
+      WHERE p."isActive" = true
       GROUP BY p.id, p.name, p.sku, p."reorderLevel"
-      HAVING COALESCE(SUM(s.qty), 0) <= p."reorderLevel"
-      ORDER BY (COALESCE(SUM(s.qty), 0) - p."reorderLevel") ASC
+      -- Oversold products qualify with or without a reorder level; everything
+      -- else behaves exactly as before (the first branch is never true when no
+      -- shortfall exists anywhere).
+      HAVING COALESCE(SUM(s."shortfallQty"), 0) > 0
+          OR (p."reorderLevel" > 0 AND COALESCE(SUM(s.qty), 0) <= p."reorderLevel")
+      -- Oversold first as a class, then deepest shortage. Ranking purely by
+      -- distance below the reorder level would bury a product the shop actually
+      -- owes units of beneath one that is merely under its threshold — and the
+      -- alert generator already calls the former CRITICAL.
+      ORDER BY (CASE WHEN COALESCE(SUM(s."shortfallQty"), 0) > 0 THEN 0 ELSE 1 END) ASC,
+               (COALESCE(SUM(s.qty), 0) - COALESCE(SUM(s."shortfallQty"), 0) - p."reorderLevel") ASC
       LIMIT 5
     `;
 
