@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  ComposedChart, Area, Bar, Line, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine,
+} from 'recharts';
+import { ChartContainer, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import {
   TrendingUp, ShoppingCart, Package, Users, Warehouse, DollarSign,
   Download, RefreshCw, AlertTriangle, ChevronUp, ChevronDown,
 } from 'lucide-react';
@@ -1232,6 +1236,129 @@ function ComparePeriodsPanel() {
 
 // ─── 6. Profit & Loss Tab ─────────────────────────────────────────────────────
 
+// ─── P&L trend ────────────────────────────────────────────────────────────────
+//
+// Replaces two stacked hand-rolled bar charts — gross profit above, net profit
+// below — which forced the eye to compare two series across a gap, on two
+// independent scales, with no way to read a single month across both.
+//
+// One composed chart on a shared axis instead: revenue as a soft gradient for
+// context, gross profit as bars, net profit as a line that can dip below the
+// zero rule. Recharts animates on mount, and the shared ChartContainer publishes
+// --color-* variables so the series follow the app theme in light and dark
+// exactly as the Dashboard does.
+function PLTrendChart({ rows }: { rows: ProfitLossData['byPeriod'] }) {
+  const config: ChartConfig = {
+    revenue:     { label: 'Revenue',      color: 'hsl(238 75% 62%)' },
+    grossProfit: { label: 'Gross Profit', color: 'hsl(160 70% 42%)' },
+    netProfit:   { label: 'Net Profit',   color: 'hsl(217 85% 58%)' },
+  };
+
+  // Cents are kept as the plotted values and formatted at the edges, so no
+  // rounding is introduced between the table and the chart.
+  const data = rows.slice(-12).map((r) => ({
+    period:      r.period,
+    revenue:     r.revenueCents,
+    grossProfit: r.grossProfitCents,
+    netProfit:   r.netProfitCents,
+  }));
+
+  const monthLabel = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+
+  // A zero rule only earns its place when something actually crosses it.
+  const hasLoss = data.some((d) => d.netProfit < 0);
+
+  // One period is not a trend: an area and a line have nothing to span, and
+  // would render as an orphaned dot beside a lone bar. The same three figures
+  // are shown side by side instead, which is what a single month can honestly
+  // say. The chart becomes a trend on its own once a second month exists.
+  const single = data.length < 2;
+  if (single) {
+    return (
+      <div>
+        <ChartContainer config={config} className="h-[260px]">
+          <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis dataKey="period" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={monthLabel} />
+            <YAxis tickLine={false} axisLine={false} width={58} tickFormatter={(v: number) => formatMoneyShort(v)} />
+            <Tooltip
+              cursor={{ fill: 'hsl(var(--muted))', opacity: 0.35 }}
+              content={<ChartTooltipContent labelFormatter={(l) => monthLabel(String(l))} formatter={(value) => formatMoney(Number(value))} />}
+            />
+            {hasLoss && <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1.5} />}
+            <Bar dataKey="revenue"     fill="var(--color-revenue)"     radius={[5, 5, 0, 0]} maxBarSize={54} animationDuration={800} />
+            <Bar dataKey="grossProfit" fill="var(--color-grossProfit)" radius={[5, 5, 0, 0]} maxBarSize={54} animationDuration={800} animationBegin={110} />
+            <Bar dataKey="netProfit"   fill="var(--color-netProfit)"   radius={[5, 5, 0, 0]} maxBarSize={54} animationDuration={800} animationBegin={220} />
+          </ComposedChart>
+        </ChartContainer>
+        <p className="text-xs text-slate-400 mt-1">
+          One month in this range — the trend lines appear once a second month has data.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ChartContainer config={config} className="h-[260px]">
+      <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id="fillPLRevenue" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="var(--color-revenue)" stopOpacity={0.20} />
+            <stop offset="100%" stopColor="var(--color-revenue)" stopOpacity={0.01} />
+          </linearGradient>
+          <linearGradient id="fillPLGross" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="var(--color-grossProfit)" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="var(--color-grossProfit)" stopOpacity={0.55} />
+          </linearGradient>
+        </defs>
+
+        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+        <XAxis dataKey="period" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={monthLabel} />
+        <YAxis tickLine={false} axisLine={false} width={58} tickFormatter={(v: number) => formatMoneyShort(v)} />
+        <Tooltip
+          cursor={{ fill: 'hsl(var(--muted))', opacity: 0.35 }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(l) => monthLabel(String(l))}
+              formatter={(value) => formatMoney(Number(value))}
+            />
+          }
+        />
+
+        {hasLoss && <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1.5} />}
+
+        <Area
+          type="monotone"
+          dataKey="revenue"
+          stroke="var(--color-revenue)"
+          strokeWidth={2}
+          fill="url(#fillPLRevenue)"
+          animationDuration={900}
+        />
+        <Bar
+          dataKey="grossProfit"
+          fill="url(#fillPLGross)"
+          radius={[5, 5, 0, 0]}
+          maxBarSize={40}
+          animationDuration={900}
+          animationBegin={120}
+        />
+        <Line
+          type="monotone"
+          dataKey="netProfit"
+          stroke="var(--color-netProfit)"
+          strokeWidth={2.4}
+          dot={{ r: 3, strokeWidth: 0, fill: 'var(--color-netProfit)' }}
+          activeDot={{ r: 5 }}
+          animationDuration={1000}
+          animationBegin={260}
+        />
+      </ComposedChart>
+    </ChartContainer>
+  );
+}
+
 function ProfitLossTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
@@ -1374,9 +1501,13 @@ function ProfitLossTab() {
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-700">Monthly P&L Trend</h3>
+              {/* Swatch shapes match how each series is drawn — a line for the
+                  two lines, a block for the bars — so the key is readable
+                  without tracing colours back to the chart. */}
               <div className="flex items-center gap-4 text-xs text-slate-500">
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded-full bg-indigo-500" /> Revenue</span>
                 <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500" /> Gross Profit</span>
-                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500" /> Net Profit</span>
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 rounded-full bg-blue-500" /> Net Profit</span>
               </div>
             </div>
             {data.byPeriod.length === 0 ? (
@@ -1385,24 +1516,7 @@ function ProfitLossTab() {
               </div>
             ) : (
               <>
-              <div className="h-48">
-                <BarChart
-                  data={data.byPeriod}
-                  labelKey="period"
-                  valueKey="grossProfitCents"
-                  color="green"
-                  maxBars={12}
-                />
-              </div>
-              <div className="mt-2 h-48">
-                <BarChart
-                  data={data.byPeriod}
-                  labelKey="period"
-                  valueKey="netProfitCents"
-                  color="blue"
-                  maxBars={12}
-                />
-              </div>
+              <PLTrendChart rows={data.byPeriod} />
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

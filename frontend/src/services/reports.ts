@@ -6,11 +6,17 @@ export function formatMoney(cents: number): string {
   return `Rs. ${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Abbreviated on MAGNITUDE, so a loss shortens the same way a gain does. The
+// thresholds used to be tested against the signed value, so -800000 cents fell
+// past both and printed "Rs. -8000.00" beside a "Rs. 8.0K" — visible the moment
+// a P&L axis had to cross zero.
 export function formatMoneyShort(cents: number): string {
-  const n = cents / 100;
-  if (n >= 1_000_000) return `Rs. ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `Rs. ${(n / 1_000).toFixed(1)}K`;
-  return `Rs. ${n.toFixed(2)}`;
+  const n    = cents / 100;
+  const sign = n < 0 ? '-' : '';
+  const abs  = Math.abs(n);
+  if (abs >= 1_000_000) return `Rs. ${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000)     return `Rs. ${sign}${(abs / 1_000).toFixed(1)}K`;
+  return `Rs. ${sign}${abs.toFixed(2)}`;
 }
 
 // Use local date components so the "today" boundary is the user's
