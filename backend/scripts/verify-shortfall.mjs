@@ -2,7 +2,7 @@
 // transaction that is always rolled back — real Decimal handling, real CHECK
 // constraint, no residue.
 import { PrismaClient } from '@prisma/client';
-import { addShortfall, settleShortfall } from './dist/utils/stock-utils.js';
+import { addShortfall, settleShortfall } from '../dist/utils/stock-utils.js';
 
 const prisma = new PrismaClient();
 const results = [];

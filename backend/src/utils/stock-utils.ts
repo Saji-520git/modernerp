@@ -169,22 +169,26 @@ export async function settleShortfall(
   const settle = Math.min(owed, onHand);
   if (settle <= 0) return 0;   // owed, but nothing arrived yet — stays owed
 
-  // Consume real batches so the batch sum stays the source of truth. Dynamic
-  // import breaks a cycle: batch-expiry imports from this module.
+  // Consume real batches so the batch rows stay in step. Dynamic import breaks
+  // a cycle: batch-expiry imports from this module.
   const { deductBatchesFEFO } = await import('./batch-expiry.js');
-  const deducted = await deductBatchesFEFO(tx, productId, warehouseId, settle, true);
+  await deductBatchesFEFO(tx, productId, warehouseId, settle, true);
 
-  if (deducted > 0) {
-    await recomputeStockQty(tx, productId, warehouseId);
-  } else {
-    // Legacy stock with no batch rows behind it: FEFO was a no-op, and a
-    // recompute here would wipe the aggregate. Decrement it directly instead,
-    // mirroring the legacy fork in the POS and adjustment paths.
-    await tx.stock.update({
-      where: { productId_warehouseId: { productId, warehouseId } },
-      data:  { qty: Math.max(0, onHand - settle) },
-    });
-  }
+  // The aggregate drops by exactly what was settled — NOT by recomputing it
+  // from the batch sum.
+  //
+  // Two paths increase stock without creating a batch row: a warehouse transfer
+  // and an opening-stock import, both of which increment Stock.qty directly. At
+  // a warehouse holding both kinds, qty legitimately exceeds SUM(batches), and
+  // recomputing would delete the unbacked units outright — 6 batched + 5
+  // transferred with 4 owed settled to 2 instead of 7, losing 5 units of real
+  // stock. Subtracting what left the shelf is correct whether those units were
+  // backed by a batch or not, and it keeps the two in step when everything is
+  // backed (batch sum and qty fall by the same amount).
+  await tx.stock.update({
+    where: { productId_warehouseId: { productId, warehouseId } },
+    data:  { qty: Math.max(0, onHand - settle) },
+  });
 
   await tx.stock.update({
     where: { productId_warehouseId: { productId, warehouseId } },

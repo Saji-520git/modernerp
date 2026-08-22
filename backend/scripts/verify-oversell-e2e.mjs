@@ -2,9 +2,9 @@
 // increase that settles the debt. Calls the same service functions the HTTP
 // routes call. Cleans up after itself.
 import { PrismaClient } from '@prisma/client';
-import { posService } from './dist/modules/pos/pos.service.js';
-import { inventoryService } from './dist/modules/inventory/inventory.service.js';
-import { checkoutSchema } from './dist/modules/pos/pos.schema.js';
+import { posService } from '../dist/modules/pos/pos.service.js';
+import { inventoryService } from '../dist/modules/inventory/inventory.service.js';
+import { checkoutSchema } from '../dist/modules/pos/pos.schema.js';
 
 // Parse through the real schema so the test sends exactly what the HTTP route
 // sends — Zod fills defaults (discountCents et al) the service then does
