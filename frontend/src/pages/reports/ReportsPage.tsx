@@ -35,9 +35,9 @@ type ReportTab = 'sales' | 'purchases' | 'products' | 'customers' | 'inventory' 
 const TABS: { key: ReportTab; label: string; icon: React.ElementType; color: string }[] = [
   { key: 'sales',      label: 'Sales',             icon: TrendingUp,  color: 'indigo' },
   { key: 'purchases',  label: 'Purchases',          icon: ShoppingCart, color: 'blue'  },
-  { key: 'products',   label: 'Product Performance',icon: Package,     color: 'violet' },
-  { key: 'customers',  label: 'Customer Insights',  icon: Users,       color: 'teal'  },
-  { key: 'inventory',  label: 'Inventory Valuation',icon: Warehouse,   color: 'amber' },
+  { key: 'products',   label: 'Products',           icon: Package,     color: 'violet' },
+  { key: 'customers',  label: 'Customers',          icon: Users,       color: 'teal'  },
+  { key: 'inventory',  label: 'Inventory',          icon: Warehouse,   color: 'amber' },
   { key: 'pl',         label: 'Profit & Loss',      icon: DollarSign,  color: 'green' },
 ];
 
@@ -1523,35 +1523,35 @@ export default function ReportsPage() {
     green:  'border-emerald-600 text-emerald-700',
   };
 
-  const currentTab = TABS.find((t) => t.key === activeTab)!;
-
   return (
-    <div className="flex h-full min-h-0">
-      {/* Sidebar navigation */}
-      <aside className="w-52 shrink-0 border-r border-slate-200 bg-white flex flex-col py-4">
-        <div className="px-4 mb-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Reports</p>
+    // Reports used to carry a 208px sidebar of its own, next to the app's 240px
+    // one — half the window was navigation before a single figure appeared, and
+    // two identically-styled rails read as two nav panels of equal rank rather
+    // than a hierarchy. The destinations now sit in the page header as tabs,
+    // which is the pattern the rest of the app already uses (Sales, Contacts,
+    // Customer detail) and hands the width back to charts and tables, which is
+    // what a report actually needs.
+    <div className="flex flex-col h-full min-h-0">
+      <header className="shrink-0 bg-white border-b border-slate-200 px-6 pt-5">
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-xl font-bold text-slate-800">Reports</h1>
+          <p className="text-xs text-slate-400 shrink-0">PDF export available on each report</p>
         </div>
-        <nav className="flex-1 px-2 space-y-0.5">
+
+        {/* Underline tabs. Horizontally scrollable so six destinations never
+            wrap or squeeze on a narrow window. */}
+        <nav className="flex gap-6 mt-4 overflow-x-auto no-scrollbar">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
-            const activeColors: Record<string, string> = {
-              indigo: 'bg-indigo-50 text-indigo-700',
-              blue:   'bg-blue-50 text-blue-700',
-              violet: 'bg-violet-50 text-violet-700',
-              teal:   'bg-teal-50 text-teal-700',
-              amber:  'bg-amber-50 text-amber-700',
-              green:  'bg-emerald-50 text-emerald-700',
-            };
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition text-left ${
+                className={`flex items-center gap-2 whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition ${
                   isActive
-                    ? activeColors[tab.color]
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                    ? tabColorMap[tab.color]
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
                 }`}
               >
                 <Icon size={15} />
@@ -1560,20 +1560,14 @@ export default function ReportsPage() {
             );
           })}
         </nav>
-
-        <div className="px-4 pt-4 border-t border-slate-100">
-          <p className="text-xs text-slate-400">PDF export available on each report</p>
-        </div>
-      </aside>
+      </header>
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto p-6">
-        {/* Page header */}
+        {/* Which report is open, and what it shows. The name lives on the active
+            tab, so this is the description alone — repeating the title here
+            would say it twice. */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            {(() => { const Icon = currentTab.icon; return <Icon size={18} className="text-slate-500" />; })()}
-            <h1 className="text-xl font-bold text-slate-800">{currentTab.label}</h1>
-          </div>
           <p className="text-sm text-slate-500">
             {activeTab === 'sales'     && 'Revenue analytics, payment method breakdown, and warehouse performance.'}
             {activeTab === 'purchases' && 'Purchase spend over time and top supplier breakdown.'}

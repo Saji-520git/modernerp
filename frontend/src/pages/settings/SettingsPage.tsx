@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Percent, ShoppingCart, FileText,
-  ShieldCheck, ChevronRight, Check, AlertCircle,
+  ShieldCheck, Check, AlertCircle,
   Lock, Eye, Printer, Bell, X, MessageCircle, LayoutGrid,
 } from 'lucide-react';
 import { settingsApi, type AppSettings } from '../../services/settings';
@@ -1289,18 +1289,28 @@ function ModulesPanel({ settings, readOnly }: {
 
 type SectionKey = 'company' | 'tax' | 'pos' | 'invoice' | 'receipt' | 'alerts' | 'whatsapp' | 'modules' | 'permissions' | 'security';
 
-const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; description: string }[] = [
-  { key: 'company',     label: 'Company',        icon: Building2,   description: 'Business name, address, logo' },
-  { key: 'modules',     label: 'Modules',        icon: LayoutGrid,  description: 'Turn optional features on or off' },
-  { key: 'tax',         label: 'Tax & Currency',  icon: Percent,     description: 'Currency symbol, tax rates' },
-  { key: 'pos',         label: 'POS',             icon: ShoppingCart,description: 'Shift, discounts, print' },
-  { key: 'invoice',     label: 'Invoice',         icon: FileText,    description: 'Prefixes, due dates, footer' },
-  { key: 'receipt',     label: 'Receipt',         icon: Printer,     description: 'Paper, language, layout, footer' },
-  { key: 'alerts',      label: 'Alerts',          icon: Bell,        description: 'Low stock and expiry alert settings' },
-  { key: 'whatsapp',    label: 'WhatsApp',        icon: MessageCircle, description: 'Messaging number and templates' },
-  { key: 'permissions', label: 'Permissions',     icon: Eye,         description: 'Role permission matrix' },
-  { key: 'security',    label: 'Security',        icon: ShieldCheck, description: 'Session timeout' },
+// Grouped so ten entries scan as two short lists rather than one wall. "How the
+// shop runs" is what an owner changes; "How the system runs" is what an admin
+// changes once and rarely revisits.
+type SectionGroup = 'business' | 'system';
+
+const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; description: string; group: SectionGroup }[] = [
+  { key: 'company',     label: 'Company',        icon: Building2,   description: 'Business name, address, logo',            group: 'business' },
+  { key: 'tax',         label: 'Tax & Currency',  icon: Percent,     description: 'Currency symbol, tax rates',              group: 'business' },
+  { key: 'pos',         label: 'POS',             icon: ShoppingCart,description: 'Shift, discounts, print',                 group: 'business' },
+  { key: 'invoice',     label: 'Invoice',         icon: FileText,    description: 'Prefixes, due dates, footer',             group: 'business' },
+  { key: 'receipt',     label: 'Receipt',         icon: Printer,     description: 'Paper, language, layout, footer',         group: 'business' },
+  { key: 'alerts',      label: 'Alerts',          icon: Bell,        description: 'Low stock and expiry alert settings',     group: 'business' },
+  { key: 'whatsapp',    label: 'WhatsApp',        icon: MessageCircle, description: 'Messaging number and templates',        group: 'business' },
+  { key: 'modules',     label: 'Modules',        icon: LayoutGrid,  description: 'Turn optional features on or off',        group: 'system' },
+  { key: 'permissions', label: 'Permissions',     icon: Eye,         description: 'Role permission matrix',                  group: 'system' },
+  { key: 'security',    label: 'Security',        icon: ShieldCheck, description: 'Session timeout',                         group: 'system' },
 ];
+
+const GROUP_LABELS: Record<SectionGroup, string> = {
+  business: 'Business',
+  system:   'System',
+};
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -1363,30 +1373,50 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full bg-slate-50">
       {/* ── Left sidebar ── */}
-      <aside className="w-56 bg-white border-r border-slate-200 shrink-0 overflow-y-auto">
-        <div className="px-4 py-4 border-b border-slate-200">
-          <h1 className="text-base font-bold text-slate-800">Settings</h1>
-          <p className="text-xs text-slate-400 mt-0.5">System configuration</p>
-        </div>
+      {/* An index, not a second sidebar.
+          This rail used to be styled exactly like the app's global sidebar —
+          same white panel, same right border, same pill buttons — so the two
+          sat side by side reading as two navigation panels of equal rank, and
+          together took half the window. It now sits on the page background with
+          no panel of its own, and its old "Settings / System configuration"
+          header is gone: the global sidebar already says Settings, and the
+          content column already names the open section. */}
+      <aside className="w-48 shrink-0 overflow-y-auto py-5 pl-4 pr-2">
         {readOnly && (
-          <div className="mx-3 mt-3 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5 text-xs text-amber-700">
+          <div className="mb-3 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-1.5 text-xs text-amber-700">
             <Lock size={11} /> Read-only access
           </div>
         )}
-        <nav className="p-2 space-y-0.5">
-          {visibleSections.map(s => {
-            const Icon   = s.icon;
-            const active = activeKey === s.key;
+        <nav className="space-y-4">
+          {(['business', 'system'] as SectionGroup[]).map(group => {
+            const items = visibleSections.filter(s => s.group === group);
+            if (items.length === 0) return null;
             return (
-              <button
-                key={s.key}
-                onClick={() => navigate(`/settings#${s.key}`)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'}`}
-              >
-                <Icon size={15} className="shrink-0" />
-                <span className="flex-1 text-sm font-medium">{s.label}</span>
-                {active && <ChevronRight size={13} className="text-indigo-400" />}
-              </button>
+              <div key={group}>
+                <p className="px-2 mb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {GROUP_LABELS[group]}
+                </p>
+                <div className="space-y-0.5">
+                  {items.map(s => {
+                    const Icon   = s.icon;
+                    const active = activeKey === s.key;
+                    return (
+                      <button
+                        key={s.key}
+                        onClick={() => navigate(`/settings#${s.key}`)}
+                        className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${
+                          active
+                            ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                        }`}
+                      >
+                        <Icon size={14} className="shrink-0" />
+                        <span className="flex-1 text-[13px]">{s.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>

@@ -148,6 +148,18 @@
 }
 
 @layer components {
+  /* A strip that scrolls sideways when it has to, without the scrollbar itself
+     becoming part of the design — used by the Reports tab strip, where a visible
+     bar under the tabs would read as a stray rule. The content still scrolls by
+     wheel, trackpad, touch and keyboard. */
+  .no-scrollbar {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* old Edge */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;                  /* Chromium, Safari */
+  }
+
   .btn {
     @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition;
   }
