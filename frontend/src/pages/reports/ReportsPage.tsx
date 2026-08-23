@@ -7,7 +7,7 @@ import {
 import { ChartContainer, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import {
   TrendingUp, ShoppingCart, Package, Users, Warehouse, DollarSign,
-  Download, RefreshCw, AlertTriangle, ChevronUp, ChevronDown,
+  Download, RefreshCw, AlertTriangle, ChevronUp, ChevronDown, Search, X,
 } from 'lucide-react';
 import {
   reportsApi,
@@ -175,6 +175,69 @@ function HBar({ label, value, total, color = 'bg-indigo-500', sub }: {
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
       {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+// ─── Report search ────────────────────────────────────────────────────────────
+//
+// Every report answered "how did the business do" but none answered "how did
+// THIS one do" — five of the six tabs offered a date range and nothing else, so
+// finding one supplier among forty, or one product among 3,264, meant reading
+// the table. Only Inventory had a search box.
+//
+// Filtering is client-side on purpose. Each report already returns its full
+// ranked list (top products, spend by supplier, customers by spend), so the
+// rows are in the browser: matching them there is instant and needs no round
+// trip. It narrows what is LISTED, and deliberately not the KPI totals above —
+// those state the period's real figures, and silently rewriting them to match a
+// search box would turn a report into something that quietly lies.
+
+/** Case-insensitive substring match across the chosen fields of a row. */
+function matchesQuery<T>(row: T, query: string, fields: ((r: T) => unknown)[]): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return fields.some((f) => String(f(row) ?? '').toLowerCase().includes(q));
+}
+
+function ReportSearch({
+  value, onChange, placeholder, shown, total,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  /** Rows after filtering, and before — shown only while a search is active. */
+  shown?: number;
+  total?: number;
+}) {
+  const active = value.trim().length > 0;
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className="relative flex-1 max-w-md">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full pl-9 pr-8 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        />
+        {active && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+            title="Clear search"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      {/* Said out loud, so a filtered table is never mistaken for the whole one. */}
+      {active && shown !== undefined && total !== undefined && (
+        <span className="text-xs text-slate-500 whitespace-nowrap">
+          <span className="font-semibold text-slate-700">{shown}</span> of {total} shown
+        </span>
+      )}
     </div>
   );
 }
@@ -400,6 +463,7 @@ function SalesTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
+  const [q, setQ] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['report-sales', from, to, groupBy],
@@ -442,6 +506,13 @@ function SalesTab() {
       <DateRangePicker
         from={from} to={to} onFromChange={setFrom} onToChange={setTo}
         groupBy={groupBy} onGroupByChange={setGroupBy} showGroupBy
+      />
+
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder="Filter by product, SKU, warehouse or payment method…"
+        shown={(data?.topProducts ?? []).filter((tp) => matchesQuery(tp, q, [(x) => x.name, (x) => x.sku])).length}
+        total={(data?.topProducts ?? []).length}
       />
 
       {isLoading && <LoadingState />}
@@ -503,9 +574,9 @@ function SalesTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Revenue by Warehouse</h3>
-              {data.byWarehouse.length === 0
+              {data.byWarehouse.filter((w) => matchesQuery(w, q, [(x) => x.name, (x) => x.code])).length === 0
                 ? <p className="text-sm text-slate-400">No data</p>
-                : data.byWarehouse.map((w) => (
+                : data.byWarehouse.filter((w) => matchesQuery(w, q, [(x) => x.name, (x) => x.code])).map((w) => (
                   <HBar key={w.code} label={w.name} value={w.revenueCents}
                     total={data.summary.totalRevenueCents}
                     sub={`${w.orders} orders`} color="bg-indigo-500" />
@@ -514,9 +585,9 @@ function SalesTab() {
 
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">Payment Methods</h3>
-              {data.byPayment.length === 0
+              {data.byPayment.filter((pm) => matchesQuery(pm, q, [(x) => PAYMENT_LABELS[x.method] ?? x.method])).length === 0
                 ? <p className="text-sm text-slate-400">No data</p>
-                : data.byPayment.map((p) => (
+                : data.byPayment.filter((pm) => matchesQuery(pm, q, [(x) => PAYMENT_LABELS[x.method] ?? x.method])).map((p) => (
                   <HBar key={p.method} label={PAYMENT_LABELS[p.method] ?? p.method}
                     value={p.revenueCents} total={data.summary.totalRevenueCents}
                     sub={`${p.count} orders`} color="bg-violet-500" />
@@ -536,7 +607,7 @@ function SalesTab() {
                 <Download size={12} /> Export CSV
               </a>
             </div>
-            <TopProductsTable products={data.topProducts ?? []} />
+            <TopProductsTable products={(data.topProducts ?? []).filter((tp) => matchesQuery(tp, q, [(x) => x.name, (x) => x.sku]))} />
           </div>
         </>
       )}
@@ -550,6 +621,7 @@ function PurchasesTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
 
+  const [q, setQ] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['report-purchases', from, to],
     queryFn: () => reportsApi.purchases({ from, to }),
@@ -580,6 +652,12 @@ function PurchasesTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder="Filter by supplier name…"
+        shown={(data?.bySupplier ?? []).filter((sp) => matchesQuery(sp, q, [(x) => x.name])).length}
+        total={(data?.bySupplier ?? []).length}
+      />
 
       {isLoading && <LoadingState />}
       {!isLoading && !data && <EmptyState />}
@@ -602,9 +680,9 @@ function PurchasesTab() {
 
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Top Suppliers by Spend</h3>
-            {data.bySupplier.length === 0
-              ? <p className="text-sm text-slate-400">No confirmed purchase orders in this period</p>
-              : data.bySupplier.map((s) => (
+            {data.bySupplier.filter((sp) => matchesQuery(sp, q, [(x) => x.name])).length === 0
+              ? <p className="text-sm text-slate-400">{q.trim() ? 'No supplier matches this search' : 'No confirmed purchase orders in this period'}</p>
+              : data.bySupplier.filter((sp) => matchesQuery(sp, q, [(x) => x.name])).map((s) => (
                 <HBar key={s.name} label={s.name} value={s.spendCents}
                   total={data.summary.totalSpendCents}
                   sub={`${s.poCount} orders`} color="bg-blue-500" />
@@ -627,6 +705,7 @@ function ProductsTab() {
     queryKey: ['report-products', from, to],
     queryFn: () => reportsApi.products({ from, to }),
   });
+  const [q, setQ] = useState('');
 
   const exportPdf = async (d: ProductReportData) => {
     const { settings, logo } = await loadReportBranding();
@@ -652,12 +731,19 @@ function ProductsTab() {
     doc.save(`Product-Performance-${from}-${to}.pdf`);
   };
 
-  const list = data ? (view === 'revenue' ? data.topByRevenue : data.topByQty) : [];
+  const allRows = data ? (view === 'revenue' ? data.topByRevenue : data.topByQty) : [];
+  const list = allRows.filter((r) => matchesQuery(r, q, [(x) => x.name, (x) => x.sku]));
   const maxRev = Math.max(...list.map((p) => p.revenueCents), 1);
 
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder="Filter by product name or SKU…"
+        shown={list.length}
+        total={allRows.length}
+      />
 
       {isLoading && <LoadingState />}
       {data && (
@@ -750,6 +836,7 @@ function ProductsTab() {
 function CustomersTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
+  const [q, setQ] = useState('');
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['report-customers', from, to],
@@ -760,6 +847,7 @@ function CustomersTab() {
     const { settings, logo } = await loadReportBranding();
     const doc = newReportDoc();
     const spent  = d.reduce((a, c) => a + c.totalSpentCents, 0);
+  const [q, setQ] = useState('');
     const orders = d.reduce((a, c) => a + c.orderCount, 0);
     let y = reportLetterhead(doc, { settings, logo, title: 'Customer Insights', period: `${from} to ${to}` });
     y = kpiBand(doc, y, [
@@ -784,6 +872,12 @@ function CustomersTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder="Filter by customer name…"
+        shown={(customers ?? []).filter((c) => matchesQuery(c, q, [(x) => x.name])).length}
+        total={(customers ?? []).length}
+      />
 
       {isLoading && <LoadingState />}
       {customers && (
@@ -828,7 +922,7 @@ function CustomersTab() {
                     </tr>
                   </thead>
                   <tbody>
-                    {customers.map((c, i) => (
+                    {customers.filter((c) => matchesQuery(c, q, [(x) => x.name])).map((c, i) => (
                       <tr key={c.customerId} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-4 py-3 text-xs text-slate-400">{i + 1}</td>
                         <td className="px-4 py-3 font-medium text-slate-800">{c.name}</td>
@@ -1002,12 +1096,17 @@ function InventoryTab() {
           <option value="">All Warehouses</option>
           {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search product or SKU…"
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
+        {/* Inventory already had a search; it keeps its place beside the
+            warehouse filter, and gains the icon, clear button and match count
+            the other five tabs now have. */}
+        <div className="flex-1 min-w-[220px] max-w-md -mb-4">
+          <ReportSearch
+            value={search} onChange={setSearch}
+            placeholder="Filter by product name or SKU…"
+            shown={filtered.length}
+            total={(data?.items ?? []).length}
+          />
+        </div>
       </div>
 
       {isLoading && <LoadingState />}
@@ -1362,6 +1461,7 @@ function PLTrendChart({ rows }: { rows: ProfitLossData['byPeriod'] }) {
 function ProfitLossTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
+  const [q, setQ] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['report-pl', from, to],
@@ -1414,6 +1514,10 @@ function ProfitLossTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder="Filter by month or expense category…"
+      />
 
       {isLoading && <LoadingState />}
       {data && (
@@ -1468,7 +1572,7 @@ function ProfitLossTab() {
                 </div>
                 {data.expensesByCategory.length === 0
                   ? <p className="text-sm text-slate-400 pl-4 py-1.5">No expenses recorded in this period</p>
-                  : data.expensesByCategory.map((cat) => (
+                  : data.expensesByCategory.filter((ec) => matchesQuery(ec, q, [(x) => x.name])).map((cat) => (
                     <div key={cat.name} className="flex justify-between items-center py-1.5 pl-4 border-b border-slate-50">
                       <span className="text-sm text-slate-500 flex items-center gap-2">
                         <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
