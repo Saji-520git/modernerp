@@ -1857,7 +1857,9 @@ export default function ProductsPage() {
               {/* ── Pricing ─────────────────────────────────────────────── */}
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Pricing</p>
-                <div className="grid grid-cols-3 gap-3">
+                {/* Two columns since Tax % came out — three would leave Cost and
+                    Price squeezed into a third each with a hole beside them. */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Cost (Rs.)</label>
                     <div className="flex gap-2">
@@ -1910,18 +1912,15 @@ export default function ProductsPage() {
                       </select>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Tax %</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={form.taxPercent}
-                      onChange={(e) => setForm((f) => ({ ...f, taxPercent: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
-                  </div>
+                  {/* Tax % is not offered here. Tax is 0 throughout this system
+                      (CLAUDE.md §4.3) — no tax row is shown at the till or on a
+                      receipt, and no product or sale line carries a rate. An
+                      editable field invited someone to set one that nothing
+                      downstream would honour.
+
+                      The VALUE is still carried in form state and sent on save,
+                      so a product that somehow holds a rate keeps it instead of
+                      being silently zeroed by an edit. */}
                 </div>
 
                 {/* Margin preview */}
