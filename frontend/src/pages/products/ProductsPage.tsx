@@ -68,6 +68,32 @@ interface FormState {
   isBatchTracked: boolean;
   defaultSupplierId: string;
   isActive: boolean;
+  imageUrl: string;
+}
+
+type ProductTab = 'general' | 'pricing' | 'units' | 'stock' | 'purchasing';
+
+const PRODUCT_TABS: { key: ProductTab; label: string }[] = [
+  { key: 'general',    label: 'General'    },
+  { key: 'pricing',    label: 'Pricing'    },
+  { key: 'units',      label: 'Units'      },
+  { key: 'stock',      label: 'Stock'      },
+  { key: 'purchasing', label: 'Purchasing' },
+];
+
+/**
+ * Which tab a validation failure belongs to, so an error raised three tabs away
+ * cannot hide behind a tab the user is not looking at. Matched on the message
+ * the submit handler produces.
+ */
+function tabForError(msg: string): ProductTab {
+  const m = msg.toLowerCase();
+  if (m.includes('barcode') || m.includes('sku') || m.includes('name')) return 'general';
+  if (m.includes('price') || m.includes('cost') || m.includes('discount') || m.includes('charge')) return 'pricing';
+  if (m.includes('unit') || m.includes('conversion')) return 'units';
+  if (m.includes('expiry') || m.includes('reorder') || m.includes('batch')) return 'stock';
+  if (m.includes('supplier')) return 'purchasing';
+  return 'general';
 }
 
 interface ConversionLine {
@@ -97,6 +123,7 @@ function emptyForm(): FormState {
     isBatchTracked: false,
     defaultSupplierId: '',
     isActive: true,
+    imageUrl: '',
   };
 }
 
@@ -129,6 +156,7 @@ function formFromProduct(p: Product): FormState {
     isBatchTracked: p.isBatchTracked ?? false,
     defaultSupplierId: p.defaultSupplierId ?? '',
     isActive: p.isActive,
+    imageUrl: p.imageUrl ?? '',
   };
 }
 
@@ -196,6 +224,15 @@ export default function ProductsPage() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [formErr, setFormErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Which tab of the product dialog is showing.
+  //
+  // The form carries 27 inputs. Stacked, that was 1,787px of content in a 598px
+  // window — three screens — with the Create button at the bottom of the third,
+  // even though Name is the only required field. Tabs are what SAP B1, Odoo and
+  // Dynamics all use for the product master, and what this app already uses on
+  // Customer detail and Reports.
+  const [productTab, setProductTab] = useState<ProductTab>('general');
 
   // ── Form draft recovery (v1.0.44) ──
   const [draftFound, setDraftFound] = useState<{ form: FormState; savedAt: string } | null>(null);
@@ -574,6 +611,7 @@ export default function ProductsPage() {
     setBarcodeCheck(null);
     checkIdRef.current++;
     setFormErr(null);
+    setProductTab('general');
     setModalOpen(true);
   }
 
@@ -588,6 +626,7 @@ export default function ProductsPage() {
     setBarcodeCheck(null);
     checkIdRef.current++;
     setFormErr(null);
+    setProductTab('general');
     setModalOpen(true);
   }
 
@@ -605,8 +644,8 @@ export default function ProductsPage() {
     e.preventDefault();
     setFormErr(null);
 
-    if (!form.name.trim()) { setFormErr('Product name is required'); return; }
-    if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); return; }
+    if (!form.name.trim()) { setFormErr('Product name is required'); setProductTab('general'); return; }
+    if (!form.unitId && !form.baseUnitId) { setFormErr('Select at least a display unit or base unit'); setProductTab('units'); return; }
 
     // v1.0.69 fix #3: Convert display cost (entry unit) to per-base cents.
     // EDIT branch: use the LOAD-TIME factor (loadedCostFactorRef) — backend
@@ -664,6 +703,7 @@ export default function ProductsPage() {
     const serviceChargeCents   = Math.round(parseFloat(form.serviceCharge || '0') * 100);
     if (isNaN(costCents) || isNaN(priceCents)) {
       setFormErr('Enter valid cost and price');
+      setProductTab('pricing');
       return;
     }
 
@@ -695,6 +735,8 @@ export default function ProductsPage() {
       isBatchTracked:    form.isBatchTracked,
       defaultSupplierId: form.defaultSupplierId || null,
       isActive:          form.isActive,
+      // The POS product card has always rendered this; nothing could set it.
+      imageUrl:          form.imageUrl.trim() || null,
     };
 
     // Build conversions payload
@@ -1578,10 +1620,13 @@ export default function ProductsPage() {
           CREATE / EDIT MODAL
       ════════════════════════════════════════════════════════════════════════ */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-6">
+        // The dialog is a fixed-height column: header and tabs at the top, one
+        // scrolling body, and the footer pinned. The Save button used to sit at
+        // the end of the content, three screens down.
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
             {/* Modal header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
               <h2 className="text-lg font-bold text-slate-800">
                 {editingProduct ? 'Edit Product' : 'New Product'}
               </h2>
@@ -1590,8 +1635,37 @@ export default function ProductsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
+            {/* Tabs */}
+            <div className="px-6 border-b border-slate-100 shrink-0">
+              <nav className="flex gap-5 overflow-x-auto no-scrollbar">
+                {PRODUCT_TABS.map((t) => {
+                  const active  = productTab === t.key;
+                  // A tab holding the current error is marked, so a failure on a
+                  // tab the user cannot see is still findable.
+                  const hasErr  = !!formErr && tabForError(formErr) === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setProductTab(t.key)}
+                      className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2.5 text-sm font-medium transition ${
+                        active
+                          ? 'border-indigo-600 text-indigo-700'
+                          : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                      }`}
+                    >
+                      {t.label}
+                      {hasErr && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
 
+            <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
+
+              {productTab === 'general' && (<>
               {/* ── Basic Info ──────────────────────────────────────────── */}
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
@@ -1744,6 +1818,42 @@ export default function ProductsPage() {
                 </div>
               </section>
 
+              {/* ── Image ───────────────────────────────────────────────────
+                  The POS product card has always rendered product.imageUrl and
+                  the API has always accepted it, but nothing in the app could
+                  set one — so every tile fell back to the placeholder for good.
+                  A URL field rather than an upload: the server has no image
+                  endpoint, and inventing one to fill a gap this small would be
+                  a bigger change than the gap deserves. */}
+              <section>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Image</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
+                    {form.imageUrl.trim()
+                      ? <img
+                          src={form.imageUrl.trim()}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                          onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'visible'; }}
+                        />
+                      : <Package size={20} className="text-slate-300" />}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      value={form.imageUrl}
+                      onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                      placeholder="https://… image URL"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Shown on the product tile at the till. Leave blank for the default icon.</p>
+                  </div>
+                </div>
+              </section>
+
+              </>)}
+
+              {productTab === 'pricing' && (<>
               {/* ── Pricing ─────────────────────────────────────────────── */}
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Pricing</p>
@@ -1925,6 +2035,9 @@ export default function ProductsPage() {
                 </div>
               </section>
 
+              </>)}
+
+              {productTab === 'units' && (<>
               {/* ── Unit Roles ──────────────────────────────────────────── */}
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Unit Roles</p>
@@ -2121,6 +2234,9 @@ export default function ProductsPage() {
                 )}
               </section>
 
+              </>)}
+
+              {productTab === 'stock' && (<>
               {/* ── Stock & Expiry ──────────────────────────────────────── */}
               <section>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Stock & Expiry</p>
@@ -2168,6 +2284,9 @@ export default function ProductsPage() {
                 </div>
               </section>
 
+              </>)}
+
+              {productTab === 'purchasing' && (<>
               {/* ── Batch tracking + Default Supplier ──────────────────── */}
               <section>
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Purchasing</h4>
@@ -2201,40 +2320,47 @@ export default function ProductsPage() {
                 </div>
               </section>
 
-              {/* ── Active toggle ───────────────────────────────────────── */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, isActive: !f.isActive }))}
-                  className={`relative w-10 h-5 rounded-full transition ${form.isActive ? 'bg-indigo-600' : 'bg-slate-200'}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.isActive ? 'left-5' : 'left-0.5'}`} />
-                </button>
-                <span className="text-sm text-slate-600">{form.isActive ? 'Active' : 'Inactive'}</span>
+              </>)}
               </div>
 
-              {/* ── Error & Submit ──────────────────────────────────────── */}
-              {formErr && (
-                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <AlertTriangle size={14} /> {formErr}
-                </div>
-              )}
+              {/* ── Error & Submit ───────────────────────────────────────
+                  Outside the scroll area: Save is reachable from any tab, at
+                  any scroll position, which it was not before. */}
+              <div className="shrink-0 border-t border-slate-100 px-6 py-4 space-y-3">
+                {formErr && (
+                  <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <AlertTriangle size={14} /> {formErr}
+                  </div>
+                )}
 
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-sm font-medium rounded-xl hover:bg-slate-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving || barcodeCheck?.state === 'taken'}
-                  className="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition"
-                >
-                  {saving ? 'Saving…' : editingProduct ? 'Save Changes' : 'Create Product'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Active lives beside the action, not buried below Purchasing
+                      on the third screen, where nobody would find it. */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, isActive: !f.isActive }))}
+                    className={`relative w-10 h-5 rounded-full transition shrink-0 ${form.isActive ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                    title={form.isActive ? 'Product is active' : 'Product is inactive'}
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.isActive ? 'left-5' : 'left-0.5'}`} />
+                  </button>
+                  <span className="text-sm text-slate-600 mr-auto">{form.isActive ? 'Active' : 'Inactive'}</span>
+
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-5 py-2.5 border border-slate-200 text-slate-600 text-sm font-medium rounded-xl hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving || barcodeCheck?.state === 'taken'}
+                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition"
+                  >
+                    {saving ? 'Saving…' : editingProduct ? 'Save Changes' : 'Create Product'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
