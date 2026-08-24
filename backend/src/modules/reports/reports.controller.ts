@@ -17,16 +17,33 @@ const dateRangeSchema = z.object({
   groupBy: z.enum(['day', 'week', 'month']).optional().default('day'),
 });
 
+const blankToUndefined = z.string().trim().transform((v) => (v === '' ? undefined : v)).optional();
+
+/** Narrow a sales report to one customer and/or warehouse. */
+const salesScopeSchema = z.object({
+  customerId:  blankToUndefined,
+  warehouseId: blankToUndefined,
+});
+
+/** Narrow a purchases report to one supplier and/or warehouse. */
+const purchaseScopeSchema = z.object({
+  supplierId:  blankToUndefined,
+  warehouseId: blankToUndefined,
+});
+
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 export const salesReport: RequestHandler = async (req, res) => {
   const { from, to, groupBy } = dateRangeSchema.parse(req.query);
-  res.json(await reportsService.salesReport(from, to, groupBy));
+  const scope = salesScopeSchema.parse(req.query);
+  res.json(await reportsService.salesReport(from, to, groupBy, scope));
 };
 
 export const salesCsv: RequestHandler = async (req, res) => {
   const { from, to, groupBy } = dateRangeSchema.parse(req.query);
-  const data = await reportsService.salesReport(from, to, groupBy);
+  // The export must match what is on screen, scope included.
+  const scope = salesScopeSchema.parse(req.query);
+  const data = await reportsService.salesReport(from, to, groupBy, scope);
   const today = new Date().toISOString().slice(0, 10);
   const avgOrder = (row: { revenueCents: number; orders: number }) =>
     row.orders > 0 ? (row.revenueCents / row.orders / 100).toFixed(2) : '0.00';
@@ -44,7 +61,8 @@ export const salesCsv: RequestHandler = async (req, res) => {
 
 export const purchasesReport: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
-  res.json(await reportsService.purchasesReport(from, to));
+  const scope = purchaseScopeSchema.parse(req.query);
+  res.json(await reportsService.purchasesReport(from, to, scope));
 };
 
 export const productReport: RequestHandler = async (req, res) => {

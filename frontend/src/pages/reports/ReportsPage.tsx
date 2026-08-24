@@ -27,6 +27,8 @@ import {
   type PnlComparisonResult,
 } from '../../services/reports';
 import { inventoryApi } from '../../services/inventory';
+import { customersApi, suppliersApi } from '../../services/contacts';
+import { warehousesApi } from '../../services/warehouses';
 import {
   loadReportBranding, newReportDoc, reportLetterhead, kpiBand,
   sectionTitle, styledTable, finalizeReport, lastY, money,
@@ -198,6 +200,56 @@ function matchesQuery<T>(row: T, query: string, fields: ((r: T) => unknown)[]): 
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return fields.some((f) => String(f(row) ?? '').toLowerCase().includes(q));
+}
+
+// ─── Report scope ─────────────────────────────────────────────────────────────
+//
+// Two different jobs, deliberately kept apart:
+//
+//   ReportScope  narrows the REPORT — the server recomputes totals, charts and
+//                breakdowns for one customer, supplier or warehouse.
+//   ReportSearch narrows the LISTS on screen, leaving the figures alone.
+//
+// Collapsing them would mean either a search box that silently rewrites "Total
+// Revenue", or a scope picker that cannot answer "how much did this customer
+// actually spend". Both are needed and they are not the same question.
+
+function ScopeSelect({
+  label, value, onChange, options, allLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { id: string; name: string }[];
+  allLabel: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-slate-500">
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`border rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 ${
+          value ? 'border-indigo-400 text-indigo-700 font-medium' : 'border-slate-200 text-slate-600'
+        }`}
+      >
+        <option value="">{allLabel}</option>
+        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/** Banner shown whenever a report is narrowed, so a scoped figure is never read as the whole business. */
+function ScopeNotice({ what, onClear }: { what: string; onClear: () => void }) {
+  return (
+    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100 text-sm text-indigo-800">
+      <span>Showing <strong>{what}</strong> only — every figure below is for this selection.</span>
+      <button onClick={onClear} className="ml-auto text-xs font-medium text-indigo-600 hover:underline">
+        Show all
+      </button>
+    </div>
+  );
 }
 
 function ReportSearch({
@@ -464,11 +516,33 @@ function SalesTab() {
   const [to, setTo] = useState(todayISO());
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
   const [q, setQ] = useState('');
+  const [customerId, setCustomerId]   = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['report-sales', from, to, groupBy],
-    queryFn: () => reportsApi.sales({ from, to, groupBy }),
+  // Scope options. pageSize is generous because these are pickers, not tables —
+  // a customer missing from the list would be a filter that cannot be applied.
+  const { data: customerList } = useQuery({
+    queryKey: ['report-scope-customers'],
+    queryFn: () => customersApi.list({ pageSize: 100 }),
+    staleTime: 5 * 60_000,
   });
+  const { data: warehouseList } = useQuery({
+    queryKey: ['report-scope-warehouses'],
+    queryFn: () => warehousesApi.list({ pageSize: 200, isActive: true }),
+    staleTime: 5 * 60_000,
+  });
+
+  // Scope is part of the key, so changing it refetches rather than showing a
+  // stale unscoped report under a scoped heading.
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['report-sales', from, to, groupBy, customerId, warehouseId],
+    queryFn: () => reportsApi.sales({ from, to, groupBy, customerId: customerId || undefined, warehouseId: warehouseId || undefined }),
+  });
+
+  const scopeLabel = [
+    customerId  ? customerList?.data.find((c) => c.id === customerId)?.name : null,
+    warehouseId ? warehouseList?.items.find((w) => w.id === warehouseId)?.name : null,
+  ].filter(Boolean).join(' · ');
 
   const exportPdf = async (d: SalesReportData) => {
     const { settings, logo } = await loadReportBranding();
@@ -507,6 +581,23 @@ function SalesTab() {
         from={from} to={to} onFromChange={setFrom} onToChange={setTo}
         groupBy={groupBy} onGroupByChange={setGroupBy} showGroupBy
       />
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ScopeSelect
+          label="Customer" value={customerId} onChange={setCustomerId}
+          allLabel="All customers"
+          options={(customerList?.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
+        />
+        <ScopeSelect
+          label="Warehouse" value={warehouseId} onChange={setWarehouseId}
+          allLabel="All warehouses"
+          options={(warehouseList?.items ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        />
+      </div>
+
+      {scopeLabel && (
+        <ScopeNotice what={scopeLabel} onClear={() => { setCustomerId(''); setWarehouseId(''); }} />
+      )}
 
       <ReportSearch
         value={q} onChange={setQ}
@@ -622,10 +713,29 @@ function PurchasesTab() {
   const [to, setTo] = useState(todayISO());
 
   const [q, setQ] = useState('');
-  const { data, isLoading } = useQuery({
-    queryKey: ['report-purchases', from, to],
-    queryFn: () => reportsApi.purchases({ from, to }),
+  const [supplierId, setSupplierId]   = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+
+  const { data: supplierList } = useQuery({
+    queryKey: ['report-scope-suppliers'],
+    queryFn: () => suppliersApi.list({ pageSize: 100 }),
+    staleTime: 5 * 60_000,
   });
+  const { data: warehouseList } = useQuery({
+    queryKey: ['report-scope-warehouses'],
+    queryFn: () => warehousesApi.list({ pageSize: 200, isActive: true }),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-purchases', from, to, supplierId, warehouseId],
+    queryFn: () => reportsApi.purchases({ from, to, supplierId: supplierId || undefined, warehouseId: warehouseId || undefined }),
+  });
+
+  const scopeLabel = [
+    supplierId  ? supplierList?.data.find((s) => s.id === supplierId)?.name : null,
+    warehouseId ? warehouseList?.items.find((w) => w.id === warehouseId)?.name : null,
+  ].filter(Boolean).join(' · ');
 
   const exportPdf = async (d: PurchasesReportData) => {
     const { settings, logo } = await loadReportBranding();
@@ -652,6 +762,23 @@ function PurchasesTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ScopeSelect
+          label="Supplier" value={supplierId} onChange={setSupplierId}
+          allLabel="All suppliers"
+          options={(supplierList?.data ?? []).map((s) => ({ id: s.id, name: s.name }))}
+        />
+        <ScopeSelect
+          label="Warehouse" value={warehouseId} onChange={setWarehouseId}
+          allLabel="All warehouses"
+          options={(warehouseList?.items ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        />
+      </div>
+
+      {scopeLabel && (
+        <ScopeNotice what={scopeLabel} onClear={() => { setSupplierId(''); setWarehouseId(''); }} />
+      )}
+
       <ReportSearch
         value={q} onChange={setQ}
         placeholder="Filter by supplier name…"

@@ -1,5 +1,65 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { toLocalYMD } from '../../utils/local-date.js';
+
+// ─── Report scoping ───────────────────────────────────────────────────────────
+//
+// A report could only ever answer "how did the business do". Narrowing it to one
+// customer or one supplier — the question actually asked when a figure looks
+// wrong — meant reading the table, and the totals above it always described
+// everyone.
+//
+// Scoping happens in SQL rather than in the browser precisely so the totals,
+// the charts and the breakdowns are all recomputed for that one entity. A
+// client-side filter can hide rows; it cannot make "Total Revenue" mean this
+// customer's revenue.
+//
+// Every query in a report must carry the same scope or the parts stop agreeing
+// with each other — a filtered top-products list under an unfiltered revenue
+// total is worse than no filter at all. These helpers exist so the condition is
+// written once per report and applied everywhere, rather than retyped per query.
+
+export interface SalesScope   { customerId?: string; warehouseId?: string }
+export interface PurchaseScope { supplierId?: string; warehouseId?: string }
+
+/** Scope as a Prisma `where` fragment, for the aggregate/groupBy calls. */
+function saleScopeWhere(scope: SalesScope) {
+  return {
+    ...(scope.customerId  ? { customerId:  scope.customerId }  : {}),
+    ...(scope.warehouseId ? { warehouseId: scope.warehouseId } : {}),
+  };
+}
+
+/**
+ * Scope as raw SQL, appended to an existing WHERE.
+ *
+ * `alias` is the table alias the query gives the Sale table — "s" in a joined
+ * query, empty when it selects `FROM "Sale"` with no alias. Column names are
+ * built with Prisma.raw because an identifier cannot be a bound parameter; the
+ * VALUES stay parameterised, so nothing user-supplied is ever interpolated.
+ */
+function saleScopeSql(scope: SalesScope, alias = 's') {
+  const col = (name: string) => Prisma.raw(alias ? `${alias}."${name}"` : `"${name}"`);
+  return Prisma.sql`
+    ${scope.customerId  ? Prisma.sql`AND ${col('customerId')}  = ${scope.customerId}`  : Prisma.empty}
+    ${scope.warehouseId ? Prisma.sql`AND ${col('warehouseId')} = ${scope.warehouseId}` : Prisma.empty}
+  `;
+}
+
+function purchaseScopeWhere(scope: PurchaseScope) {
+  return {
+    ...(scope.supplierId  ? { supplierId:  scope.supplierId }  : {}),
+    ...(scope.warehouseId ? { warehouseId: scope.warehouseId } : {}),
+  };
+}
+
+function purchaseScopeSql(scope: PurchaseScope, alias = 'p') {
+  const col = (name: string) => Prisma.raw(alias ? `${alias}."${name}"` : `"${name}"`);
+  return Prisma.sql`
+    ${scope.supplierId  ? Prisma.sql`AND ${col('supplierId')}  = ${scope.supplierId}`  : Prisma.empty}
+    ${scope.warehouseId ? Prisma.sql`AND ${col('warehouseId')} = ${scope.warehouseId}` : Prisma.empty}
+  `;
+}
 
 // ─── Reports Service ──────────────────────────────────────────────────────────
 
@@ -7,7 +67,10 @@ export const reportsService = {
 
   // ── 1. Sales Report ───────────────────────────────────────────────────────────
 
-  salesReport: async (from: Date, to: Date, groupBy: 'day' | 'week' | 'month') => {
+  salesReport: async (from: Date, to: Date, groupBy: 'day' | 'week' | 'month', scope: SalesScope = {}) => {
+    const scoped     = saleScopeWhere(scope);
+    const scopedSql  = saleScopeSql(scope);        // queries that alias Sale as "s"
+    const scopedBare = saleScopeSql(scope, '');    // queries selecting FROM "Sale" unaliased
     // Compute the previous equal-length period
     const durationMs  = to.getTime() - from.getTime();
     const prevTo      = new Date(from.getTime() - 1);          // day before from
@@ -15,7 +78,7 @@ export const reportsService = {
 
     const [summary, lineDiscountAgg, byWarehouseRaw, byPaymentRaw, cogsRaw, topProductsRaw, prevPeriodRaw, returnsByWarehouseRaw, returnsByPaymentRaw, returnsByProduct] = await Promise.all([
       prisma.sale.aggregate({
-        where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
+        where: { status: 'CONFIRMED', date: { gte: from, lte: to }, ...scoped },
         _sum: { totalCents: true, taxCents: true, discountCents: true, paidCents: true },
         _count: true,
       }),
@@ -26,7 +89,7 @@ export const reportsService = {
       // profit were unaffected (both derive from totalCents), but the discount
       // figure itself was wrong. Sum both.
       prisma.saleLine.aggregate({
-        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to } } },
+        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to }, ...scoped } },
         _sum:  { discountCents: true },
       }),
       prisma.$queryRaw<{ name: string; code: string; revenue: bigint; orders: bigint }[]>`
@@ -35,7 +98,7 @@ export const reportsService = {
           COUNT(s.id)::bigint AS orders
         FROM "Sale" s
         JOIN "warehouses" w ON w.id = s."warehouseId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
         GROUP BY w.name, w.code
         ORDER BY revenue DESC
       `,
@@ -44,7 +107,7 @@ export const reportsService = {
           COUNT(*)::bigint AS count,
           SUM("totalCents")::bigint AS revenue
         FROM "Sale"
-        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
         GROUP BY "paymentMethod"
         ORDER BY revenue DESC
       `,
@@ -55,7 +118,7 @@ export const reportsService = {
         JOIN "Sale"    s ON s.id = sl."saleId"
         WHERE s.status = 'CONFIRMED'
           AND s."deletedAt" IS NULL
-          AND s.date >= ${from} AND s.date <= ${to}
+          AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
       `,
       prisma.$queryRaw<{ productId: string; name: string; sku: string; revenue: bigint; qtySold: number; cogs: bigint }[]>`
         SELECT p.id AS "productId", p.name, p.sku,
@@ -67,14 +130,14 @@ export const reportsService = {
         JOIN "Sale"    s ON s.id = sl."saleId"
         WHERE s.status = 'CONFIRMED'
           AND s."deletedAt" IS NULL
-          AND s.date >= ${from} AND s.date <= ${to}
+          AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
         GROUP BY p.id, p.name, p.sku
         ORDER BY revenue DESC
         LIMIT 10
       `,
       // Previous equal-length period for trend calculation
       prisma.sale.aggregate({
-        where: { status: 'CONFIRMED', date: { gte: prevFrom, lte: prevTo } },
+        where: { status: 'CONFIRMED', date: { gte: prevFrom, lte: prevTo }, ...scoped },
         _sum: { totalCents: true },
       }),
       // ── Returns netting for the breakdown queries below (audit fix) ──────────
@@ -87,7 +150,8 @@ export const reportsService = {
           SUM(sr."totalCents")::bigint AS returned
         FROM "SaleReturn" sr
         JOIN "warehouses" w ON w.id = sr."warehouseId"
-        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to}
+        JOIN "Sale" s ON s.id = sr."saleId"
+        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to} ${scopedSql}
         GROUP BY w.code
       `,
       prisma.$queryRaw<{ method: string; returned: bigint }[]>`
@@ -95,12 +159,12 @@ export const reportsService = {
           SUM(sr."totalCents")::bigint AS returned
         FROM "SaleReturn" sr
         JOIN "Sale" s ON s.id = sr."saleId"
-        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to}
+        WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to} ${scopedSql}
         GROUP BY s."paymentMethod"
       `,
       prisma.saleReturnLine.groupBy({
         by: ['productId'],
-        where: { saleReturn: { createdAt: { gte: from, lte: to } } },
+        where: { saleReturn: { createdAt: { gte: from, lte: to }, sale: { ...scoped } } },
         _sum: { lineTotalCents: true },
       }),
     ]);
@@ -113,7 +177,7 @@ export const reportsService = {
               SUM("totalCents")::bigint AS revenue,
               COUNT(*)::bigint AS orders
             FROM "Sale"
-            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
             GROUP BY 1 ORDER BY 1
           `
         : groupBy === 'week'
@@ -122,7 +186,7 @@ export const reportsService = {
               SUM("totalCents")::bigint AS revenue,
               COUNT(*)::bigint AS orders
             FROM "Sale"
-            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
             GROUP BY 1 ORDER BY 1
           `
         : await prisma.$queryRaw<{ period: Date; revenue: bigint; orders: bigint }[]>`
@@ -130,7 +194,7 @@ export const reportsService = {
               SUM("totalCents")::bigint AS revenue,
               COUNT(*)::bigint AS orders
             FROM "Sale"
-            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+            WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
             GROUP BY 1 ORDER BY 1
           `;
 
@@ -139,25 +203,28 @@ export const reportsService = {
     const returnsByPeriodRaw =
       groupBy === 'month'
         ? await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
-            SELECT DATE_TRUNC('month', "createdAt")::date AS period,
-              SUM("totalCents")::bigint AS returned
-            FROM "SaleReturn"
-            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            SELECT DATE_TRUNC('month', sr."createdAt")::date AS period,
+              SUM(sr."totalCents")::bigint AS returned
+            FROM "SaleReturn" sr
+            JOIN "Sale" s ON s.id = sr."saleId"
+            WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to} ${scopedSql}
             GROUP BY 1 ORDER BY 1
           `
         : groupBy === 'week'
         ? await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
-            SELECT DATE_TRUNC('week', "createdAt")::date AS period,
-              SUM("totalCents")::bigint AS returned
-            FROM "SaleReturn"
-            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            SELECT DATE_TRUNC('week', sr."createdAt")::date AS period,
+              SUM(sr."totalCents")::bigint AS returned
+            FROM "SaleReturn" sr
+            JOIN "Sale" s ON s.id = sr."saleId"
+            WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to} ${scopedSql}
             GROUP BY 1 ORDER BY 1
           `
         : await prisma.$queryRaw<{ period: Date; returned: bigint }[]>`
-            SELECT DATE_TRUNC('day', "createdAt")::date AS period,
-              SUM("totalCents")::bigint AS returned
-            FROM "SaleReturn"
-            WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+            SELECT DATE_TRUNC('day', sr."createdAt")::date AS period,
+              SUM(sr."totalCents")::bigint AS returned
+            FROM "SaleReturn" sr
+            JOIN "Sale" s ON s.id = sr."saleId"
+            WHERE sr."createdAt" >= ${from} AND sr."createdAt" <= ${to} ${scopedSql}
             GROUP BY 1 ORDER BY 1
           `;
 
@@ -177,8 +244,12 @@ export const reportsService = {
 
     // ── FIX 2: net revenue of sales returns over the same period ─────────────
     // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
+    // Scoped like every other query here. Unscoped, it subtracted EVERY
+    // customer's returns from one customer's revenue — the summary came out
+    // 17,500 below its own by-warehouse, by-payment and by-period breakdowns,
+    // which is the exact disagreement the netting was added to remove.
     const salesReturnsAgg = await prisma.saleReturn.aggregate({
-      where: { createdAt: { gte: from, lte: to } },
+      where: { createdAt: { gte: from, lte: to }, sale: { ...scoped } },
       _sum:  { totalCents: true },
     });
     const returnedRevenueCents = salesReturnsAgg._sum.totalCents ?? 0;
@@ -237,10 +308,13 @@ export const reportsService = {
 
   // ── 2. Purchases Report ───────────────────────────────────────────────────────
 
-  purchasesReport: async (from: Date, to: Date) => {
+  purchasesReport: async (from: Date, to: Date, scope: PurchaseScope = {}) => {
+    const scoped     = purchaseScopeWhere(scope);
+    const scopedSql  = purchaseScopeSql(scope);       // queries aliasing Purchase as "p"
+    const scopedBare = purchaseScopeSql(scope, '');   // queries selecting FROM "Purchase" unaliased
     const [summary, bySupplierRaw, byPeriodRaw, itemsRaw, suppliersRaw] = await Promise.all([
       prisma.purchase.aggregate({
-        where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
+        where: { status: 'CONFIRMED', date: { gte: from, lte: to }, ...scoped },
         _sum: { totalCents: true },
         _count: true,
       }),
@@ -250,7 +324,7 @@ export const reportsService = {
           COUNT(p.id)::bigint AS "poCount"
         FROM "Purchase" p
         JOIN "Supplier" sup ON sup.id = p."supplierId"
-        WHERE p.status = 'CONFIRMED' AND p.date >= ${from} AND p.date <= ${to}
+        WHERE p.status = 'CONFIRMED' AND p.date >= ${from} AND p.date <= ${to} ${scopedSql}
         GROUP BY sup.name
         ORDER BY spend DESC
         LIMIT 10
@@ -260,7 +334,7 @@ export const reportsService = {
           SUM("totalCents")::bigint AS spend,
           COUNT(*)::bigint AS "poCount"
         FROM "Purchase"
-        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
         GROUP BY 1 ORDER BY 1
       `,
       // Total items received across all confirmed purchase lines
@@ -268,13 +342,13 @@ export const reportsService = {
         SELECT COALESCE(SUM(pl.qty), 0)::float AS total
         FROM "PurchaseLine" pl
         JOIN "Purchase" p ON p.id = pl."purchaseId"
-        WHERE p.status = 'CONFIRMED' AND p.date >= ${from} AND p.date <= ${to}
+        WHERE p.status = 'CONFIRMED' AND p.date >= ${from} AND p.date <= ${to} ${scopedSql}
       `,
       // Unique suppliers
       prisma.$queryRaw<[{ cnt: bigint }]>`
         SELECT COUNT(DISTINCT "supplierId")::bigint AS cnt
         FROM "Purchase"
-        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'CONFIRMED' AND date >= ${from} AND date <= ${to} ${scopedBare}
       `,
     ]);
 

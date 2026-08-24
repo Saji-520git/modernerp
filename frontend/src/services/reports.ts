@@ -262,11 +262,21 @@ export interface TodaySummary {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Narrow a report to one entity.
+ *
+ * The server recomputes every figure for it — totals, charts and breakdowns —
+ * rather than the browser hiding rows. A filtered list under an unfiltered
+ * total reads as authoritative and is not.
+ */
+export interface SalesScope    { customerId?: string; warehouseId?: string }
+export interface PurchaseScope { supplierId?: string; warehouseId?: string }
+
 export const reportsApi = {
-  sales: (params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month' }): Promise<SalesReportData> =>
+  sales: (params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month' } & SalesScope): Promise<SalesReportData> =>
     api.get('/reports/sales', { params }).then((r) => r.data),
 
-  purchases: (params: { from: string; to: string }): Promise<PurchasesReportData> =>
+  purchases: (params: { from: string; to: string } & PurchaseScope): Promise<PurchasesReportData> =>
     api.get('/reports/purchases', { params }).then((r) => r.data),
 
   products: (params: { from: string; to: string }): Promise<ProductReportData> =>
@@ -281,8 +291,12 @@ export const reportsApi = {
   profitLoss: (params: { from: string; to: string }): Promise<ProfitLossData> =>
     api.get('/reports/profit-loss', { params }).then((r) => r.data),
 
-  salesCsvUrl: (params: { from: string; to: string; groupBy?: string }): string => {
+  salesCsvUrl: (params: { from: string; to: string; groupBy?: string } & SalesScope): string => {
+    // The export carries the same scope as the screen — otherwise the file
+    // would not match the report it was taken from.
     const q = new URLSearchParams({ from: params.from, to: params.to, groupBy: params.groupBy ?? 'day' });
+    if (params.customerId)  q.set('customerId',  params.customerId);
+    if (params.warehouseId) q.set('warehouseId', params.warehouseId);
     return `/api/v1/reports/sales/csv?${q}`;
   },
 
