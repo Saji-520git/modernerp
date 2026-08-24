@@ -18,6 +18,11 @@ export const customerBodySchema = z.object({
   creditLimitCents:  z.number().int().min(0).default(0),
   creditAlertPct:    z.number().int().min(1).max(100).default(80),
   creditSettleDays:  z.number().int().min(1).max(365).optional().nullable(),
+  // Owed before this system went live. Never negative — prepaid credit has its
+  // own field and ledger, and letting this go below zero would give one idea
+  // two contradictory homes.
+  openingBalanceCents: z.number().int().min(0).default(0),
+  openingBalanceAsOf:  z.string().datetime().optional().nullable(),
 });
 
 export const listCustomersSchema = z.object({

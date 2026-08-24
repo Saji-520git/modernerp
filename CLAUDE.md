@@ -598,6 +598,16 @@ For a clean dev DB, build a *separate throwaway* database from files — never m
 **Phase 3 Sprint 19: Attachments, Customer Payments, Purchase Returns, P&L Compare, Dashboard Live Data ✓** (2026-05-25)
 **Phase 3 Sprint 20: Negative Stock (sell past zero) ✓** (2026-08-21)
 **Phase 3 Sprint 21: Document numbering hardening + Audit Trail ✓** (2026-08-23)
+**Phase 3 Sprint 22: Report filters + scoping, Opening Balances ✓** (2026-08-25)
+
+Sprint 22 notes:
+- Every report has a search bar; all six can be SCOPED to one entity (customer,
+  supplier, warehouse, category, brand). Scope recomputes totals/charts in SQL;
+  search only narrows the on-screen lists. The two are deliberately separate.
+-  / : what was owed
+  before go-live. Added to customer/supplier outstanding, the POS credit-limit
+  check, and the dashboard + report receivable/payable tiles. Deliberately NOT
+  added to any per-invoice figure — it belongs to no invoice.
 
 Sprint 21 notes:
 - All doc numbers now derive from max+1 (`utils/doc-number.ts`), never a row

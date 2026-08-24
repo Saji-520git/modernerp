@@ -91,7 +91,12 @@ export const customersService = {
     const totalSalesAmount   = salesAgg._sum.totalCents  ?? 0;
     const totalPaid          = salesAgg._sum.paidCents   ?? 0;
     const totalReturned      = returnsAgg._sum.totalCents ?? 0;
-    const outstandingBalance = Math.max(0, totalSalesAmount - totalReturned - totalPaid);
+    // Carried forward from before go-live. Added to the derived figure rather
+    // than folded into it, so the two stay separable on screen: an owner needs
+    // to know how much of a balance predates the system.
+    const openingBalanceCents = customer.openingBalanceCents ?? 0;
+    const derivedBalance      = Math.max(0, totalSalesAmount - totalReturned - totalPaid);
+    const outstandingBalance  = derivedBalance + openingBalanceCents;
     const lastPurchaseDate   = salesAgg._max.date        ?? null;
 
     // Credit used = outstanding balance on unpaid/partial confirmed sales
@@ -105,7 +110,7 @@ export const customersService = {
         _sum: { totalCents: true, paidCents: true },
       });
       creditUsedCents =
-        (unpaidAgg._sum.totalCents ?? 0) - (unpaidAgg._sum.paidCents ?? 0);
+        (unpaidAgg._sum.totalCents ?? 0) - (unpaidAgg._sum.paidCents ?? 0) + openingBalanceCents;
     }
 
     return {
@@ -113,6 +118,9 @@ export const customersService = {
       totalSalesAmount,
       totalPaid,
       outstandingBalance,
+      // Surfaced separately so the UI can say how much predates the system.
+      derivedBalance,
+      openingBalanceCents,
       lastPurchaseDate,
       creditUsedCents,
     };
@@ -130,6 +138,8 @@ export const customersService = {
         creditLimitCents: input.creditLimitCents ?? 0,
         creditAlertPct:   input.creditAlertPct ?? 80,
         creditSettleDays: input.creditSettleDays ?? null,
+        openingBalanceCents: input.openingBalanceCents ?? 0,
+        openingBalanceAsOf:  input.openingBalanceAsOf ? new Date(input.openingBalanceAsOf) : null,
       },
     });
   },
@@ -154,6 +164,8 @@ export const customersService = {
         creditLimitCents: input.creditLimitCents ?? 0,
         creditAlertPct:   input.creditAlertPct ?? 80,
         creditSettleDays: input.creditSettleDays ?? null,
+        openingBalanceCents: input.openingBalanceCents ?? 0,
+        openingBalanceAsOf:  input.openingBalanceAsOf ? new Date(input.openingBalanceAsOf) : null,
       },
     });
   },

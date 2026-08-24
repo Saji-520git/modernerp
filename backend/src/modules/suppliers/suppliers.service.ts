@@ -96,16 +96,22 @@ export const suppliersService = {
     });
     const totalReturnedCents = confirmedReturnsAgg._sum.totalCents ?? 0;
 
-    const outstandingBalance = Math.max(
+    // Carried forward from before go-live — see the schema comment on the
+    // column. Kept separable so the UI can show how much predates the system.
+    const openingBalanceCents = supplier.openingBalanceCents ?? 0;
+    const derivedBalance     = Math.max(
       0,
       totalPurchaseAmount - totalPaid - totalReturnedCents,
     );
+    const outstandingBalance = derivedBalance + openingBalanceCents;
 
     return {
       ...supplier,
       totalPurchaseAmount,
       totalPaid,
       outstandingBalance,
+      derivedBalance,
+      openingBalanceCents,
       lastOrderDate,
       totalReturns,
     };
@@ -119,6 +125,8 @@ export const suppliersService = {
         phone: input.phone || null,
         email: input.email || null,
         address: input.address || null,
+        openingBalanceCents: input.openingBalanceCents ?? 0,
+        openingBalanceAsOf:  input.openingBalanceAsOf ? new Date(input.openingBalanceAsOf) : null,
       },
     });
   },
@@ -139,6 +147,8 @@ export const suppliersService = {
         phone: input.phone || null,
         email: input.email || null,
         address: input.address || null,
+        openingBalanceCents: input.openingBalanceCents ?? 0,
+        openingBalanceAsOf:  input.openingBalanceAsOf ? new Date(input.openingBalanceAsOf) : null,
       },
     });
   },

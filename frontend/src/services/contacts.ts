@@ -11,6 +11,9 @@ export interface Supplier {
   isActive: boolean;
   createdAt: string;
   creditBalanceCents: number;
+  /** Owed at go-live, before this system held any of their documents. */
+  openingBalanceCents: number;
+  openingBalanceAsOf: string | null;
   _count?: { purchases: number };
 }
 
@@ -27,6 +30,9 @@ export interface Customer {
   creditLimitCents: number;
   creditAlertPct: number;
   creditSettleDays: number | null;
+  /** Owed at go-live, before this system held any of their documents. */
+  openingBalanceCents: number;
+  openingBalanceAsOf: string | null;
   creditBalanceCents: number;
   _count?: { sales: number };
 }
@@ -37,6 +43,8 @@ export interface CustomerDetail extends Customer {
   totalSalesAmount: number;
   totalPaid: number;
   outstandingBalance: number;
+  /** The part derived from documents in this system (outstanding minus opening). */
+  derivedBalance: number;
   lastPurchaseDate: string | null;
   creditUsedCents: number;
   updatedAt: string;
@@ -48,6 +56,8 @@ export interface SupplierDetail extends Supplier {
   totalPurchaseAmount: number;
   totalPaid: number;
   outstandingBalance: number;
+  /** The part derived from documents in this system (outstanding minus opening). */
+  derivedBalance: number;
   lastOrderDate: string | null;
   totalReturns: number;
 }
@@ -64,6 +74,9 @@ export interface ContactBody {
   phone?: string;
   email?: string;
   address?: string;
+  /** Owed at go-live. Applies to customers and suppliers alike. */
+  openingBalanceCents?: number;
+  openingBalanceAsOf?: string | null;
 }
 
 export interface CustomerBody extends ContactBody {

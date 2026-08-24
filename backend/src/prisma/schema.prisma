@@ -349,6 +349,19 @@ model Customer {
   creditAlertPct   Int     @default(80)     // warn at this % of limit (0-100)
   creditSettleDays Int?                     // expected settlement period in days
 
+  // ── Opening balance ────────────────────────────────────────────────────────
+  // What was owed when this system went live, before any document in it
+  // existed. Every outstanding figure is otherwise derived purely from sales,
+  // purchases, returns and payments held HERE, so a contact who owed money
+  // beforehand read as owing nothing — and the only way to record it was to
+  // raise a back-dated invoice, which would move stock that never moved and
+  // inflate revenue that was never earned.
+  //
+  // Carried forward, not a document: it is added to the derived balance, and
+  // deliberately NOT to any per-invoice figure, because it belongs to no
+  // invoice. Reduce it as it is paid; every change is recorded in AuditLog.
+  openingBalanceCents Int       @default(0)
+  openingBalanceAsOf  DateTime?
   // Unallocated (prepaid) credit balance in cents — leftover from lump-sum
   // payments that exceeded all outstanding bills. Never negative.
   creditBalanceCents Int    @default(0)
@@ -374,6 +387,19 @@ model Supplier {
   address   String?
   isActive  Boolean  @default(true)
 
+  // ── Opening balance ────────────────────────────────────────────────────────
+  // What was owed when this system went live, before any document in it
+  // existed. Every outstanding figure is otherwise derived purely from sales,
+  // purchases, returns and payments held HERE, so a contact who owed money
+  // beforehand read as owing nothing — and the only way to record it was to
+  // raise a back-dated invoice, which would move stock that never moved and
+  // inflate revenue that was never earned.
+  //
+  // Carried forward, not a document: it is added to the derived balance, and
+  // deliberately NOT to any per-invoice figure, because it belongs to no
+  // invoice. Reduce it as it is paid; every change is recorded in AuditLog.
+  openingBalanceCents Int       @default(0)
+  openingBalanceAsOf  DateTime?
   // Unallocated credit balance in cents — leftover from lump-sum payments that
   // exceeded all outstanding purchase orders. Never negative.
   creditBalanceCents Int  @default(0)

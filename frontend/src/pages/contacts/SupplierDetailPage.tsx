@@ -84,6 +84,9 @@ function SupplierModal({
   const [phone, setPhone]     = useState(initial?.phone ?? '');
   const [email, setEmail]     = useState(initial?.email ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
+  const [openingBal, setOpeningBal] = useState(
+    initial ? ((initial.openingBalanceCents ?? 0) / 100).toFixed(2) : '0.00',
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +95,7 @@ function SupplierModal({
       phone: phone || undefined,
       email: email || undefined,
       address: address || undefined,
+      openingBalanceCents: Math.round(parseFloat(openingBal || '0') * 100),
     });
   };
 
@@ -134,6 +138,18 @@ function SupplierModal({
               <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Street, City, Country" />
+            </div>
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Opening Balance (Rs.)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={openingBal} onChange={(e) => setOpeningBal(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.00" />
+              <p className="text-xs text-slate-400 mt-1">
+                Owed from before this system went live. Counts toward the balance,
+                never toward revenue, stock or any single invoice.
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-1">
@@ -1447,7 +1463,15 @@ export default function SupplierDetailPage() {
           icon={outstanding > 0 ? <AlertTriangle size={20} /> : <DollarSign size={20} />}
           label="Outstanding Balance"
           value={fmtCents(outstanding)}
-          sub={outstanding === 0 ? 'All orders settled' : undefined}
+          sub={
+            outstanding === 0
+              ? 'All orders settled'
+              // Said out loud when part of the payable predates the system, so
+              // nobody hunts for a purchase order that was never raised here.
+              : (supplier.openingBalanceCents ?? 0) > 0
+                ? `includes ${fmtCents(supplier.openingBalanceCents)} opening balance`
+                : undefined
+          }
           accent={outstanding > 0 ? 'orange' : 'green'}
         />
         <StatCard

@@ -33,10 +33,19 @@ function SupplierModal({
   const [phone, setPhone]     = useState(initial?.phone ?? '');
   const [email, setEmail]     = useState(initial?.email ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
+  const [openingBal, setOpeningBal] = useState(
+    initial ? ((initial.openingBalanceCents ?? 0) / 100).toFixed(2) : '0.00',
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ name, phone: phone || undefined, email: email || undefined, address: address || undefined });
+    onSave({
+      name,
+      phone:   phone   || undefined,
+      email:   email   || undefined,
+      address: address || undefined,
+      openingBalanceCents: Math.round(parseFloat(openingBal || '0') * 100),
+    });
   };
 
   return (
@@ -73,6 +82,22 @@ function SupplierModal({
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               placeholder="Street, City, Country"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Opening Balance (Rs.)</label>
+            <input
+              type="number" min="0" step="0.01"
+              value={openingBal} onChange={(e) => setOpeningBal(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.00"
+            />
+            {/* The alternative was a back-dated purchase order, which would add
+                stock that never arrived. */}
+            <p className="text-xs text-slate-400 mt-1">
+              What was owed to this supplier before this system went live. Added to
+              the payable; it is not a purchase, so it never touches stock or spend.
+              Reduce it as it is paid.
+            </p>
           </div>
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose}

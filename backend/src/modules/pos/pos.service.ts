@@ -98,11 +98,21 @@ async function aggregateShift(shiftId: string) {
 // ─── Credit helpers ───────────────────────────────────────────────────────────
 
 async function getCustomerCreditBalance(customerId: string): Promise<number> {
-  const result = await prisma.sale.aggregate({
-    where: { customerId, status: 'CONFIRMED', paymentStatus: { in: ['UNPAID', 'PARTIAL'] } },
-    _sum: { totalCents: true, paidCents: true },
-  });
-  return Math.max(0, (result._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0));
+  const [result, customer] = await Promise.all([
+    prisma.sale.aggregate({
+      where: { customerId, status: 'CONFIRMED', paymentStatus: { in: ['UNPAID', 'PARTIAL'] } },
+      _sum: { totalCents: true, paidCents: true },
+    }),
+    // Debt carried in from before go-live counts against the limit like any
+    // other. Without it a customer already over their limit on old debt walked
+    // in with their entire limit apparently free — the credit check would have
+    // been enforcing against a number that ignored most of what they owed.
+    prisma.customer.findUnique({
+      where: { id: customerId }, select: { openingBalanceCents: true },
+    }),
+  ]);
+  const derived = Math.max(0, (result._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0));
+  return derived + (customer?.openingBalanceCents ?? 0);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

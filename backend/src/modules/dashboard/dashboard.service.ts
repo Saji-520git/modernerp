@@ -158,7 +158,15 @@ export const dashboardService = {
     // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
     const allReturnsAgg = await prisma.saleReturn.aggregate({ _sum: { totalCents: true } });
     const totalReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
-    const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents - totalReturnedCents);
+    // Plus everything carried in from before go-live. Without this the
+    // receivables tile reported only what this system had itself invoiced, so
+    // on day one it read zero however much was actually owed.
+    const openingReceivablesAgg = await prisma.customer.aggregate({
+      where: { isActive: true },
+      _sum:  { openingBalanceCents: true },
+    });
+    const unpaidCents = Math.max(0, totalSaleCents - totalPaidCents - totalReturnedCents)
+      + (openingReceivablesAgg._sum.openingBalanceCents ?? 0);
 
     // Month purchases (confirmed POs) — actual spend = delivered value.
     const monthPurchasesResult = await prisma.purchase.aggregate({

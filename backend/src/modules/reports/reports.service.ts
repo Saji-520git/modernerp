@@ -920,12 +920,18 @@ export const reportsService = {
     const todayReturnedCents = todayReturnsAgg._sum.totalCents ?? 0;
     const allReturnedCents = allReturnsAgg._sum.totalCents ?? 0;
 
+    // Plus opening balances — what was owed before this system held any of it.
+    const [openingRecvAgg, openingPayAgg] = await Promise.all([
+      prisma.customer.aggregate({ where: { isActive: true }, _sum: { openingBalanceCents: true } }),
+      prisma.supplier.aggregate({ where: { isActive: true }, _sum: { openingBalanceCents: true } }),
+    ]);
+
     const outstandingReceivablesCents = Math.max(
       0,
       (receivablesAgg._sum.totalCents ?? 0)
       - (receivablesAgg._sum.paidCents ?? 0)
       - allReturnedCents,
-    );
+    ) + (openingRecvAgg._sum.openingBalanceCents ?? 0);
 
     // Option B — confirmed purchase returns reduce what is still owed on a PO.
     // Prisma aggregate() cannot filter on a nested relation, so use a two-step query:
@@ -958,7 +964,7 @@ export const reportsService = {
       (payablesAgg._sum.receivedValueCents ?? 0)
       - (payablesAgg._sum.paidCents ?? 0)
       - payableReturnedCents,
-    );
+    ) + (openingPayAgg._sum.openingBalanceCents ?? 0);
 
     const last7Days = days.map((day, i) => ({
       // `day` is LOCAL midnight. toISOString() rendered it in UTC, which is the

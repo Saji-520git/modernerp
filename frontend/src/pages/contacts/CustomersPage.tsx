@@ -41,6 +41,9 @@ function CustomerModal({
   const [alertPct, setAlertPct]     = useState(initial?.creditAlertPct ?? 80);
   const [settleDays, setSettleDays] = useState<number | ''>(initial?.creditSettleDays ?? '');
   const [phoneErr, setPhoneErr]     = useState('');
+  const [openingBal, setOpeningBal] = useState(
+    initial ? ((initial.openingBalanceCents ?? 0) / 100).toFixed(2) : '0.00',
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +63,7 @@ function CustomerModal({
       creditLimitCents: Math.round(parseFloat(creditLimit || '0') * 100),
       creditAlertPct:   alertPct,
       creditSettleDays: settleDays ? parseInt(String(settleDays)) : null,
+      openingBalanceCents: Math.round(parseFloat(openingBal || '0') * 100),
     });
   };
 
@@ -114,6 +118,23 @@ function CustomerModal({
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Street, City, Country"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Opening Balance (Rs.)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={openingBal} onChange={(e) => setOpeningBal(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.00"
+              />
+              {/* Says plainly what it is and is not, because the alternative —
+                  a back-dated invoice — moves stock and inflates revenue. */}
+              <p className="text-xs text-slate-400 mt-1">
+                What this customer owed before this system went live. Added to their
+                outstanding balance and credit used; it is not a sale, so it never
+                touches revenue or stock. Reduce it as it is paid.
+              </p>
             </div>
           </div>
 
