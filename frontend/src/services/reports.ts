@@ -271,6 +271,7 @@ export interface TodaySummary {
  */
 export interface SalesScope    { customerId?: string; warehouseId?: string }
 export interface PurchaseScope { supplierId?: string; warehouseId?: string }
+export interface ProductScope  { categoryId?: string; brandId?: string; warehouseId?: string }
 
 export const reportsApi = {
   sales: (params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month' } & SalesScope): Promise<SalesReportData> =>
@@ -279,16 +280,16 @@ export const reportsApi = {
   purchases: (params: { from: string; to: string } & PurchaseScope): Promise<PurchasesReportData> =>
     api.get('/reports/purchases', { params }).then((r) => r.data),
 
-  products: (params: { from: string; to: string }): Promise<ProductReportData> =>
+  products: (params: { from: string; to: string } & ProductScope): Promise<ProductReportData> =>
     api.get('/reports/products', { params }).then((r) => r.data),
 
-  customers: (params: { from: string; to: string }): Promise<CustomerItem[]> =>
+  customers: (params: { from: string; to: string } & SalesScope): Promise<CustomerItem[]> =>
     api.get('/reports/customers', { params }).then((r) => r.data),
 
-  inventory: (params?: { warehouseId?: string }): Promise<InventoryReportData> =>
+  inventory: (params?: ProductScope): Promise<InventoryReportData> =>
     api.get('/reports/inventory', { params }).then((r) => r.data),
 
-  profitLoss: (params: { from: string; to: string }): Promise<ProfitLossData> =>
+  profitLoss: (params: { from: string; to: string } & SalesScope): Promise<ProfitLossData> =>
     api.get('/reports/profit-loss', { params }).then((r) => r.data),
 
   salesCsvUrl: (params: { from: string; to: string; groupBy?: string } & SalesScope): string => {

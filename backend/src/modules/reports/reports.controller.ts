@@ -25,6 +25,13 @@ const salesScopeSchema = z.object({
   warehouseId: blankToUndefined,
 });
 
+/** Narrow a product or stock report to one category, brand and/or warehouse. */
+const productScopeSchema = z.object({
+  categoryId:  blankToUndefined,
+  brandId:     blankToUndefined,
+  warehouseId: blankToUndefined,
+});
+
 /** Narrow a purchases report to one supplier and/or warehouse. */
 const purchaseScopeSchema = z.object({
   supplierId:  blankToUndefined,
@@ -67,22 +74,24 @@ export const purchasesReport: RequestHandler = async (req, res) => {
 
 export const productReport: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
-  res.json(await reportsService.productReport(from, to));
+  res.json(await reportsService.productReport(from, to, productScopeSchema.parse(req.query)));
 };
 
 export const customerReport: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
-  res.json(await reportsService.customerReport(from, to));
+  // Warehouse only: narrowing a customer RANKING to one customer leaves one row,
+  // which the customer detail page already does better.
+  res.json(await reportsService.customerReport(from, to, salesScopeSchema.parse(req.query)));
 };
 
 export const inventoryReport: RequestHandler = async (req, res) => {
-  const warehouseId = req.query.warehouseId as string | undefined;
-  res.json(await reportsService.inventoryReport(warehouseId || undefined));
+  const scope = productScopeSchema.parse(req.query);
+  res.json(await reportsService.inventoryReport(scope.warehouseId, scope));
 };
 
 export const profitLoss: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
-  res.json(await reportsService.profitLoss(from, to));
+  res.json(await reportsService.profitLoss(from, to, salesScopeSchema.parse(req.query)));
 };
 
 export const pnlComparison: RequestHandler = async (req, res) => {

@@ -29,6 +29,7 @@ import {
 import { inventoryApi } from '../../services/inventory';
 import { customersApi, suppliersApi } from '../../services/contacts';
 import { warehousesApi } from '../../services/warehouses';
+import { categoriesApi, brandsApi } from '../../services/masterData';
 import {
   loadReportBranding, newReportDoc, reportLetterhead, kpiBand,
   sectionTitle, styledTable, finalizeReport, lastY, money,
@@ -827,11 +828,25 @@ function ProductsTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
   const [view, setView] = useState<'revenue' | 'qty'>('revenue');
+  const [categoryId, setCategoryId] = useState('');
+  const [brandId, setBrandId]       = useState('');
+
+  const { data: categories } = useQuery({
+    queryKey: ['report-scope-categories'], queryFn: categoriesApi.list, staleTime: 5 * 60_000,
+  });
+  const { data: brands } = useQuery({
+    queryKey: ['report-scope-brands'], queryFn: brandsApi.list, staleTime: 5 * 60_000,
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['report-products', from, to],
-    queryFn: () => reportsApi.products({ from, to }),
+    queryKey: ['report-products', from, to, categoryId, brandId],
+    queryFn: () => reportsApi.products({ from, to, categoryId: categoryId || undefined, brandId: brandId || undefined }),
   });
+
+  const scopeLabel = [
+    categoryId ? categories?.find((c) => c.id === categoryId)?.name : null,
+    brandId    ? brands?.find((b) => b.id === brandId)?.name        : null,
+  ].filter(Boolean).join(' · ');
   const [q, setQ] = useState('');
 
   const exportPdf = async (d: ProductReportData) => {
@@ -865,6 +880,24 @@ function ProductsTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ScopeSelect
+          label="Category" value={categoryId} onChange={setCategoryId}
+          allLabel="All categories"
+          options={(categories ?? []).map((c) => ({ id: c.id, name: c.name }))}
+        />
+        <ScopeSelect
+          label="Brand" value={brandId} onChange={setBrandId}
+          allLabel="All brands"
+          options={(brands ?? []).map((b) => ({ id: b.id, name: b.name }))}
+        />
+      </div>
+
+      {scopeLabel && (
+        <ScopeNotice what={scopeLabel} onClear={() => { setCategoryId(''); setBrandId(''); }} />
+      )}
+
       <ReportSearch
         value={q} onChange={setQ}
         placeholder="Filter by product name or SKU…"
@@ -964,10 +997,17 @@ function CustomersTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
   const [q, setQ] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+
+  const { data: whList } = useQuery({
+    queryKey: ['report-scope-warehouses'],
+    queryFn: () => warehousesApi.list({ pageSize: 100, isActive: true }),
+    staleTime: 5 * 60_000,
+  });
 
   const { data: customers, isLoading } = useQuery({
-    queryKey: ['report-customers', from, to],
-    queryFn: () => reportsApi.customers({ from, to }),
+    queryKey: ['report-customers', from, to, warehouseId],
+    queryFn: () => reportsApi.customers({ from, to, warehouseId: warehouseId || undefined }),
   });
 
   const exportPdf = async (d: CustomerItem[]) => {
@@ -999,6 +1039,23 @@ function CustomersTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      {/* Warehouse only. Narrowing a customer RANKING to one customer leaves a
+          single row, which the customer detail page already shows better. */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ScopeSelect
+          label="Warehouse" value={warehouseId} onChange={setWarehouseId}
+          allLabel="All warehouses"
+          options={(whList?.items ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        />
+      </div>
+
+      {warehouseId && (
+        <ScopeNotice
+          what={whList?.items.find((w) => w.id === warehouseId)?.name ?? 'this warehouse'}
+          onClear={() => setWarehouseId('')}
+        />
+      )}
+
       <ReportSearch
         value={q} onChange={setQ}
         placeholder="Filter by customer name…"
@@ -1180,9 +1237,23 @@ function InventoryTab() {
     queryFn: inventoryApi.getWarehouses,
   });
 
+  const [categoryId, setCategoryId] = useState('');
+  const [brandId, setBrandId]       = useState('');
+
+  const { data: categories } = useQuery({
+    queryKey: ['report-scope-categories'], queryFn: categoriesApi.list, staleTime: 5 * 60_000,
+  });
+  const { data: brands } = useQuery({
+    queryKey: ['report-scope-brands'], queryFn: brandsApi.list, staleTime: 5 * 60_000,
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ['report-inventory', warehouseId],
-    queryFn: () => reportsApi.inventory({ warehouseId: warehouseId || undefined }),
+    queryKey: ['report-inventory', warehouseId, categoryId, brandId],
+    queryFn: () => reportsApi.inventory({
+      warehouseId: warehouseId || undefined,
+      categoryId:  categoryId  || undefined,
+      brandId:     brandId     || undefined,
+    }),
   });
 
   const exportPdf = async (d: InventoryReportData) => {
@@ -1223,6 +1294,16 @@ function InventoryTab() {
           <option value="">All Warehouses</option>
           {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
+        <ScopeSelect
+          label="Category" value={categoryId} onChange={setCategoryId}
+          allLabel="All categories"
+          options={(categories ?? []).map((c) => ({ id: c.id, name: c.name }))}
+        />
+        <ScopeSelect
+          label="Brand" value={brandId} onChange={setBrandId}
+          allLabel="All brands"
+          options={(brands ?? []).map((b) => ({ id: b.id, name: b.name }))}
+        />
         {/* Inventory already had a search; it keeps its place beside the
             warehouse filter, and gains the icon, clear button and match count
             the other five tabs now have. */}
@@ -1589,10 +1670,17 @@ function ProfitLossTab() {
   const [from, setFrom] = useState(thirtyDaysAgoISO());
   const [to, setTo] = useState(todayISO());
   const [q, setQ] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+
+  const { data: whList } = useQuery({
+    queryKey: ['report-scope-warehouses'],
+    queryFn: () => warehousesApi.list({ pageSize: 100, isActive: true }),
+    staleTime: 5 * 60_000,
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['report-pl', from, to],
-    queryFn: () => reportsApi.profitLoss({ from, to }),
+    queryKey: ['report-pl', from, to, warehouseId],
+    queryFn: () => reportsApi.profitLoss({ from, to, warehouseId: warehouseId || undefined }),
   });
 
   const exportPdf = async (d: ProfitLossData) => {
@@ -1641,6 +1729,21 @@ function ProfitLossTab() {
   return (
     <div>
       <DateRangePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <ScopeSelect
+          label="Warehouse" value={warehouseId} onChange={setWarehouseId}
+          allLabel="All warehouses"
+          options={(whList?.items ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        />
+      </div>
+
+      {warehouseId && (
+        <ScopeNotice
+          what={whList?.items.find((w) => w.id === warehouseId)?.name ?? 'this warehouse'}
+          onClear={() => setWarehouseId('')}
+        />
+      )}
+
       <ReportSearch
         value={q} onChange={setQ}
         placeholder="Filter by month or expense category…"

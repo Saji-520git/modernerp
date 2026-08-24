@@ -46,6 +46,31 @@ function saleScopeSql(scope: SalesScope, alias = 's') {
   `;
 }
 
+/**
+ * Product-side scope. Category and brand live on Product; warehouse lives on
+ * the Sale, so the two take different aliases in the same query.
+ */
+export interface ProductScope { categoryId?: string; brandId?: string; warehouseId?: string }
+
+function productScopeSql(scope: ProductScope, productAlias = 'p', saleAlias = 's') {
+  const pc = (name: string) => Prisma.raw(`${productAlias}."${name}"`);
+  const sc = (name: string) => Prisma.raw(`${saleAlias}."${name}"`);
+  return Prisma.sql`
+    ${scope.categoryId  ? Prisma.sql`AND ${pc('categoryId')}  = ${scope.categoryId}`  : Prisma.empty}
+    ${scope.brandId     ? Prisma.sql`AND ${pc('brandId')}     = ${scope.brandId}`     : Prisma.empty}
+    ${scope.warehouseId ? Prisma.sql`AND ${sc('warehouseId')} = ${scope.warehouseId}` : Prisma.empty}
+  `;
+}
+
+/** Product-only scope, for the stock report, which has no Sale to join. */
+function stockScopeSql(scope: ProductScope, productAlias = 'p') {
+  const pc = (name: string) => Prisma.raw(`${productAlias}."${name}"`);
+  return Prisma.sql`
+    ${scope.categoryId ? Prisma.sql`AND ${pc('categoryId')} = ${scope.categoryId}` : Prisma.empty}
+    ${scope.brandId    ? Prisma.sql`AND ${pc('brandId')}    = ${scope.brandId}`    : Prisma.empty}
+  `;
+}
+
 function purchaseScopeWhere(scope: PurchaseScope) {
   return {
     ...(scope.supplierId  ? { supplierId:  scope.supplierId }  : {}),
@@ -98,7 +123,7 @@ export const reportsService = {
           COUNT(s.id)::bigint AS orders
         FROM "Sale" s
         JOIN "warehouses" w ON w.id = s."warehouseId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
+        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql} ${scopedSql}
         GROUP BY w.name, w.code
         ORDER BY revenue DESC
       `,
@@ -381,7 +406,8 @@ export const reportsService = {
 
   // ── 3. Product Performance ────────────────────────────────────────────────────
 
-  productReport: async (from: Date, to: Date) => {
+  productReport: async (from: Date, to: Date, scope: ProductScope = {}) => {
+    const scopedSql = productScopeSql(scope);
     type ProductRow = {
       productId: string;
       name: string;
@@ -399,7 +425,7 @@ export const reportsService = {
         FROM "SaleLine" sl
         JOIN "Product" p ON p.id = sl."productId"
         JOIN "Sale" s ON s.id = sl."saleId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
         GROUP BY p.id, p.name, p.sku, p."costCents"
         ORDER BY revenue DESC
         LIMIT 10
@@ -411,7 +437,7 @@ export const reportsService = {
         FROM "SaleLine" sl
         JOIN "Product" p ON p.id = sl."productId"
         JOIN "Sale" s ON s.id = sl."saleId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
         GROUP BY p.id, p.name, p.sku, p."costCents"
         ORDER BY qty DESC
         LIMIT 10
@@ -462,7 +488,8 @@ export const reportsService = {
 
   // ── 4. Customer Report ────────────────────────────────────────────────────────
 
-  customerReport: async (from: Date, to: Date) => {
+  customerReport: async (from: Date, to: Date, scope: SalesScope = {}) => {
+    const scopedSql = saleScopeSql(scope);
     const rows = await prisma.$queryRaw<{
       customerId: string;
       name: string;
@@ -516,7 +543,8 @@ export const reportsService = {
 
   // ── 5. Inventory Valuation ────────────────────────────────────────────────────
 
-  inventoryReport: async (warehouseId?: string) => {
+  inventoryReport: async (warehouseId?: string, scope: ProductScope = {}) => {
+    const scopedSql = stockScopeSql(scope);
     type InvRow = {
       productId: string;
       name: string;
@@ -535,7 +563,7 @@ export const reportsService = {
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id AND s."warehouseId" = ${warehouseId}
-          WHERE p."isActive" = true
+          WHERE p."isActive" = true ${scopedSql}
           GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `
@@ -545,7 +573,7 @@ export const reportsService = {
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id
-          WHERE p."isActive" = true
+          WHERE p."isActive" = true ${scopedSql}
           GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `;
@@ -624,10 +652,12 @@ export const reportsService = {
 
   // ── 6. Profit & Loss ──────────────────────────────────────────────────────────
 
-  profitLoss: async (from: Date, to: Date) => {
+  profitLoss: async (from: Date, to: Date, scope: SalesScope = {}) => {
+    const scoped    = saleScopeWhere(scope);
+    const scopedSql = saleScopeSql(scope);
     const [salesAgg, plLineDiscountAgg, cogsRaw, byPeriodRaw, expenseRows] = await Promise.all([
       prisma.sale.aggregate({
-        where: { status: 'CONFIRMED', date: { gte: from, lte: to } },
+        where: { status: 'CONFIRMED', date: { gte: from, lte: to }, ...scoped },
         _sum: { totalCents: true, taxCents: true, discountCents: true },
         _count: true,
       }),
@@ -638,7 +668,7 @@ export const reportsService = {
       // profit were unaffected (both derive from totalCents), but the discount
       // figure itself was wrong. Sum both.
       prisma.saleLine.aggregate({
-        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to } } },
+        where: { sale: { status: 'CONFIRMED', date: { gte: from, lte: to }, ...scoped } },
         _sum:  { discountCents: true },
       }),
       prisma.$queryRaw<[{ cogs: bigint }]>`
@@ -646,7 +676,7 @@ export const reportsService = {
         FROM "SaleLine" sl
         JOIN "Product" p ON p.id = sl."productId"
         JOIN "Sale" s ON s.id = sl."saleId"
-        WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
       `,
       prisma.$queryRaw<{ period: Date; revenue: bigint; cogs: bigint }[]>`
         SELECT
@@ -656,7 +686,7 @@ export const reportsService = {
         FROM "Sale" s
         JOIN "SaleLine" sl ON sl."saleId" = s.id
         JOIN "Product" p ON p.id = sl."productId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to}
+        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
         GROUP BY 1
         ORDER BY 1
       `,
@@ -670,8 +700,10 @@ export const reportsService = {
     // Sales returns reduce net revenue (v1.0.54). COGS is NOT adjusted — returned
     // goods go back to stock, so COGS was correctly charged at point of sale.
     // SaleReturn has no soft-delete. If voiding is added: add isActive:true filter here.
+    // Scoped, for the same reason the sales report is: unscoped, this nets
+    // every customer's refunds against one selection's revenue.
     const returnsAgg = await prisma.saleReturn.aggregate({
-      where: { createdAt: { gte: from, lte: to } },
+      where: { createdAt: { gte: from, lte: to }, sale: { ...scoped } },
       _sum: { totalCents: true },
     });
     const returnedRevenueCents = returnsAgg._sum.totalCents ?? 0;

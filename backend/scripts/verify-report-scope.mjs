@@ -100,6 +100,58 @@ const main = async () => {
      again.summary.orderCount === all.summary.orderCount,
      `${again.summary.totalRevenueCents} vs ${all.summary.totalRevenueCents}`);
 
+  // ── Products, scoped to one category ──────────────────────────────────────
+  const cat = await prisma.category.findFirst({
+    where: { products: { some: {} } }, select: { id: true, name: true },
+  });
+  if (cat) {
+    const allProd    = await reportsService.productReport(FROM, TO);
+    const scopedProd = await reportsService.productReport(FROM, TO, { categoryId: cat.id });
+    const inCat = new Set(
+      (await prisma.product.findMany({ where: { categoryId: cat.id }, select: { id: true } })).map((p) => p.id),
+    );
+    ok(`product report scoped to "${cat.name}" lists only that category`,
+       scopedProd.topByRevenue.every((r) => inCat.has(r.productId)),
+       scopedProd.topByRevenue.map((r) => r.name).join(', ').slice(0, 90));
+    ok('a category scope never grows the list',
+       scopedProd.topByRevenue.length <= allProd.topByRevenue.length,
+       `all=${allProd.topByRevenue.length} scoped=${scopedProd.topByRevenue.length}`);
+  }
+
+  // ── Inventory, scoped to one category ─────────────────────────────────────
+  if (cat) {
+    const allInv    = await reportsService.inventoryReport(undefined, {});
+    const scopedInv = await reportsService.inventoryReport(undefined, { categoryId: cat.id });
+    ok('stock report narrows to the category',
+       scopedInv.items.length <= allInv.items.length,
+       `all=${allInv.items.length} scoped=${scopedInv.items.length}`);
+    ok('stock TOTALS are recomputed, not just the rows',
+       scopedInv.totals.skuCount === scopedInv.items.length,
+       `skuCount=${scopedInv.totals.skuCount} rows=${scopedInv.items.length}`);
+  }
+
+  // ── P&L, scoped to one warehouse ──────────────────────────────────────────
+  const wh2 = await prisma.warehouse.findFirst({ where: { isActive: true }, select: { id: true, name: true } });
+  if (wh2) {
+    const allPl    = await reportsService.profitLoss(FROM, TO);
+    const scopedPl = await reportsService.profitLoss(FROM, TO, { warehouseId: wh2.id });
+    ok(`P&L scoped to ${wh2.name} recomputes revenue`,
+       scopedPl.summary.revenueCents <= allPl.summary.revenueCents,
+       `all=${allPl.summary.revenueCents} scoped=${scopedPl.summary.revenueCents}`);
+    const plEmpty = await reportsService.profitLoss(FROM, TO, { warehouseId: 'no-such-warehouse' });
+    ok('an unmatched P&L scope yields zero, not the whole business',
+       plEmpty.summary.revenueCents === 0, `revenue=${plEmpty.summary.revenueCents}`);
+  }
+
+  // ── Customers, scoped to one warehouse ────────────────────────────────────
+  if (wh2) {
+    const allCust    = await reportsService.customerReport(FROM, TO);
+    const scopedCust = await reportsService.customerReport(FROM, TO, { warehouseId: wh2.id });
+    ok('customer ranking narrows to the warehouse',
+       scopedCust.length <= allCust.length,
+       `all=${allCust.length} scoped=${scopedCust.length}`);
+  }
+
   console.log('');
   for (const r of out) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.n}${r.pass ? '' : '\n      -> ' + r.d}`);
   const failed = out.filter((r) => !r.pass).length;
