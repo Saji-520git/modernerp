@@ -7,7 +7,7 @@ import {
 import { ChartContainer, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import {
   TrendingUp, ShoppingCart, Package, Users, Warehouse, DollarSign,
-  Download, RefreshCw, AlertTriangle, ChevronUp, ChevronDown, Search, X,
+  Download, RefreshCw, AlertTriangle, ChevronUp, ChevronDown, Search, X, Clock,
 } from 'lucide-react';
 import {
   reportsApi,
@@ -37,7 +37,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-type ReportTab = 'sales' | 'purchases' | 'products' | 'customers' | 'inventory' | 'pl';
+type ReportTab = 'sales' | 'purchases' | 'products' | 'customers' | 'inventory' | 'pl' | 'aging';
 
 const TABS: { key: ReportTab; label: string; icon: React.ElementType; color: string }[] = [
   { key: 'sales',      label: 'Sales',             icon: TrendingUp,  color: 'indigo' },
@@ -46,6 +46,7 @@ const TABS: { key: ReportTab; label: string; icon: React.ElementType; color: str
   { key: 'customers',  label: 'Customers',          icon: Users,       color: 'teal'  },
   { key: 'inventory',  label: 'Inventory',          icon: Warehouse,   color: 'amber' },
   { key: 'pl',         label: 'Profit & Loss',      icon: DollarSign,  color: 'green' },
+  { key: 'aging',      label: 'Aging',              icon: Clock,       color: 'rose'  },
 ];
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -1932,6 +1933,187 @@ function EmptyStateReport({ entity }: { entity: string }) {
   );
 }
 
+// ─── 7. Aging Report Tab ──────────────────────────────────────────────────────
+//
+// The rest of the reports answer "how much". This one answers "how long", which
+// is the question that decides who gets a phone call this morning. A single
+// outstanding figure reads identically whether it is last week's invoice or
+// something eighteen months cold.
+//
+// Bucketed by days past DUE rather than document age, so a 30-day invoice
+// raised yesterday is not counted as late.
+
+function AgingTab() {
+  const [type, setType] = useState<'receivable' | 'payable'>('receivable');
+  const [q, setQ] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-aging', type],
+    queryFn: () => reportsApi.aging({ type }),
+  });
+
+  const rows = (data?.rows ?? []).filter((r) => matchesQuery(r, q, [(x) => x.name, (x) => x.phone]));
+  const isRecv = type === 'receivable';
+
+  const exportPdf = async (d: NonNullable<typeof data>) => {
+    const { settings, logo } = await loadReportBranding();
+    const doc = newReportDoc();
+    let y = reportLetterhead(doc, {
+      settings, logo,
+      title:  isRecv ? 'Receivables Aging' : 'Payables Aging',
+      period: `As at ${new Date(d.asOf).toLocaleDateString()} · ${d.dueDays}-day terms`,
+    });
+    y = kpiBand(doc, y, [
+      { label: 'Total Outstanding', value: money(d.totals.grand, settings) },
+      { label: 'Overdue',           value: money(d.totals.overdue, settings), accent: true },
+      { label: '90+ Days',          value: money(d.totals.d90_plus, settings) },
+    ]);
+    y = sectionTitle(doc, y, isRecv ? 'By customer' : 'By supplier');
+    styledTable(doc, {
+      startY: y,
+      head: [[isRecv ? 'Customer' : 'Supplier', 'Current', '1–30', '31–60', '61–90', '90+', 'Total']],
+      body: d.rows.map((r) => [
+        r.name, formatMoney(r.current), formatMoney(r.d1_30), formatMoney(r.d31_60),
+        formatMoney(r.d61_90), formatMoney(r.d90_plus), formatMoney(r.total),
+      ]),
+      foot: [[
+        'TOTAL', formatMoney(d.totals.current), formatMoney(d.totals.d1_30),
+        formatMoney(d.totals.d31_60), formatMoney(d.totals.d61_90),
+        formatMoney(d.totals.d90_plus), formatMoney(d.totals.grand),
+      ]],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' },
+                      4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
+      fontSize: 8,
+    });
+    finalizeReport(doc, settings);
+    doc.save(`${isRecv ? 'Receivables' : 'Payables'}-Aging-${todayISO()}.pdf`);
+  };
+
+  const BUCKETS = [
+    { key: 'current'  as const, label: 'Current',   tone: 'text-slate-600'  },
+    { key: 'd1_30'    as const, label: '1–30 days', tone: 'text-amber-600'  },
+    { key: 'd31_60'   as const, label: '31–60',     tone: 'text-orange-600' },
+    { key: 'd61_90'   as const, label: '61–90',     tone: 'text-red-600'    },
+    { key: 'd90_plus' as const, label: '90+ days',  tone: 'text-red-700 font-semibold' },
+  ];
+
+  return (
+    <div>
+      {/* Which side of the ledger. Two questions, one shape — a customer who
+          owes you and a supplier you owe age identically. */}
+      <div className="flex items-center gap-2 mb-4">
+        {(['receivable', 'payable'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setType(t)}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition ${
+              type === t ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {t === 'receivable' ? 'Owed to us' : 'We owe'}
+          </button>
+        ))}
+        {data && (
+          <span className="text-xs text-slate-400 ml-2">
+            as at {new Date(data.asOf).toLocaleDateString()} · {data.dueDays}-day terms
+          </span>
+        )}
+      </div>
+
+      <ReportSearch
+        value={q} onChange={setQ}
+        placeholder={isRecv ? 'Filter by customer name or phone…' : 'Filter by supplier name or phone…'}
+        shown={rows.length}
+        total={data?.rows.length ?? 0}
+      />
+
+      {isLoading && <LoadingState />}
+      {data && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <StatCard label="Total Outstanding" value={formatMoneyShort(data.totals.grand)}
+              sub={`${data.totals.contacts} ${isRecv ? 'customers' : 'suppliers'}`} highlight />
+            <StatCard label="Overdue" value={formatMoneyShort(data.totals.overdue)}
+              sub="past due date" accent={data.totals.overdue > 0 ? 'border-amber-400' : undefined} />
+            <StatCard label="90+ Days" value={formatMoneyShort(data.totals.d90_plus)}
+              sub="oldest bracket" accent={data.totals.d90_plus > 0 ? 'border-red-400' : undefined} />
+            <StatCard label="Opening Balances" value={formatMoneyShort(data.totals.openingCents)}
+              sub="carried from before go-live" />
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <SectionHeader
+              title={isRecv ? 'Receivables by customer' : 'Payables by supplier'}
+              onPdf={() => exportPdf(data)}
+            />
+
+            {rows.length === 0 ? (
+              <div className="py-14 text-center">
+                <p className="text-sm font-medium text-slate-500">
+                  {q.trim()
+                    ? 'No match for this search'
+                    : isRecv ? 'Nothing is owed to you' : 'You owe nothing'}
+                </p>
+                {!q.trim() && <p className="text-xs text-slate-400 mt-0.5">Every account is settled.</p>}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
+                      <th className="pb-2 font-medium">{isRecv ? 'Customer' : 'Supplier'}</th>
+                      {BUCKETS.map((b) => (
+                        <th key={b.key} className="pb-2 font-medium text-right">{b.label}</th>
+                      ))}
+                      <th className="pb-2 font-medium text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="py-2.5">
+                          <div className="font-medium text-slate-800">{r.name}</div>
+                          <div className="text-xs text-slate-400">
+                            {r.phone ?? '—'}
+                            {/* Stated per row: money predating the system has no
+                                invoice to chase, so it needs a different call. */}
+                            {r.openingCents > 0 && (
+                              <span className="ml-2 text-indigo-500">
+                                incl. {formatMoney(r.openingCents)} opening
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {BUCKETS.map((b) => (
+                          <td key={b.key} className={`py-2.5 text-right ${r[b.key] > 0 ? b.tone : 'text-slate-300'}`}>
+                            {r[b.key] > 0 ? formatMoney(r[b.key]) : '—'}
+                          </td>
+                        ))}
+                        <td className="py-2.5 text-right font-semibold text-slate-800">{formatMoney(r.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200">
+                      <td className="pt-2.5 font-semibold text-slate-700">Total</td>
+                      {BUCKETS.map((b) => (
+                        <td key={b.key} className="pt-2.5 text-right font-semibold text-slate-700">
+                          {formatMoney(data.totals[b.key])}
+                        </td>
+                      ))}
+                      <td className="pt-2.5 text-right font-bold text-slate-900">{formatMoney(data.totals.grand)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
@@ -1940,6 +2122,7 @@ export default function ReportsPage() {
 
   const tabFromUrl = (): ReportTab => {
     const p = location.pathname;
+    if (p.includes('aging'))       return 'aging';
     if (p.includes('profit-loss')) return 'pl';
     if (p.includes('inventory'))   return 'inventory';
     if (p.includes('purchases'))   return 'purchases';
@@ -1958,12 +2141,14 @@ export default function ReportsPage() {
       customers: '/reports/customers',
       inventory: '/reports/inventory',
       pl:        '/reports/profit-loss',
+      aging:     '/reports/aging',
     };
     navigate(paths[tab]);
   };
 
   const tabColorMap: Record<string, string> = {
     indigo: 'border-indigo-600 text-indigo-700',
+    rose:   'border-rose-600 text-rose-700',
     blue:   'border-blue-600 text-blue-700',
     violet: 'border-violet-600 text-violet-700',
     teal:   'border-teal-600 text-teal-700',
@@ -2023,6 +2208,7 @@ export default function ReportsPage() {
             {activeTab === 'customers' && 'Top customers ranked by total spend, order frequency, and recency.'}
             {activeTab === 'inventory' && 'Current stock levels valued at cost and retail, with low-stock alerts.'}
             {activeTab === 'pl'        && 'Revenue vs cost of goods sold, gross profit, and margin trends.'}
+            {activeTab === 'aging'     && 'How long money has been owed — by you, and to you.'}
           </p>
         </div>
 
@@ -2033,6 +2219,7 @@ export default function ReportsPage() {
         {activeTab === 'customers' && <CustomersTab />}
         {activeTab === 'inventory' && <InventoryTab />}
         {activeTab === 'pl'        && <ProfitLossTab />}
+        {activeTab === 'aging'     && <AgingTab />}
       </main>
     </div>
   );

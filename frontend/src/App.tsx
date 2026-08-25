@@ -361,6 +361,11 @@ export default function App() {
               <ReportsPage />
             </ErrorBoundary>
           } />
+          <Route path="aging" element={
+            <ErrorBoundary fallbackTitle="Reports failed to load">
+              <ReportsPage />
+            </ErrorBoundary>
+          } />
           {/* Disabled — POS shift report not yet implemented
           <Route path="shifts" element={<ComingSoon title="POS Shift Reports" />} />
           */}

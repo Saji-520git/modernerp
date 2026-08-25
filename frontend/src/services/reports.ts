@@ -273,6 +273,33 @@ export interface SalesScope    { customerId?: string; warehouseId?: string }
 export interface PurchaseScope { supplierId?: string; warehouseId?: string }
 export interface ProductScope  { categoryId?: string; brandId?: string; warehouseId?: string }
 
+/** How long money has been owed — the figure that decides who gets a call. */
+export interface AgingRow {
+  id: string;
+  name: string;
+  phone: string | null;
+  current: number;
+  d1_30: number;
+  d31_60: number;
+  d61_90: number;
+  d90_plus: number;
+  total: number;
+  /** Days past due of the oldest debt this contact carries. */
+  oldestDays: number;
+  /** How much of the total is carried forward from before go-live. */
+  openingCents: number;
+}
+
+export interface AgingReport {
+  type: 'receivable' | 'payable';
+  asOf: string;
+  dueDays: number;
+  totals: {
+    current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number;
+    grand: number; overdue: number; contacts: number; openingCents: number;
+  };
+  rows: AgingRow[];
+}
 export const reportsApi = {
   sales: (params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month' } & SalesScope): Promise<SalesReportData> =>
     api.get('/reports/sales', { params }).then((r) => r.data),
@@ -288,6 +315,9 @@ export const reportsApi = {
 
   inventory: (params?: ProductScope): Promise<InventoryReportData> =>
     api.get('/reports/inventory', { params }).then((r) => r.data),
+
+  aging: (params: { type: 'receivable' | 'payable'; asOf?: string }): Promise<AgingReport> =>
+    api.get('/reports/aging', { params }).then((r) => r.data),
 
   profitLoss: (params: { from: string; to: string } & SalesScope): Promise<ProfitLossData> =>
     api.get('/reports/profit-loss', { params }).then((r) => r.data),

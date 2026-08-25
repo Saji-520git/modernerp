@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { toLocalYMD } from '../../utils/local-date.js';
+import { SETTINGS_ID } from '../settings/settings.service.js';
 
 // ─── Report scoping ───────────────────────────────────────────────────────────
 //
@@ -1240,6 +1241,150 @@ export const reportsService = {
   },
 
   // ─── P&L Comparison (current vs previous period) ────────────────────────────
+
+  // ── Aging ─────────────────────────────────────────────────────────────────
+  //
+  // The system could say how much was owed but never how LONG it had been
+  // owed, which is the figure that decides who gets a phone call. A single
+  // "Outstanding: Rs. 40,000" reads the same whether it is last week's invoice
+  // or something eighteen months cold.
+  //
+  // Bucketed by how far past DUE a debt is, not how old the document is.
+  // Overdue is what matters for collection, and a 30-day invoice raised
+  // yesterday is not late. invoiceDueDays drives it, so the buckets follow the
+  // terms the business actually gives.
+  //
+  // An opening balance is included as its own row per contact, aged from
+  // openingBalanceAsOf. It is usually the oldest money owed, so leaving it out
+  // would flatter every total this report exists to expose. When no date was
+  // recorded it lands in the oldest bucket rather than the newest — an unknown
+  // age on carried-forward debt is far likelier to be old than current.
+  aging: async (type: 'receivable' | 'payable', asOf: Date = new Date()) => {
+    const settings  = await prisma.appSettings.findUnique({ where: { id: SETTINGS_ID } });
+    const dueDays   = settings?.invoiceDueDays ?? 30;
+    const asOfMs    = asOf.getTime();
+    const DAY_MS    = 86_400_000;
+
+    /** Days past due, negative meaning not yet due. */
+    const overdueDays = (docDate: Date) =>
+      Math.floor((asOfMs - (new Date(docDate).getTime() + dueDays * DAY_MS)) / DAY_MS);
+
+    const BUCKETS = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'] as const;
+    type Bucket = (typeof BUCKETS)[number];
+    const bucketOf = (days: number): Bucket =>
+      days <= 0 ? 'current'
+        : days <= 30 ? 'd1_30'
+        : days <= 60 ? 'd31_60'
+        : days <= 90 ? 'd61_90'
+        : 'd90_plus';
+
+    const rowsByContact = new Map<string, {
+      id: string; name: string; phone: string | null;
+      current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number;
+      total: number; oldestDays: number; openingCents: number;
+    }>();
+
+    const add = (
+      id: string, name: string, phone: string | null,
+      cents: number, days: number, isOpening = false,
+    ) => {
+      if (cents <= 0) return;
+      let row = rowsByContact.get(id);
+      if (!row) {
+        row = { id, name, phone, current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0,
+                total: 0, oldestDays: 0, openingCents: 0 };
+        rowsByContact.set(id, row);
+      }
+      row[bucketOf(days)] += cents;
+      row.total          += cents;
+      row.oldestDays      = Math.max(row.oldestDays, days);
+      if (isOpening) row.openingCents += cents;
+    };
+
+    if (type === 'receivable') {
+      const sales = await prisma.sale.findMany({
+        where: {
+          status: 'CONFIRMED', deletedAt: null,
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+          customerId: { not: null },
+        },
+        select: {
+          id: true, date: true, totalCents: true, paidCents: true,
+          customer: { select: { id: true, name: true, phone: true } },
+          returns:  { select: { totalCents: true } },
+        },
+      });
+
+      for (const s of sales) {
+        if (!s.customer) continue;   // walk-in trade is settled at the till
+        const returned = s.returns.reduce((a, r) => a + r.totalCents, 0);
+        const owed     = Math.max(0, s.totalCents - returned) - s.paidCents;
+        add(s.customer.id, s.customer.name, s.customer.phone, owed, overdueDays(s.date));
+      }
+
+      const opening = await prisma.customer.findMany({
+        where:  { isActive: true, openingBalanceCents: { gt: 0 } },
+        select: { id: true, name: true, phone: true, openingBalanceCents: true, openingBalanceAsOf: true },
+      });
+      for (const c of opening) {
+        // No recorded date → treated as the oldest bucket, not the newest.
+        const days = c.openingBalanceAsOf ? overdueDays(c.openingBalanceAsOf) : 9_999;
+        add(c.id, c.name, c.phone, c.openingBalanceCents, days, true);
+      }
+    } else {
+      const purchases = await prisma.purchase.findMany({
+        where: {
+          status: 'CONFIRMED', deletedAt: null,
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        },
+        select: {
+          id: true, date: true, receivedValueCents: true, paidCents: true,
+          supplier: { select: { id: true, name: true, phone: true } },
+          purchaseReturns: { where: { status: 'CONFIRMED', isActive: true }, select: { totalCents: true } },
+        },
+      });
+
+      for (const p of purchases) {
+        if (!p.supplier) continue;
+        const returned = p.purchaseReturns.reduce((a, r) => a + r.totalCents, 0);
+        // Owed follows DELIVERED value, matching the supplier detail page —
+        // ordering something does not make it payable.
+        const owed = Math.max(0, p.receivedValueCents - returned) - p.paidCents;
+        add(p.supplier.id, p.supplier.name, p.supplier.phone, owed, overdueDays(p.date));
+      }
+
+      const opening = await prisma.supplier.findMany({
+        where:  { isActive: true, openingBalanceCents: { gt: 0 } },
+        select: { id: true, name: true, phone: true, openingBalanceCents: true, openingBalanceAsOf: true },
+      });
+      for (const sup of opening) {
+        const days = sup.openingBalanceAsOf ? overdueDays(sup.openingBalanceAsOf) : 9_999;
+        add(sup.id, sup.name, sup.phone, sup.openingBalanceCents, days, true);
+      }
+    }
+
+    const rows = [...rowsByContact.values()].sort((a, b) => b.total - a.total);
+
+    const totals = BUCKETS.reduce(
+      (acc, b) => ({ ...acc, [b]: rows.reduce((s, r) => s + r[b], 0) }),
+      {} as Record<Bucket, number>,
+    );
+
+    return {
+      type,
+      asOf:     asOf.toISOString(),
+      dueDays,
+      totals: {
+        ...totals,
+        grand:      rows.reduce((s, r) => s + r.total, 0),
+        // Everything past due, which is the number that prompts action.
+        overdue:    rows.reduce((s, r) => s + r.d1_30 + r.d31_60 + r.d61_90 + r.d90_plus, 0),
+        contacts:   rows.length,
+        openingCents: rows.reduce((s, r) => s + r.openingCents, 0),
+      },
+      rows,
+    };
+  },
 
   getPnlComparison: async (dateFrom: string, dateTo: string, warehouseId?: string) => {
     const from       = new Date(dateFrom);

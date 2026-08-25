@@ -89,6 +89,17 @@ export const inventoryReport: RequestHandler = async (req, res) => {
   res.json(await reportsService.inventoryReport(scope.warehouseId, scope));
 };
 
+const agingSchema = z.object({
+  type: z.enum(['receivable', 'payable']).default('receivable'),
+  // Lets an owner ask what the aging looked like at month-end, not only today.
+  asOf: z.string().optional(),
+});
+
+export const aging: RequestHandler = async (req, res) => {
+  const { type, asOf } = agingSchema.parse(req.query);
+  res.json(await reportsService.aging(type, asOf ? new Date(asOf) : new Date()));
+};
+
 export const profitLoss: RequestHandler = async (req, res) => {
   const { from, to } = dateRangeSchema.parse(req.query);
   res.json(await reportsService.profitLoss(from, to, salesScopeSchema.parse(req.query)));

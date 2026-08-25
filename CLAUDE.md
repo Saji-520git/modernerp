@@ -599,6 +599,14 @@ For a clean dev DB, build a *separate throwaway* database from files — never m
 **Phase 3 Sprint 20: Negative Stock (sell past zero) ✓** (2026-08-21)
 **Phase 3 Sprint 21: Document numbering hardening + Audit Trail ✓** (2026-08-23)
 **Phase 3 Sprint 22: Report filters + scoping, Opening Balances ✓** (2026-08-25)
+**Phase 3 Sprint 23: Receivables/Payables Aging ✓** (2026-08-25)
+
+Sprint 23 notes:
+- Seventh report tab. Buckets by days past DUE (invoiceDueDays), not document
+  age, so a 30-day invoice raised yesterday is not counted late.
+- Opening balances are aged from openingBalanceAsOf; undated ones land in 90+,
+  never in Current.
+- Toggles between receivable and payable — one shape, both sides of the ledger.
 
 Sprint 22 notes:
 - Every report has a search bar; all six can be SCOPED to one entity (customer,
