@@ -2565,12 +2565,20 @@ export default function POSPage() {
           ? (targetLine!.batchQty as number)
           : availableStockFor(posProduct);   // BASE units either way
 
-        if (available <= 0) {
+        // Same lift as addToCart and the typed qty box. The steppers were the
+        // one route into a cart line that still enforced the ceiling, so an
+        // oversold line could be added but not incremented.
+        const stepperMayOversell =
+          (appSettings?.allowNegativeStock ?? false) &&
+          !posProduct.isBatchTracked &&
+          !isBatchLine;
+
+        if (available <= 0 && !stepperMayOversell) {
           flashCap(isBatchLine ? 'This batch is finished — pick another batch' : 'No stock available');
           return prev; // no change
         }
         const maxUnits = Math.floor(available / factor);
-        if (cappedQty > maxUnits) {
+        if (cappedQty > maxUnits && !stepperMayOversell) {
           cappedQty = maxUnits;
           flashCap(
             isBatchLine
@@ -2596,7 +2604,7 @@ export default function POSPage() {
       return syncServiceCharges(next);
     });
     refocusBarcode();
-  }, [removeFromCart, refocusBarcode, products, availableStockFor]);
+  }, [removeFromCart, refocusBarcode, products, availableStockFor, appSettings]);
 
   const clearCart = useCallback(() => {
     receiptPendingRef.current = false;   // v1.0.43 — acknowledge any pending receipt
@@ -2664,10 +2672,19 @@ export default function POSPage() {
     try {
       const found = await productsApi.getByBarcode(code);
 
-      // Block adding out-of-stock product under BLOCK policy
+      // Block adding out-of-stock product under BLOCK policy.
+      //
+      // Unless selling past zero is allowed. The grid card and addToCart both
+      // lift their ceiling for that setting; this branch did not, and because
+      // the grid is paginated it is the branch MOST scans take - so a scanned
+      // product was refused while the same product added by tap went through.
+      // Never for a batch-tracked product: an uncovered unit would carry no
+      // batch number and no expiry. Mirrors the server gate in pos.service.
       const policy = (appSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
+      const scanMayOversell =
+        (appSettings?.allowNegativeStock ?? false) && !(found.isBatchTracked ?? false);
       const totalQty = found.stock.reduce((sum, s) => sum + Number(s.qty), 0);
-      if (policy === 'BLOCK' && totalQty <= 0) {
+      if (policy === 'BLOCK' && totalQty <= 0 && !scanMayOversell) {
         sound.error();
         setQuickAddToast('This product is out of stock and cannot be sold');
         setTimeout(() => setQuickAddToast(null), 3000);
