@@ -1,6 +1,6 @@
 {
   "name": "modernerp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ModernERP - Retail Management System",
   "author": "BROcode Solutions",
   "main": "electron/main.js",
@@ -35,7 +35,9 @@
       {
         "from": "resources/pgsql",
         "to": "pgsql",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "backend/node_modules",
@@ -52,7 +54,9 @@
       {
         "from": "backend/dist",
         "to": "app/backend/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "backend/package.json",
@@ -61,12 +65,16 @@
       {
         "from": "backend/src/prisma",
         "to": "app/backend/src/prisma",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "frontend/dist",
         "to": "app/frontend/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
