@@ -816,7 +816,15 @@ export const posService = {
         await tx.posDraft.deleteMany({ where: { id: draftId, createdById: userId } });
       }
 
-      // Increment shift running totals in real-time
+      // Running totals on the shift row.
+      //
+      // Advisory only — do NOT read these as the shift's takings. They are
+      // incremented here and never decremented, so a sale voided or removed
+      // later leaves them overstated for the rest of the shift. Both places
+      // that report a shift compute from the sales instead: getCurrentShift for
+      // the POS header, aggregateShift for the close. closeShift then
+      // overwrites these with the correct aggregate, so the stored snapshot on
+      // a CLOSED shift is accurate; only an open one can be ahead of itself.
       await tx.posShift.update({
         where: { id: shift.id },
         data: {
@@ -1096,7 +1104,7 @@ export const posService = {
   },
 
   async getCurrentShift(userId: string, warehouseId?: string) {
-    return prisma.posShift.findFirst({
+    const shift = await prisma.posShift.findFirst({
       where: {
         userId,
         status: 'OPEN',
@@ -1112,6 +1120,32 @@ export const posService = {
         warehouse: { select: { id: true, name: true, code: true } },
       },
     });
+    if (!shift) return null;
+
+    // Sales are counted from the sales themselves, not from the running
+    // counters on the row.
+    //
+    // Those counters are incremented at checkout and never decremented, so a
+    // sale that is later voided or deleted leaves them overstated for the rest
+    // of the shift. The POS header read them while the close-shift dialog
+    // recomputed from the sales — the same shift showing "Rs. 10,990 · 4 sales"
+    // in the header and "Rs. 510.00 · 1 sale" in the dialog, with the dialog
+    // right. A cashier reconciling a drawer against the header would have been
+    // hunting a shortfall that never existed.
+    //
+    // Same filter aggregateShift() uses for the close, so the two figures are
+    // now the same figure and cannot drift apart again.
+    const live = await prisma.sale.aggregate({
+      where:  { shiftId: shift.id, status: 'CONFIRMED', deletedAt: null },
+      _sum:   { totalCents: true },
+      _count: true,
+    });
+
+    return {
+      ...shift,
+      saleCount:       live._count,
+      totalSalesCents: live._sum.totalCents ?? 0,
+    };
   },
 
   async closeShift(userId: string, input: CloseShiftInput) {
