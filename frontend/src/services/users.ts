@@ -677,10 +677,31 @@ export function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+/**
+ * Grants plus everything they imply — the frontend half of the server's
+ * expandPermissions.
+ *
+ * Derived from PERMISSION_GROUPS, which is generated from the same IMPLIED_BY
+ * map the server expands with, so the two cannot answer differently. Only the
+ * RAW selection is ever saved; this exists so a count reads as what the user
+ * will actually be able to do.
+ */
+export function expandPermissions(granted: readonly Permission[]): Permission[] {
+  const out = new Set<Permission>(granted);
+  for (const group of PERMISSION_GROUPS) {
+    for (const p of group.permissions) {
+      if (out.has(p.key)) for (const c of p.children) out.add(c.key);
+    }
+  }
+  return [...out];
+}
+
 /** Get the effective permissions for a user (custom if set, role default otherwise) */
 export function getEffectivePermissions(user: User): Permission[] {
-  if (user.permissions && user.permissions.length > 0) return user.permissions;
-  return ROLE_DEFAULTS[user.role];
+  const granted = user.permissions && user.permissions.length > 0
+    ? user.permissions
+    : ROLE_DEFAULTS[user.role];
+  return expandPermissions(granted);
 }
 
 /** Check if a user has custom permissions (not matching role defaults) */

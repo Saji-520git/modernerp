@@ -31,6 +31,7 @@ import {
   ALL_PERMISSIONS,
   getInitials,
   getEffectivePermissions,
+  expandPermissions,
   hasCustomPermissions,
   checkPasswordStrength,
   type User,
@@ -77,25 +78,37 @@ function PermissionToggle({
   description,
   checked,
   onChange,
+  /** Held via its parent rather than in its own right — shown on, but locked. */
+  inherited = false,
+  compact = false,
 }: {
   label: string;
   description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  inherited?: boolean;
+  compact?: boolean;
 }) {
   return (
     <label
+      title={inherited ? 'Granted by the permission above' : undefined}
       className={cls(
-        'flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors',
-        checked ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-slate-50',
+        'flex items-start gap-3 rounded-lg transition-colors',
+        compact ? 'p-1.5' : 'p-2.5',
+        inherited ? 'cursor-default opacity-70' : 'cursor-pointer',
+        checked && !inherited ? 'bg-indigo-50 hover:bg-indigo-100'
+          : inherited ? 'bg-slate-50' : 'hover:bg-slate-50',
       )}
-      onClick={() => onChange(!checked)}
+      onClick={() => { if (!inherited) onChange(!checked); }}
     >
       <div className="mt-0.5 shrink-0">
         <div
           className={cls(
-            'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
-            checked ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300',
+            'rounded border-2 flex items-center justify-center transition-colors',
+            compact ? 'w-3.5 h-3.5' : 'w-4 h-4',
+            checked
+              ? (inherited ? 'bg-slate-400 border-slate-400' : 'bg-indigo-600 border-indigo-600')
+              : 'bg-white border-slate-300',
           )}
         >
           {checked && (
@@ -476,7 +489,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
                       Permissions
                     </h3>
                     <span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full">
-                      {effective.length}/{ALL_PERMISSIONS.length}
+                      {expandPermissions(effective).length}/{ALL_PERMISSIONS.length}
                     </span>
                     {isCustomized && permsDifferFromDefaults() && (
                       <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full">
@@ -510,9 +523,15 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
 
                 <div className="space-y-2">
                   {PERMISSION_GROUPS.map((group) => {
-                    const groupActive = group.permissions.filter((p) =>
-                      effective.includes(p.key),
-                    ).length;
+                    // Count the finer actions too, or a group reading "2/2"
+                    // hides the twelve sub-actions sitting under it.
+                    const groupKeys = group.permissions.flatMap((p) =>
+                      [p.key, ...p.children.map((c) => c.key)]);
+                    const groupHeld = (k: string) =>
+                      effective.includes(k as never) ||
+                      group.permissions.some((p) =>
+                        effective.includes(p.key) && p.children.some((c) => c.key === k));
+                    const groupActive = groupKeys.filter(groupHeld).length;
                     const expanded = expandedGroups.has(group.label);
                     return (
                       <div
@@ -532,7 +551,7 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-400">
-                              {groupActive}/{group.permissions.length}
+                              {groupActive}/{groupKeys.length}
                             </span>
                             {expanded ? (
                               <ChevronUp size={14} className="text-slate-400" />
@@ -543,15 +562,42 @@ function UserModal({ user, onClose, onSaved }: UserModalProps) {
                         </button>
                         {expanded && (
                           <div className="p-2 space-y-1">
-                            {group.permissions.map((p) => (
-                              <PermissionToggle
-                                key={p.key}
-                                label={p.label}
-                                description={p.description}
-                                checked={effective.includes(p.key)}
-                                onChange={() => togglePermission(p.key)}
-                              />
-                            ))}
+                            {group.permissions.map((p) => {
+                              // Holding the parent grants every child, so the
+                              // children read as on and locked rather than
+                              // pretending to be separately revocable.
+                              const parentOn = effective.includes(p.key);
+                              return (
+                                <div key={p.key}>
+                                  <PermissionToggle
+                                    label={p.label}
+                                    description={p.description}
+                                    checked={parentOn}
+                                    onChange={() => togglePermission(p.key)}
+                                  />
+                                  {p.children.length > 0 && (
+                                    <div className="ml-6 pl-3 border-l border-slate-200 space-y-0.5 mt-0.5 mb-1.5">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-1.5 pt-1">
+                                        {parentOn
+                                          ? `All ${p.children.length} actions granted`
+                                          : `${p.children.length} individual actions`}
+                                      </p>
+                                      {p.children.map((c) => (
+                                        <PermissionToggle
+                                          key={c.key}
+                                          label={c.label}
+                                          description={c.description}
+                                          checked={parentOn || effective.includes(c.key)}
+                                          inherited={parentOn}
+                                          compact
+                                          onChange={() => togglePermission(c.key)}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
