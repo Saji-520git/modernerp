@@ -148,6 +148,48 @@
 }
 
 @layer components {
+  /* ── Numeric fields: show the whole number ────────────────────────────────
+     A quantity of 50 displayed as "5", and a cost of 180.00 as "18(".
+
+     Two things compound. Every numeric field here is `text-right`, and Chrome
+     and Safari render the spin buttons INSIDE the field, over its right edge —
+     exactly where right-aligned digits end, so the last characters sit
+     underneath them. And these inputs are `w-full` inside auto-layout table
+     cells, which redistribute width to the wider text columns: the Purchases
+     Qty box measured 45px against a header declaring w-24 (96px), and Unit
+     Cost 63px against w-32 (128px).
+
+     The spinners are removed rather than worked around because nothing in this
+     app wants them: quantities and money are typed or scanned, never nudged one
+     step at a time. Keyboard up/down still adjusts the value — that is the
+     input's own behaviour, not the buttons' — so no capability is lost, and
+     roughly 17px comes back to every numeric field in the app.
+
+     Solved in CSS on purpose. Numeric inputs appear on POS, Purchases, GRN
+     receiving, Sales, Products, Inventory, Stock-take and Settings; fixing it
+     per component would mean touching all of them and missing the next one.
+     Delete this block and the previous behaviour returns exactly. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;   /* Firefox's own spinner */
+    appearance: textfield;
+  }
+
+  /* A floor for numeric fields inside a data grid, so a column can never
+     collapse narrower than the value it has to hold. 4rem matches the w-16
+     already used by the narrowest of them (the GRN damaged-qty and batch-split
+     boxes), so none of those move — this only lifts cells that had been
+     squeezed BELOW their intended width. Scoped to table cells so standalone
+     form fields, which size themselves deliberately, are untouched. */
+  td input[type='number'] {
+    min-width: 4rem;
+  }
+
   /* A strip that scrolls sideways when it has to, without the scrollbar itself
      becoming part of the design — used by the Reports tab strip, where a visible
      bar under the tabs would read as a stray rule. The content still scrolls by
