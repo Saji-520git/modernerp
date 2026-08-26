@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   ALL_PERMISSIONS, ROLE_DEFAULTS, IMPLIED_BY, PARENT_OF, FINE_LABELS,
   SUPER_ADMIN_PERMISSIONS, expandPermissions, resolvePermissions,
+  type Permission,
 } from '../src/config/permissions';
 
 // The permission catalogue exists twice: here, and in the frontend service that
@@ -157,5 +158,27 @@ describe('every permission a route guards is real', () => {
     expect(used.length).toBeGreaterThan(0);
     const unknown = used.filter((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p));
     expect(unknown).toEqual([]);
+  });
+});
+
+describe('a token minted before a permission was split', () => {
+  // requirePermission expands req.auth.permissions at CHECK time. Without that,
+  // deploying the report split 403s every signed-in user — their token still
+  // names only view_reports — until they happen to log out and back in. This is
+  // that exact case, and it cost a debugging round to find in the browser.
+  const staleToken = ['view_reports', 'manage_products', 'pos_checkout'] as Permission[];
+
+  it('still passes a guard on a fine key its coarse parent covers', () => {
+    const held = expandPermissions(staleToken);
+    expect(held).toContain('reports.profit_loss');
+    expect(held).toContain('products.set_price');
+    expect(held).toContain('pos.void_sale');
+  });
+
+  it('does not become a skeleton key', () => {
+    const held = expandPermissions(staleToken);
+    expect(held).not.toContain('manage_users');
+    expect(held).not.toContain('manage_modules');
+    expect(held).not.toContain('settings.system');
   });
 });

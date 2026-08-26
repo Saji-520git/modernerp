@@ -35,6 +35,8 @@
 | 13 | Reports | ✅ Done | Sales/Purchases/Products/Customers/Inventory/P&L tabs; pure CSS charts; PDF export |
 | 14 | Stock Overview / Reports search ignored barcode — the page re-filters CLIENT-side on name+SKU only, so the API's barcode clause never reached the table | InventoryPage / ReportsPage | MEDIUM | Resolved 2026-08-26 |
 | 15 | A crashed verify-*.mjs script exited 0 and read as a pass (report() counts failed assertions only) — hid a TDZ bug as "6/6 passed" | backend/scripts | MEDIUM | Resolved 2026-08-26 |
+| 16 | JWTs carry a raw permission list, so splitting a permission 403s every signed-in user until they re-login — requirePermission now expands at check time | middleware/auth.ts | HIGH | Resolved 2026-08-26 |
+| 17 | users.service list/getOne/stats defaulted viewerIsSuper to TRUE — fail-open; a caller that forgot the argument exposed the vendor account | users.service.ts | HIGH | Resolved 2026-08-26 |
 | 14 | Products Page | ✅ Done | Full CRUD — table, search, category/brand filter, create/edit modal, margin preview, stock drawer |
 | 15 | Dashboard v2 | ✅ Done | Gradient hero card, outstanding receivables, inventory value, month purchases, quick actions, better design |
 | 16 | POS v2 | ✅ Done | Customer selector (walk-in / existing), keyboard shortcuts (F1-F5, Enter, Shift+Enter, Esc), professional receipt, quit button |
@@ -606,6 +608,8 @@ For a clean dev DB, build a *separate throwaway* database from files — never m
 **Phase 3 Sprint 21: Document numbering hardening + Audit Trail ✓** (2026-08-23)
 **Phase 3 Sprint 22: Report filters + scoping, Opening Balances ✓** (2026-08-25)
 **Phase 3 Sprint 23: Receivables/Payables Aging ✓** (2026-08-25)
+**Phase 3 Sprint 24: POS scanner hardening ✓** (2026-08-26)
+**Phase 3 Sprint 25: Fine-grained permissions + vendor super-admin ✓** (2026-08-26)
 
 Sprint 23 notes:
 - Seventh report tab. Buckets by days past DUE (invoiceDueDays), not document
@@ -660,8 +664,10 @@ Phase 3 sprints completed:
   E - Accounting (chart of accounts, journals, balance sheet)
 
 **Known open issues (minor):**
-- Expense add with non-Rent categories: test after bug fix
-- P&L report shows expenses section (verify in browser)
+- (cleared 2026-08-26) Expense create with a non-Rent category verified through
+  expensesService.createExpense — accepted, listed, probe row removed
+- (cleared 2026-08-26) P&L renders its TOTAL EXPENSES tile: Rs. 15.7K over 6
+  transactions, /reports/profit-loss returning 200
 - (Backend TS errors: gone — `npm run typecheck` is clean on both sides as of 2026-08-23)
 
 **Tech stack:** React 18 + Vite + TypeScript + Tailwind
