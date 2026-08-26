@@ -77,7 +77,12 @@ export async function nextDocNumber(
  * on a P2002 the number is stale by definition, and re-reading the maximum
  * yields the next free one.
  */
-export async function withNumberRetry<T>(attempt: () => Promise<T>, tries = 5): Promise<T> {
+// Attempts, not retries. The budget has to EXCEED the number of writers that
+// can tie: in the worst case exactly one of them wins each round, so N
+// contenders need up to N attempts. At 5 this was arithmetically short of six
+// simultaneous purchase orders - two runs in eight lost one. Retries only ever
+// happen on a collision, so a larger budget costs nothing the rest of the time.
+export async function withNumberRetry<T>(attempt: () => Promise<T>, tries = 12): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < tries; i++) {
     try {
@@ -91,6 +96,13 @@ export async function withNumberRetry<T>(attempt: () => Promise<T>, tries = 5): 
       const target = String((err as { meta?: { target?: unknown } })?.meta?.target ?? '').toLowerCase();
       if (code !== 'P2002' || !target.includes('number')) throw err;
       lastErr = err;
+      // Back off, jittered, before re-reading the maximum.
+      //
+      // Without this every loser of a collision re-reads at the same instant
+      // and ties again on the same number, so the budget burns on one contested
+      // slot instead of resolving it: six simultaneous purchase orders left one
+      // failing after five attempts. The wait only ever happens on a collision.
+      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 25)));
     }
   }
   throw lastErr;

@@ -33,6 +33,8 @@
 | 11 | Dashboard | ✅ Done | KPI cards, 14-day revenue bar chart (CSS), top products, recent sales, stock alerts |
 | 12 | PDF Export | ✅ Done | jsPDF + jspdf-autotable; Download PDF on Invoice, PO, and CRN modals |
 | 13 | Reports | ✅ Done | Sales/Purchases/Products/Customers/Inventory/P&L tabs; pure CSS charts; PDF export |
+| 14 | Stock Overview / Reports search ignored barcode — the page re-filters CLIENT-side on name+SKU only, so the API's barcode clause never reached the table | InventoryPage / ReportsPage | MEDIUM | Resolved 2026-08-26 |
+| 15 | A crashed verify-*.mjs script exited 0 and read as a pass (report() counts failed assertions only) — hid a TDZ bug as "6/6 passed" | backend/scripts | MEDIUM | Resolved 2026-08-26 |
 | 14 | Products Page | ✅ Done | Full CRUD — table, search, category/brand filter, create/edit modal, margin preview, stock drawer |
 | 15 | Dashboard v2 | ✅ Done | Gradient hero card, outstanding receivables, inventory value, month purchases, quick actions, better design |
 | 16 | POS v2 | ✅ Done | Customer selector (walk-in / existing), keyboard shortcuts (F1-F5, Enter, Shift+Enter, Esc), professional receipt, quit button |
@@ -538,7 +540,7 @@ After completing a module:
 | 6 | Invoice numbers derived from row count — skip, and collide after a delete | sales.service / pos.service | HIGH | Resolved 2026-08-18 |
 | 7 | `npm run build` packaged a stale dist — shipped fixes were invisible | package.json | HIGH | Resolved 2026-08-18 |
 | 8 | Eight other doc-number generators still count rows (PO/CRN/GRN/SPAY/quotation/stocktake/purchase-return/write-off) | see §12.2 | MEDIUM | Resolved 2026-08-23 |
-| 9 | `withNumberRetry` not applied to PO confirm / GRN receipt (max+1 is, so a delete is safe; two *simultaneous* creates could still collide) | purchases.service / purchase-receipt.service | LOW | Open |
+| 9 | `withNumberRetry` not applied to PO confirm / GRN receipt (max+1 is, so a delete is safe; two *simultaneous* creates could still collide) | purchases.service / purchase-receipt.service | LOW | Resolved 2026-08-26 |
 | 10 | Scanning a zero-stock product was refused even with negative stock ON — the barcode API fallback and the +/- steppers never learned about `allowNegativeStock` | POSPage.tsx | HIGH | Resolved 2026-08-26 |
 | 11 | Second scan of the same item set qty to the whole shelf — the scanner typed its barcode into the auto-focused qty box (and, once overselling lifted the cap, would have committed the barcode itself as the quantity) | POSPage.tsx / cartLines.ts | HIGH | Resolved 2026-08-26 |
 | 12 | A barcode landing in a discount box read as a FULL discount (clamped to 100% / whole subtotal) and, on the cart-total box, opened payment on top of it | DiscountInput.tsx | HIGH | Resolved 2026-08-26 |

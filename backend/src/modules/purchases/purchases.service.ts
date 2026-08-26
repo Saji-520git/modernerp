@@ -9,7 +9,7 @@ import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
-import { nextDocNumber } from '../../utils/doc-number.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -224,8 +224,6 @@ export const purchaseService = {
       }
     }
 
-    const number = await generatePONumber();
-
     // Compute line and order totals — no tax per business decision
     const computedLines = input.lines.map((line) => {
       const subtotal = Math.round(Number(line.qty) * line.unitCostCents);
@@ -236,9 +234,13 @@ export const purchaseService = {
     const taxCents = 0;
     const totalCents = subtotalCents;
 
-    const purchase = await prisma.purchase.create({
+    // The number is issued INSIDE the retry, as late as possible. Two writers
+    // can read the same maximum before either has committed; the database
+    // settles that on the unique index and the retry takes the next free
+    // number rather than failing the document. Mirrors sales and pos.
+    const purchase = await withNumberRetry(async () => prisma.purchase.create({
       data: {
-        number,
+        number: await generatePONumber(),
         supplierId: input.supplierId,
         warehouseId: input.warehouseId,
         date: input.date ? new Date(input.date) : new Date(),
@@ -269,7 +271,7 @@ export const purchaseService = {
           },
         },
       },
-    });
+    }));
 
     return purchase;
   },
@@ -642,8 +644,6 @@ export const purchaseService = {
     }
     const costMap = new Map(products.map((p) => [p.id, p.costCents]));
 
-    const number = await generatePONumber();
-
     const computedLines = input.items.map((item) => {
       const unitCostCents = item.unitCostCents ?? costMap.get(item.productId) ?? 0;
       const lineTotalCents = Math.round(item.qty * unitCostCents);
@@ -652,9 +652,13 @@ export const purchaseService = {
 
     const totalCents = computedLines.reduce((s, l) => s + l.lineTotalCents, 0);
 
-    return prisma.purchase.create({
+    // The number is issued INSIDE the retry, as late as possible. Two writers
+    // can read the same maximum before either has committed; the database
+    // settles that on the unique index and the retry takes the next free
+    // number rather than failing the document. Mirrors sales and pos.
+    return withNumberRetry(async () => prisma.purchase.create({
       data: {
-        number,
+        number: await generatePONumber(),
         supplierId:  input.supplierId,
         warehouseId: input.warehouseId,
         date:        new Date(),
@@ -682,7 +686,7 @@ export const purchaseService = {
           include: { product: { select: { id: true, name: true, sku: true } } },
         },
       },
-    });
+    }));
   },
 
   deletePurchase: async (id: string, userId: string) => {

@@ -169,5 +169,5 @@ function report() {
 }
 
 main()
-  .catch(async (e) => { console.error('ERROR:', e.message); report(); })
+  .catch(async (e) => { console.error('ERROR:', e.message); ok('script ran to completion', false, e.message); report(); })
   .finally(() => prisma.$disconnect());

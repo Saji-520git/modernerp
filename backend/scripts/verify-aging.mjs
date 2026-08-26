@@ -114,5 +114,5 @@ function report() {
   process.exit(failed ? 1 : 0);
 }
 
-main().catch(async (e) => { console.error('ERROR:', e.message); await cleanup().catch(() => {}); report(); })
+main().catch(async (e) => { console.error('ERROR:', e.message); ok('script ran to completion', false, e.message); await cleanup().catch(() => {}); report(); })
   .finally(() => prisma.$disconnect());

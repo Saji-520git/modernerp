@@ -7,7 +7,7 @@ import { computeWAC } from '../../utils/cost.js';
 import { findOrCreateBatch } from '../../utils/batch-matching.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { settleShortfall } from '../../utils/stock-utils.js';
-import { nextDocNumber } from '../../utils/doc-number.js';
+import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,9 +69,10 @@ export async function createReceipt(
     }
   }
 
-  const receiptNumber = await generateGRNNumber();
-
-  await prisma.$transaction(async (tx) => {
+  // Issued inside the transaction, and the whole transaction is retried: on a
+  // duplicate it has already unwound, so re-reading the maximum and taking the
+  // next free number is safe and the delivery is not lost on the receiver.
+  const receiptNumber = await withNumberRetry(() => prisma.$transaction(async (tx) => {
     // 0. Receiving allowance — how much of each ordered line may still be received.
     //
     // Derived from what has actually been logged on receipt lines, NOT from
@@ -114,7 +115,7 @@ export async function createReceipt(
     // 1. Create the GRN header
     const receipt = await tx.purchaseReceipt.create({
       data: {
-        receiptNumber,
+        receiptNumber: await generateGRNNumber(),
         purchaseId,
         warehouseId:  purchase.warehouseId,
         receivedById: userId,
@@ -326,7 +327,7 @@ export async function createReceipt(
           qty:         baseGood,
           refType:     'PurchaseReceipt',
           refId:       receipt.id,
-          note:        `GRN ${receiptNumber}`,
+          note:        `GRN ${receipt.receiptNumber}`,
         });
       }
       if (baseDamagedAccepted.greaterThan(0)) {
@@ -337,7 +338,7 @@ export async function createReceipt(
           qty:         baseDamagedAccepted,
           refType:     'PurchaseReceipt',
           refId:       receipt.id,
-          note:        `GRN ${receiptNumber} — damaged accepted`,
+          note:        `GRN ${receipt.receiptNumber} — damaged accepted`,
         });
       }
 
@@ -397,7 +398,10 @@ export async function createReceipt(
 
     // Supplier payable follows delivered value — recompute after this receipt.
     await recomputeReceivedValue(tx, purchaseId);
-  }, { timeout: 60_000 });
+
+    // Hand the issued number back out: a retry may have changed it.
+    return receipt.receiptNumber;
+  }, { timeout: 60_000 }));
 
   // Return the new receipt with lines
   return getReceiptById(receiptNumber, true);
@@ -441,12 +445,10 @@ export async function createFullReceiptRecord(
   userId:        string,
 ): Promise<void> {
   try {
-    const receiptNumber = await generateGRNNumber();
-
-    await prisma.$transaction(async (tx) => {
+    await withNumberRetry(() => prisma.$transaction(async (tx) => {
       const receipt = await tx.purchaseReceipt.create({
         data: {
-          receiptNumber,
+          receiptNumber: await generateGRNNumber(),
           purchaseId,
           warehouseId,
           receivedById: userId,
@@ -479,7 +481,7 @@ export async function createFullReceiptRecord(
 
       // FULL delivery = ordered value; keep the payable in step.
       await recomputeReceivedValue(tx, purchaseId);
-    });
+    }));
   } catch (err) {
     // Non-fatal: don't fail the whole confirm if receipt creation fails
     logger.warn({ err, purchaseId }, 'Failed to create full receipt record after confirmation');

@@ -123,6 +123,7 @@ function report() {
 
 main().catch(async (e) => {
   console.error('ERROR:', e.message);
+  ok('script ran to completion', false, e.message);
   if (createdSaleId) {
     await prisma.stockMovement.deleteMany({ where: { refId: createdSaleId } }).catch(() => {});
     await prisma.saleLine.deleteMany({ where: { saleId: createdSaleId } }).catch(() => {});

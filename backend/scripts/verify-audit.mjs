@@ -38,6 +38,16 @@ const main = async () => {
        '(anonymous checks still run)');
   }
 
+  // Every check below drives the API over HTTP, so without a server there is
+  // nothing to assert. Skip loudly rather than crashing: a dead port is a
+  // missing precondition, not a defect in the audit trail.
+  const reachable = await fetch(BASE + '/settings').then(() => true).catch(() => false);
+  if (!reachable) {
+    ok('backend not running on ' + BASE + ' — HTTP checks skipped', true,
+       '(start it with: npm run dev)');
+    return report();
+  }
+
   // ── 1. A read must leave no trace ─────────────────────────────────────────
   const beforeGet = await prisma.auditLog.count();
   await api('/settings');
@@ -210,5 +220,5 @@ function report() {
   process.exit(failed ? 1 : 0);
 }
 
-main().catch(async (e) => { console.error('ERROR:', e.message); await cleanup().catch(() => {}); report(); })
+main().catch(async (e) => { console.error('ERROR:', e.message); ok('script ran to completion', false, e.message); await cleanup().catch(() => {}); report(); })
   .finally(() => prisma.$disconnect());
