@@ -51,6 +51,8 @@ const POS_SHORTCUTS = [
   { group: 'SALES',      key: 'F4',           action: 'Hold current cart' },
   { group: 'SALES',      key: 'F5',           action: 'Cancel current sale' },
   { group: 'SALES',      key: 'F8',           action: 'Pay now' },
+  { group: 'SALES',      key: 'Shift+Enter',  action: 'Pay now (from any field)' },
+  { group: 'SALES',      key: 'F3',           action: 'Jump to cart discount' },
   { group: 'SALES',      key: 'F7',           action: 'Payment dialog: select customer' },
   { group: 'SALES',      key: 'F6',           action: 'Payment dialog: new customer' },
   { group: 'SALES',      key: 'Esc',          action: 'Close any open modal' },
@@ -718,9 +720,14 @@ const CartLine = forwardRef<CartLineHandle, {
                     discountRef.current?.select();
                   }, 150);
                 } else if (e.key === 'Enter') {
-                  e.preventDefault();
+                  // Commit either way, so a Shift+Enter to pay does not discard
+                  // the quantity just typed. Plain Enter returns to the scanner;
+                  // Shift+Enter bubbles on to the window listener, which pays.
                   commitEdit();
-                  onNavigateToBarcode();
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    onNavigateToBarcode();
+                  }
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
                   setEditing(false);
@@ -2673,16 +2680,30 @@ export default function POSPage() {
   // box) and handed back here, so it does not depend on barcodeInput state.
   const handleBarcodeEnter = useCallback(async (override?: string) => {
     const code = (override ?? barcodeInput).trim();
+    const now  = Date.now();
+
     if (!code) {
-      // Empty barcode + items in cart → open payment dialog
+      // Empty barcode + items in cart → open payment dialog.
+      //
+      // But a scanner sends CR+LF, so every scan produces TWO Enters, and the
+      // duplicate the debounce below swallows leaves a third. Any of them can
+      // land here after setBarcodeInput('') has flushed, at which point an
+      // artifact is indistinguishable from a deliberate keypress - which is why
+      // a rapid double-scan opened the payment dialog. Nobody can scan an item
+      // and then mean to press Enter within 300ms, so treat Enter that close to
+      // a scan as the scanner still talking. F8 and Shift+Enter are unaffected:
+      // neither is reachable by a scanner at all.
+      if (now - lastScanTime.current < 300) return;
       if (hasOversoldItem) return; // v1.0.48 — block checkout while cart oversold
       if (cart.length > 0) setShowPayment(true);
       return;
     }
 
     // 300ms debounce: ignore duplicate scans from scanners that send CR+LF suffix
-    const now = Date.now();
     if (now - lastScanTime.current < 300) {
+      // Keep the window open, or a burst that runs just past 300ms lets its own
+      // trailing Enter through to the branch above.
+      lastScanTime.current = now;
       setBarcodeInput('');
       return;
     }
@@ -3310,7 +3331,8 @@ export default function POSPage() {
       // character keys so they cannot conflict with SKU/barcode typing.
       // Dialog-suppression still applies — these keys are gated by anyDialog
       // (next check below).
-      if (inInput && e.key !== 'F4' && e.key !== 'F5' && e.key !== 'F8') return;
+      const isShiftEnter = e.key === 'Enter' && e.shiftKey;
+      if (inInput && e.key !== 'F3' && e.key !== 'F4' && e.key !== 'F5' && e.key !== 'F8' && !isShiftEnter) return;
 
       const anyDialog = showCloseShift || showSignOutShift || showPayment || showHoldModal || showShortcuts
         || showExitBlocked || showQuickAddCustomer || showHolds
@@ -3339,11 +3361,27 @@ export default function POSPage() {
         return;
       }
 
-      // F8 — open checkout / pay now
-      if (e.key === 'F8') {
+      // F8 / Shift+Enter — open checkout / pay now
+      //
+      // Shift+Enter is deliberately a MODIFIED key: a barcode scanner types
+      // digits and a bare Enter, and cannot hold Shift, so this gesture can
+      // only come from a person. Handled here rather than on the barcode input
+      // so it works from wherever the cashier's focus actually is - the qty box
+      // right after a scan, a discount box, the grid.
+      if (e.key === 'F8' || isShiftEnter) {
         e.preventDefault();
         if (hasOversoldItem) return; // v1.0.47 — block checkout while cart oversold
         if (cart.length > 0 && !showPayment) setShowPayment(true);
+        return;
+      }
+
+      // F3 — jump to the cart-total discount. This was Shift+Enter on the
+      // barcode box, undocumented; it moves here so Shift+Enter can mean pay,
+      // and gains a place in the shortcuts panel it never had.
+      if (e.key === 'F3') {
+        e.preventDefault();
+        totalDiscountRef.current?.focus();
+        totalDiscountRef.current?.select();
         return;
       }
 
@@ -3727,13 +3765,9 @@ export default function POSPage() {
                     setTimeout(() => gridRef.current?.focus(), 50);
                     return;
                   }
-                  if (e.key === 'Enter' && e.shiftKey) {
-                    e.preventDefault();
-                    totalDiscountRef.current?.focus();
-                    totalDiscountRef.current?.select();
-                    return;
-                  }
-                  if (e.key === 'Enter') handleBarcodeEnter();
+                  // Shift+Enter is not handled here: it bubbles to the window
+                  // listener, which opens payment from any field.
+                  if (e.key === 'Enter' && !e.shiftKey) handleBarcodeEnter();
                 }}
                 placeholder="Scan barcode or enter SKU → press Enter"
                 disabled={barcodeLoading}

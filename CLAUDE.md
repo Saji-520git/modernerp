@@ -541,6 +541,8 @@ After completing a module:
 | 9 | `withNumberRetry` not applied to PO confirm / GRN receipt (max+1 is, so a delete is safe; two *simultaneous* creates could still collide) | purchases.service / purchase-receipt.service | LOW | Open |
 | 10 | Scanning a zero-stock product was refused even with negative stock ON — the barcode API fallback and the +/- steppers never learned about `allowNegativeStock` | POSPage.tsx | HIGH | Resolved 2026-08-26 |
 | 11 | Second scan of the same item set qty to the whole shelf — the scanner typed its barcode into the auto-focused qty box (and, once overselling lifted the cap, would have committed the barcode itself as the quantity) | POSPage.tsx / cartLines.ts | HIGH | Resolved 2026-08-26 |
+| 12 | A barcode landing in a discount box read as a FULL discount (clamped to 100% / whole subtotal) and, on the cart-total box, opened payment on top of it | DiscountInput.tsx | HIGH | Resolved 2026-08-26 |
+| 13 | Rapid double-scan opened the payment popup — the scanner's trailing Enter arrived after setBarcodeInput('') had flushed, and the empty-Enter→pay branch sat ABOVE the scan debounce with no timing guard | POSPage.tsx | HIGH | Resolved 2026-08-26 |
 
 ### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
 
