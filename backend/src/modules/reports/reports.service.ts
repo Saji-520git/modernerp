@@ -550,6 +550,7 @@ export const reportsService = {
       productId: string;
       name: string;
       sku: string;
+      barcode: string | null;
       costCents: number;
       lastCostCents: number;
       priceCents: number;
@@ -559,23 +560,23 @@ export const reportsService = {
 
     const rows: InvRow[] = warehouseId
       ? await prisma.$queryRaw<InvRow[]>`
-          SELECT p.id AS "productId", p.name, p.sku,
+          SELECT p.id AS "productId", p.name, p.sku, p.barcode,
             p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel",
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id AND s."warehouseId" = ${warehouseId}
           WHERE p."isActive" = true ${scopedSql}
-          GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
+          GROUP BY p.id, p.name, p.sku, p.barcode, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `
       : await prisma.$queryRaw<InvRow[]>`
-          SELECT p.id AS "productId", p.name, p.sku,
+          SELECT p.id AS "productId", p.name, p.sku, p.barcode,
             p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel",
             COALESCE(SUM(s.qty), 0)::float AS "totalQty"
           FROM "Product" p
           LEFT JOIN "Stock" s ON s."productId" = p.id
           WHERE p."isActive" = true ${scopedSql}
-          GROUP BY p.id, p.name, p.sku, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
+          GROUP BY p.id, p.name, p.sku, p.barcode, p."costCents", p."lastCostCents", p."priceCents", p."reorderLevel"
           ORDER BY (COALESCE(SUM(s.qty), 0) * p."costCents") DESC
         `;
 
@@ -583,6 +584,7 @@ export const reportsService = {
       productId: r.productId,
       name: r.name,
       sku: r.sku,
+      barcode: r.barcode,
       totalQty: r.totalQty,
       costCents: r.costCents,
       lastCostCents: r.lastCostCents,

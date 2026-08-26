@@ -1280,7 +1280,13 @@ function InventoryTab() {
   };
 
   const filtered = (data?.items ?? [])
-    .filter((i) => !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.sku.toLowerCase().includes(search.toLowerCase()))
+    .filter((i) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return i.name.toLowerCase().includes(q)
+        || i.sku.toLowerCase().includes(q)
+        || (i.barcode?.toLowerCase() ?? '').includes(q);
+    })
     .sort((a, b) => sortDir === 'desc' ? b.costValueCents - a.costValueCents : a.costValueCents - b.costValueCents);
 
   return (
@@ -1311,7 +1317,7 @@ function InventoryTab() {
         <div className="flex-1 min-w-[220px] max-w-md -mb-4">
           <ReportSearch
             value={search} onChange={setSearch}
-            placeholder="Filter by product name or SKU…"
+            placeholder="Filter by product, SKU or barcode…"
             shown={filtered.length}
             total={(data?.items ?? []).length}
           />

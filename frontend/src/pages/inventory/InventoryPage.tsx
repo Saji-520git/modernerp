@@ -450,7 +450,13 @@ function StockTab({ onAdjust }: { onAdjust: (productId: string, warehouseId: str
   const lc = search.toLowerCase();
   const filteredRows = allRows
     .filter((r) => !warehouseId || r.warehouse.id === warehouseId)
-    .filter((r) => !lc || r.product.name.toLowerCase().includes(lc) || r.product.sku.toLowerCase().includes(lc))
+    // Barcode included: this table is filtered CLIENT-side, so the barcode
+    // clause the API already applies never reached it - scanning a code here
+    // found nothing while the same code worked at the till.
+    .filter((r) => !lc
+      || r.product.name.toLowerCase().includes(lc)
+      || r.product.sku.toLowerCase().includes(lc)
+      || (r.product.barcode?.toLowerCase() ?? '').includes(lc))
     .filter((r) => !lowOnly || r.isLowStock)
     .filter((r) => !outOnly || r.qty <= 0);
 
@@ -500,7 +506,7 @@ function StockTab({ onAdjust }: { onAdjust: (productId: string, warehouseId: str
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search product or SKU…"
+            placeholder="Search product, SKU or barcode…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

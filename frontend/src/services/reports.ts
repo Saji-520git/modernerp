@@ -115,6 +115,7 @@ export interface InventoryItem {
   productId: string;
   name: string;
   sku: string;
+  barcode: string | null;
   totalQty: number;
   costCents: number;
   lastCostCents: number;

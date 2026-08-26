@@ -35,6 +35,7 @@ export interface StockRow {
     id: string;
     name: string;
     sku: string;
+    barcode: string | null;
     costCents: number;
     reorderLevel: number;
     reorderQty: number;
