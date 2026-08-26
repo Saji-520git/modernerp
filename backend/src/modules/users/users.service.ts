@@ -31,7 +31,10 @@ const SALT_ROUNDS = 12; // 2^12 = 4096 iterations — GPU-resistant, ~300 ms on 
 export const usersService = {
   // ── List users ─────────────────────────────────────────────────────────────
 
-  list: async (input: ListUsersInput, viewerIsSuper = true) => {
+  // Defaults to FALSE on purpose. A caller that forgets this argument should
+  // hide super-admins, not expose them: the whole client-facing guarantee rests
+  // on this flag, and a fail-open default makes the next endpoint a leak.
+  list: async (input: ListUsersInput, viewerIsSuper = false) => {
     const { search, role, isActive, page, pageSize } = input;
 
     const where = {
@@ -63,7 +66,10 @@ export const usersService = {
 
   // ── Get one user ───────────────────────────────────────────────────────────
 
-  getOne: async (id: string, viewerIsSuper = true) => {
+  // Fail-closed, as above. The one caller that needs the unfiltered row is the
+  // controller guard that must SEE a super-admin in order to refuse the action;
+  // it passes true explicitly.
+  getOne: async (id: string, viewerIsSuper = false) => {
     const user = await prisma.user.findUnique({ where: { id }, select: SAFE_SELECT });
     if (!user) throw new HttpError(404, 'User not found');
     // Hide super-admin accounts from non-super viewers (404 = don't reveal existence).
@@ -210,7 +216,8 @@ export const usersService = {
 
   // ── Summary stats ──────────────────────────────────────────────────────────
 
-  stats: async (viewerIsSuper = true) => {
+  // Fail-closed, as above — a count that includes a hidden row reveals it.
+  stats: async (viewerIsSuper = false) => {
     // Non-super viewers don't see super-admin accounts in the counts either.
     const base = viewerIsSuper ? {} : { NOT: { role: 'SUPER_ADMIN' as const } };
     const [total, active] = await prisma.$transaction([

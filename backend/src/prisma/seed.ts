@@ -7,16 +7,26 @@ const prisma = new PrismaClient();
 
 async function main() {
 
-  // ── Admin User ───────────────────────────────────────────────────────────
-  const adminPass = await bcrypt.hash('admin123', 12);
+  // ── Vendor super-admin ───────────────────────────────────────────────────
+  //
+  // The ONLY account a fresh install carries. It belongs to the vendor, not the
+  // client: it is the account that turns optional modules on, and users.service
+  // hides SUPER_ADMIN rows from everyone who is not one, so the client never
+  // sees it in User Management. The client's own ADMIN is created from here,
+  // after signing in once.
+  //
+  // Overridable by env so a deployment can carry its own credentials without
+  // this file — and so the password is not forced to live in git.
+  const superEmail = process.env.SUPER_ADMIN_EMAIL    ?? 'modernerp@gmail.com';
+  const superPass  = process.env.SUPER_ADMIN_PASSWORD ?? 'superadmin123';
   await prisma.user.upsert({
-    where: { email: 'admin@modernerp.local' },
+    where:  { email: superEmail },
     update: {},
     create: {
-      email: 'admin@modernerp.local',
-      passwordHash: adminPass,
-      fullName: 'System Admin',
-      role: 'ADMIN',
+      email:        superEmail,
+      passwordHash: await bcrypt.hash(superPass, 12),
+      fullName:     'System Administrator',
+      role:         'SUPER_ADMIN',
     },
   });
 
@@ -90,8 +100,10 @@ async function main() {
   });
 
   process.stdout.write('✅ Seed complete — system ready for deployment\n');
-  process.stdout.write('   ⚠️  Login: admin@modernerp.local / admin123\n');
-  process.stdout.write('   ⚠️  CHANGE PASSWORD immediately via User Management!\n');
+  // The account itself is named, never its password: seed output is routinely
+  // pasted into logs and tickets, and this one unlocks the module switches.
+  process.stdout.write(`   ⚠️  Super-admin: ${superEmail} (password from SUPER_ADMIN_PASSWORD, or the seed default)\n`);
+  process.stdout.write('   ⚠️  Sign in once and create the client ADMIN from User Management.\n');
 }
 
 main()

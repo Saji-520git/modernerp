@@ -7,7 +7,9 @@ import { useAuthStore } from '../../store/authStore';
 import ThemeToggle from '../../components/common/ThemeToggle';
 
 export default function LoginPage() {
-  const [email,    setEmail]    = useState('admin@modernerp.local');
+  // Deliberately blank. A prefilled address names a real account on a machine
+  // the client controls, and the only account here is the vendor's super-admin.
+  const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error,    setError]    = useState('');

@@ -24,7 +24,10 @@ function guardModuleGrant(auth: { role?: string; permissions?: string[] } | unde
 // A super-admin account may only be modified by another super-admin — prevents a
 // client admin from demoting/deactivating/altering the vendor super-admin.
 async function guardProtectedTarget(auth: { role?: string; permissions?: string[] } | undefined, targetId: string): Promise<void> {
-  const target = await usersService.getOne(targetId);
+  // Unfiltered on purpose: this guard has to see that the target IS a
+  // super-admin before it can refuse. Every client-facing read passes the
+  // caller's real status instead.
+  const target = await usersService.getOne(targetId, true);
   if (target.role === 'SUPER_ADMIN' && !isSuperAdmin(auth)) {
     throw new HttpError(403, 'Only a super-admin can modify a super-admin account');
   }
