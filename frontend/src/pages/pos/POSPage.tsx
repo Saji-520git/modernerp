@@ -61,6 +61,7 @@ const POS_SHORTCUTS = [
   { group: 'CART',       key: '+',            action: 'Add 1 to selected item qty' },
   { group: 'CART',       key: '-',            action: 'Remove 1 from selected item qty' },
   { group: 'CART',       key: 'Del',          action: 'Remove selected item from cart' },
+  { group: 'CART',       key: 'd',            action: 'Discount this line (while editing its qty)' },
   { group: 'DRAFTS',     key: 'L',            action: 'Open drafts list' },
   { group: 'SHIFT',      key: 'Ctrl+Shift+O', action: 'Open shift (if none active)' },
   { group: 'SHIFT',      key: 'Ctrl+Shift+X', action: 'Close shift' },
@@ -1925,6 +1926,11 @@ export default function POSPage() {
   const totalDiscountRef = useRef<DiscountInputHandle>(null);
   // Barcode debounce: ignore duplicate scans within 300ms
   const lastScanTime    = useRef(0);
+  // Did new characters reach the barcode box since the last Enter we acted on?
+  // This is what separates a scanner's trailing terminator from a real second
+  // scan - see the duplicate check in handleBarcodeEnter.
+  const barcodeDirty    = useRef(false);
+  const lastScanCode    = useRef('');
 
   // ── State ─────────────────────────────────────────────────────────────────────
   const [barcodeInput, setBarcodeInput]         = useState('');
@@ -2699,15 +2705,26 @@ export default function POSPage() {
       return;
     }
 
-    // 300ms debounce: ignore duplicate scans from scanners that send CR+LF suffix
-    if (now - lastScanTime.current < 300) {
-      // Keep the window open, or a burst that runs just past 300ms lets its own
-      // trailing Enter through to the branch above.
-      lastScanTime.current = now;
+    // Ignore the duplicate a CR+LF scanner produces: its CR fires this, then
+    // its LF fires it again microseconds later with the box not yet cleared -
+    // the same code, with no new digits typed in between.
+    //
+    // This used to be a 300ms window, which could not tell that duplicate from
+    // a cashier genuinely scanning the same item twice in quick succession: the
+    // second scan was swallowed and the item silently never added. The real
+    // difference is not speed but input - a genuine scan RE-TYPES the digits,
+    // which is exactly what barcodeDirty records. An override arrives from
+    // another field's own keystrokes, so it is fresh by definition.
+    const isFreshInput = override !== undefined || barcodeDirty.current;
+    if (!isFreshInput && code === lastScanCode.current) {
       setBarcodeInput('');
       return;
     }
-    lastScanTime.current = now;
+    // lastScanTime still gates Enter on an EMPTY box, which carries no code to
+    // compare and so cannot be settled this way.
+    lastScanTime.current  = now;
+    lastScanCode.current  = code;
+    barcodeDirty.current  = false;
 
     setBarcodeInput('');
 
@@ -3752,7 +3769,7 @@ export default function POSPage() {
                 ref={barcodeRef}
                 type="text"
                 value={barcodeInput}
-                onChange={e => setBarcodeInput(e.target.value)}
+                onChange={e => { barcodeDirty.current = true; setBarcodeInput(e.target.value); }}
                 onKeyDown={e => {
                   // v1.0.60: Down arrow → move into the product grid for keyboard
                   // selection of products that have no barcode. Carry whatever was
@@ -4435,32 +4452,21 @@ export default function POSPage() {
 
             {/* Grouped shortcut rows */}
             <div className="p-4 space-y-5 flex-1">
-              {(
-                [
-                  { label: 'SALES', keys: [
-                    { key: 'F2',  desc: 'Focus scanner / barcode' },
-                    { key: 'F5',  desc: 'Cancel current sale' },
-                    { key: 'F8',  desc: 'Pay now' },
-                    { key: 'F4',  desc: 'Hold current cart' },
-                    { key: 'Esc', desc: 'Close any open modal' },
-                  ]},
-                  { label: 'CART ITEMS', keys: [
-                    { key: '+',   desc: 'Add 1 to last item qty' },
-                    { key: '-',   desc: 'Remove 1 from last item qty' },
-                    { key: 'Del', desc: 'Remove last item from cart' },
-                  ]},
-                  { label: 'DRAFTS', keys: [
-                    { key: 'L',   desc: 'Open drafts list' },
-                  ]},
-                  { label: 'SHIFT', keys: [
-                    { key: 'Ctrl+Shift+O', desc: 'Open shift' },
-                    { key: 'Ctrl+Shift+X', desc: 'Close shift' },
-                  ]},
-                  { label: 'HELP', keys: [
-                    { key: 'F1',  desc: 'Toggle this panel' },
-                  ]},
-                ] as { label: string; keys: { key: string; desc: string }[] }[]
-              ).map(({ label, keys }) => (
+              {(() => {
+                // One list, not two. This panel carried its own hardcoded copy
+                // that had already drifted from POS_SHORTCUTS at the top of the
+                // file - it was missing F6/F7 and every cart-line key - while
+                // POS_SHORTCUTS itself was rendered nowhere, so anything
+                // documented there reached no cashier. Group the real list, so
+                // adding a shortcut to it is enough to teach it.
+                const groups: { label: string; keys: { key: string; desc: string }[] }[] = [];
+                for (const sc of POS_SHORTCUTS) {
+                  let g = groups.find(x => x.label === sc.group);
+                  if (!g) { g = { label: sc.group, keys: [] }; groups.push(g); }
+                  g.keys.push({ key: sc.key, desc: sc.action });
+                }
+                return groups;
+              })().map(({ label, keys }) => (
                 <div key={label}>
                   <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--content-muted)', letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
                     {label}
