@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { lineKeyOf, syncServiceCharges, serviceChargePerUnitFor, type CartItem } from './cartLines';
+import {
+  lineKeyOf, syncServiceCharges, serviceChargePerUnitFor,
+  looksLikeScannedCode, MAX_LINE_QTY, type CartItem,
+} from './cartLines';
 
 // These pin down rules that decide what a customer is charged. Each case below
 // is a bug that actually reached the working tree during the batch-split work.
@@ -102,5 +105,62 @@ describe('serviceChargePerUnitFor', () => {
   it('is zero for a product carrying no service charge', () => {
     const plain = line({ product: product('Q') });
     expect(serviceChargePerUnitFor(plain, 0, [plain], [plain])).toBe(0);
+  });
+});
+
+// ── A scan that lands in the qty box ────────────────────────────────────────
+//
+// Adding an item focuses that line's qty box, so the second scan of the same
+// product typed its barcode into qty and Enter committed it: the line jumped to
+// the whole shelf. Once selling past zero removed the stock cap, the same slip
+// would have rung up 4,796,011,470,029 units instead.
+describe('looksLikeScannedCode', () => {
+  it('recognises the EAN-13 that caused this', () => {
+    expect(looksLikeScannedCode('4796011470029')).toBe(true);
+  });
+
+  it('recognises EAN-8, the shortest barcode in use here', () => {
+    expect(looksLikeScannedCode('96385074')).toBe(true);
+  });
+
+  it('survives the whitespace a scanner suffix leaves behind', () => {
+    expect(looksLikeScannedCode(' 4796011470029 \r')).toBe(true);
+  });
+
+  it.each(['1', '2', '5', '12', '50', '144', '1000', '9999999'])(
+    'leaves a real quantity alone: %s', (qty) => {
+      expect(looksLikeScannedCode(qty)).toBe(false);
+    });
+
+  it('leaves a decimal quantity alone — weighed goods still commit', () => {
+    expect(looksLikeScannedCode('2.5')).toBe(false);
+    expect(looksLikeScannedCode('0.125')).toBe(false);
+  });
+
+  it('does not fire on an empty or half-typed box', () => {
+    expect(looksLikeScannedCode('')).toBe(false);
+    expect(looksLikeScannedCode('   ')).toBe(false);
+  });
+
+  it('ignores anything that is not purely digits', () => {
+    // A qty box only accepts digits, but the guard must not be the thing that
+    // assumes that — a paste or an IME can put anything here.
+    expect(looksLikeScannedCode('47960114700a9')).toBe(false);
+    expect(looksLikeScannedCode('-4796011470029')).toBe(false);
+  });
+});
+
+describe('MAX_LINE_QTY', () => {
+  it('sits above any real line but below any barcode', () => {
+    // The two must not overlap, or one guard would shadow the other.
+    expect(MAX_LINE_QTY).toBeGreaterThan(10_000);      // room for wholesale
+    expect(MAX_LINE_QTY).toBeLessThan(10_000_000);     // smallest 8-digit code
+  });
+
+  it('bounds the one number that slips past the scan check', () => {
+    // 7 digits: too short to be read as a barcode, too large to be a quantity.
+    const stray = 9_999_999;
+    expect(looksLikeScannedCode(String(stray))).toBe(false);
+    expect(Math.min(stray, MAX_LINE_QTY)).toBe(MAX_LINE_QTY);
   });
 });

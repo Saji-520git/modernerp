@@ -69,7 +69,10 @@ const POS_SHORTCUTS = [
 
 // Cart line model and the rules that decide what is charged live in
 // ./cartLines — pure functions, unit-tested next to that file.
-import { type CartItem, lineKeyOf, syncServiceCharges, serviceChargePerUnitFor } from './cartLines';
+import {
+  type CartItem, lineKeyOf, syncServiceCharges, serviceChargePerUnitFor,
+  looksLikeScannedCode, MAX_LINE_QTY,
+} from './cartLines';
 
 interface CustomerOption {
   id: string;
@@ -116,6 +119,7 @@ function totalShortfall(p: PosProduct): number {
 function effectiveStock(p: PosProduct): number {
   return totalStock(p) - totalShortfall(p);
 }
+
 
 /**
  * Build the list of sellable unit options for a product: the base unit plus
@@ -482,13 +486,14 @@ const CartLine = forwardRef<CartLineHandle, {
   onChange: (qty: number) => void;
   onRemove: () => void;
   onBatchCap?: (msg: string) => void;
+  onScanDetected?: (code: string) => void;
   onUpdateDiscount: (type: 'percent' | 'amount', value: number) => void;
   onNavigateToBarcode: () => void;
   onChangeUnit: (unitId: string) => void;
   selected?: boolean;
   onSelect?: () => void;
 }>(function CartLine({
-  item, onChange, onRemove, onBatchCap, onUpdateDiscount, onNavigateToBarcode, onChangeUnit, selected = false, onSelect,
+  item, onChange, onRemove, onBatchCap, onScanDetected, onUpdateDiscount, onNavigateToBarcode, onChangeUnit, selected = false, onSelect,
 }, cartLineRef) {
   const { settings: cartSettings } = useAppSettings();
   const cartPolicy = (cartSettings?.expiredStockPolicy ?? 'BLOCK') as 'BLOCK' | 'WARN' | 'ALLOW';
@@ -539,6 +544,19 @@ const CartLine = forwardRef<CartLineHandle, {
   };
 
   const commitEdit = () => {
+    // A scan that landed in this box instead of the barcode field. Give it back
+    // rather than reading a barcode as a quantity: the line keeps the qty it
+    // had, and the scanned product is added the normal way - so scanning the
+    // same item twice does what the cashier expects, +1 each time.
+    if (looksLikeScannedCode(draft)) {
+      const scanned = draft.trim();
+      setDraft(String(item.qty));
+      setCappedAt(null);
+      setEditing(false);
+      onScanDetected?.(scanned);
+      return;
+    }
+
     const raw = parseFloat(draft);
     let qty   = isNaN(raw) || raw <= 0 ? 1 : raw;
 
@@ -573,8 +591,13 @@ const CartLine = forwardRef<CartLineHandle, {
     // Batch-aware cap: respect expiredStockPolicy
     const bs = item.product.batchSummary;
     if (cartMayOversell) {
-      // No cap at all: whatever the shelf cannot cover is recorded as a
-      // shortfall at checkout and settled by the next delivery.
+      // No STOCK cap: whatever the shelf cannot cover is recorded as a
+      // shortfall at checkout and settled by the next delivery. Still bounded,
+      // so a stray number cannot ring up a line of six-figure quantity.
+      if (qty > MAX_LINE_QTY) {
+        qty = MAX_LINE_QTY;
+        onBatchCap?.(`Maximum ${MAX_LINE_QTY.toLocaleString()} per line`);
+      }
       setCappedAt(null);
     } else if (bs && bs.expiryStatus !== 'none') {
       // Effective cap: for BLOCK → sellableQty; for WARN/ALLOW → totalStock (includes expired)
@@ -2554,6 +2577,12 @@ export default function POSPage() {
       const posProduct = targetLine ? products.find(p => p.id === targetLine.product.id) : undefined;
 
       let cappedQty = qty;
+      // Applies whether or not overselling is on: every qty change funnels
+      // through here, including CartLine's committed value.
+      if (cappedQty > MAX_LINE_QTY) {
+        cappedQty = MAX_LINE_QTY;
+        flashCap(`Maximum ${MAX_LINE_QTY.toLocaleString()} per line`);
+      }
       if (posProduct) {
         const factor = getBaseFactor(posProduct, targetLine?.unitId);
 
@@ -2639,8 +2668,10 @@ export default function POSPage() {
     }, 120);
   }, []);
 
-  const handleBarcodeEnter = useCallback(async () => {
-    const code = barcodeInput.trim();
+  // `override` carries a scan that was captured by another field (the cart qty
+  // box) and handed back here, so it does not depend on barcodeInput state.
+  const handleBarcodeEnter = useCallback(async (override?: string) => {
+    const code = (override ?? barcodeInput).trim();
     if (!code) {
       // Empty barcode + items in cart → open payment dialog
       if (hasOversoldItem) return; // v1.0.48 — block checkout while cart oversold
@@ -3929,6 +3960,7 @@ export default function POSPage() {
                     onChange={qty => updateQty(lineKeyOf(item), qty)}
                     onRemove={() => removeFromCart(lineKeyOf(item))}
                     onBatchCap={msg => setBatchCapToast(msg)}
+                    onScanDetected={code => { void handleBarcodeEnter(code); }}
                     onUpdateDiscount={(type, value) => updateItemDiscount(lineKeyOf(item), type, value)}
                     onNavigateToBarcode={refocusBarcode}
                     onChangeUnit={unitId => changeCartUnit(lineKeyOf(item), unitId)}

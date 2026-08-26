@@ -76,3 +76,22 @@ export function serviceChargePerUnitFor(
   if (!isFirstLineOfProduct || line.qty <= 0) return 0;
   return (svc.unitPriceCents * svc.qty) / line.qty;
 }
+
+// A scanner is just a very fast keyboard, so its digits land in whatever field
+// has focus. Adding an item focuses that line's qty box, so the NEXT scan typed
+// its barcode straight into qty and the trailing Enter committed it - setting
+// the line to the entire shelf, or, once selling past zero lifted that cap, to
+// the barcode itself (4796011470029 units).
+//
+// No timing heuristics needed to tell the two apart: a barcode here is EAN-8 or
+// EAN-13, and no shop sells 10,000,000 of anything on one line. Anything this
+// long arrived from a scanner, so hand it back to the barcode handler and leave
+// the quantity alone.
+export function looksLikeScannedCode(raw: string): boolean {
+  return /^\d{8,}$/.test(raw.trim());
+}
+
+// Backstop for whatever slips past the check above - a short SKU, a pasted
+// number, a stuck key. Selling past zero is meant to remove the STOCK ceiling,
+// not every ceiling.
+export const MAX_LINE_QTY = 100_000;

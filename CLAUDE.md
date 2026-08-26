@@ -540,6 +540,7 @@ After completing a module:
 | 8 | Eight other doc-number generators still count rows (PO/CRN/GRN/SPAY/quotation/stocktake/purchase-return/write-off) | see §12.2 | MEDIUM | Resolved 2026-08-23 |
 | 9 | `withNumberRetry` not applied to PO confirm / GRN receipt (max+1 is, so a delete is safe; two *simultaneous* creates could still collide) | purchases.service / purchase-receipt.service | LOW | Open |
 | 10 | Scanning a zero-stock product was refused even with negative stock ON — the barcode API fallback and the +/- steppers never learned about `allowNegativeStock` | POSPage.tsx | HIGH | Resolved 2026-08-26 |
+| 11 | Second scan of the same item set qty to the whole shelf — the scanner typed its barcode into the auto-focused qty box (and, once overselling lifted the cap, would have committed the barcode itself as the quantity) | POSPage.tsx / cartLines.ts | HIGH | Resolved 2026-08-26 |
 
 ### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
 
