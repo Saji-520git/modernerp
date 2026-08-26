@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  lineKeyOf, syncServiceCharges, serviceChargePerUnitFor,
-  looksLikeScannedCode, MAX_LINE_QTY, type CartItem,
+  lineKeyOf, syncServiceCharges, serviceChargePerUnitFor, MAX_LINE_QTY, type CartItem,
 } from './cartLines';
+import { looksLikeScannedCode } from '../../utils/scanner';
 
 // These pin down rules that decide what a customer is charged. Each case below
 // is a bug that actually reached the working tree during the batch-split work.
@@ -162,5 +162,31 @@ describe('MAX_LINE_QTY', () => {
     const stray = 9_999_999;
     expect(looksLikeScannedCode(String(stray))).toBe(false);
     expect(Math.min(stray, MAX_LINE_QTY)).toBe(MAX_LINE_QTY);
+  });
+});
+
+// The same guard now protects the discount boxes, where a committed barcode was
+// worse than a wrong quantity: commit() clamps to 0-100 in percent mode and to
+// the whole subtotal in amount mode, so it read as a FULL discount — and on the
+// cart-total input, Enter then opened the payment dialog on top of it.
+describe('looksLikeScannedCode — discount boxes', () => {
+  it.each(['0', '5', '10', '15', '50', '100'])(
+    'leaves a percent discount alone: %s', (pct) => {
+      expect(looksLikeScannedCode(pct)).toBe(false);
+    });
+
+  it.each(['250', '1500.50', '99.99', '0.5'])(
+    'leaves an amount discount alone: %s', (amt) => {
+      expect(looksLikeScannedCode(amt)).toBe(false);
+    });
+
+  it('catches a barcode before it can become a full discount', () => {
+    expect(looksLikeScannedCode('4796011470029')).toBe(true);
+  });
+
+  it('accepts that an 8-digit discount is unreachable — the trade is deliberate', () => {
+    // Rs. 12,345,678 off one line is not a discount anyone types, and giving it
+    // up is what buys a check with no timing heuristics in it.
+    expect(looksLikeScannedCode('12345678')).toBe(true);
   });
 });

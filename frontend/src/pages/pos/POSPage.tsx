@@ -70,9 +70,9 @@ const POS_SHORTCUTS = [
 // Cart line model and the rules that decide what is charged live in
 // ./cartLines — pure functions, unit-tested next to that file.
 import {
-  type CartItem, lineKeyOf, syncServiceCharges, serviceChargePerUnitFor,
-  looksLikeScannedCode, MAX_LINE_QTY,
+  type CartItem, lineKeyOf, syncServiceCharges, serviceChargePerUnitFor, MAX_LINE_QTY,
 } from './cartLines';
+import { looksLikeScannedCode } from '../../utils/scanner';
 
 interface CustomerOption {
   id: string;
@@ -781,6 +781,7 @@ const CartLine = forwardRef<CartLineHandle, {
                 maxAmount={item.unitPriceCents}
                 onChange={(v) => { onUpdateDiscount(item.itemDiscountType, v); }}
                 onEnter={onNavigateToBarcode}
+                onScanDetected={onScanDetected}
               />
             </div>
           ) : (
@@ -4020,6 +4021,7 @@ export default function POSPage() {
                   maxAmount={cartSubtotalCents}
                   onChange={v => setCartDiscountValue(v)}
                   onEnter={() => { if (hasOversoldItem) return; if (cart.length > 0) setShowPayment(true); }}
+                  onScanDetected={code => { void handleBarcodeEnter(code); }}
                 />
               </div>
             </div>

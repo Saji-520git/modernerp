@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { looksLikeScannedCode } from '../../utils/scanner';
 
 // ─── DiscountInput ─────────────────────────────────────────────────────────────
 // Fixes the "sticking" bug: internal state is always a STRING.
@@ -14,6 +15,7 @@ interface DiscountInputProps {
   maxAmount?:   number;          // cart/line subtotal in cents, used to cap amount mode
   onChange:     (value: number) => void;
   onEnter?:     () => void;      // called after commit when Enter pressed (e.g. navigate to barcode)
+  onScanDetected?: (code: string) => void;  // a barcode landed here instead of the scan box
   placeholder?: string;
   disabled?:    boolean;
 }
@@ -29,6 +31,7 @@ const DiscountInput = forwardRef<DiscountInputHandle, DiscountInputProps>(functi
   maxAmount,
   onChange,
   onEnter,
+  onScanDetected,
   placeholder = '0',
   disabled    = false,
 }, ref) {
@@ -49,14 +52,25 @@ const DiscountInput = forwardRef<DiscountInputHandle, DiscountInputProps>(functi
     }
   }, [value, focused]);
 
-  const commit = (raw: string) => {
+  // Returns true when the value was a scan, not a discount.
+  const commit = (raw: string): boolean => {
+    // A barcode that landed in this box instead of the scan field. Committing
+    // it would clamp to 100% (percent mode) or to the whole subtotal (amount
+    // mode) - either way a full-price discount, applied silently. Hand it back
+    // and keep the discount that was already there.
+    if (looksLikeScannedCode(raw)) {
+      setDraft(value > 0 ? String(value) : '');
+      onScanDetected?.(raw.trim());
+      return true;
+    }
+
     const parsed = parseFloat(raw);
 
     // Guard: NaN, negative, or empty → zero
     if (isNaN(parsed) || parsed < 0) {
       onChange(0);
       setDraft('');
-      return;
+      return false;
     }
 
     let clamped = parsed;
@@ -74,6 +88,7 @@ const DiscountInput = forwardRef<DiscountInputHandle, DiscountInputProps>(functi
     const rounded = Math.round(clamped * 100) / 100;
     onChange(rounded);
     setDraft(rounded > 0 ? String(rounded) : '');
+    return false;
   };
 
   return (
@@ -99,9 +114,9 @@ const DiscountInput = forwardRef<DiscountInputHandle, DiscountInputProps>(functi
       onKeyDown={e => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          commit(draft);
+          const wasScan = commit(draft);
           inputRef.current?.blur();
-          onEnter?.();
+          if (!wasScan) onEnter?.();
         }
         if (e.key === 'Escape') {
           // Revert to last committed value
