@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
+import { useModule } from '../../hooks/useModule';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, X, ChevronLeft, ChevronRight, Edit2,
   AlertTriangle, Clock, Package, ExternalLink, Tag,
   CheckCircle, XCircle, Barcode, Eye, RefreshCw,
-  Trash2, Loader2, RotateCcw,
+  Trash2, Loader2, RotateCcw, Download,
 } from 'lucide-react';
 import axios from 'axios';
 import {
@@ -203,6 +204,8 @@ function ExpiryBadge({
 const PAGE_SIZE = 20;
 
 export default function ProductsPage() {
+  const canExport = useModule('productExport');
+  const [exporting, setExporting] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -1026,6 +1029,21 @@ export default function ProductsPage() {
             <Trash2 size={14} />
             {showDeleted ? 'Hide Deleted' : 'Recently Deleted'}
           </button>
+          {canExport && (
+            <button
+              onClick={async () => {
+                setExporting(true);
+                try { await productsApi.exportCsv(); }
+                catch { /* the download handler reports a real failure */ }
+                finally { setExporting(false); }
+              }}
+              disabled={exporting}
+              title="Download the catalogue as a spreadsheet"
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 disabled:opacity-60 transition"
+            >
+              <Download size={14} /> {exporting ? 'Exporting…' : 'Export'}
+            </button>
+          )}
           <button
             onClick={openNew}
             className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition shadow-sm"

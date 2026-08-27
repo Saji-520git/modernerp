@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { asyncHandler as h } from '../../middleware/async-handler.js';
+import { requireModule } from '../../middleware/require-module.js';
 import * as ctrl from './products.controller.js';
 
 export const router: Router = Router();
@@ -26,6 +27,10 @@ router.patch('/:id/toggle-active', requirePermission('manage_products'), h(ctrl.
 // Smart delete (hard-delete if no history, else soft-delete). Placed after the
 // specific GET routes (/meta, /by-barcode/:barcode) so there is no collision.
 router.delete('/:id',            requirePermission('manage_products'), h(ctrl.remove));
+
+// Optional module, so it can be withheld from a client who should not be able
+// to walk out with the catalogue. Enforced here, not only in the nav.
+router.get('/export/csv', requireModule('productExport'), requirePermission('view_products'), h(ctrl.exportCsv));
 
 // Unit conversions sub-resource
 router.get( '/:id/conversions', requirePermission('view_products'),   ctrl.getConversions);

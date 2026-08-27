@@ -9,7 +9,7 @@ import {
   CheckCircle, LogOut, Printer, Save, Mail,
   User, CreditCard, Banknote, Building2, Layers,
   ChevronRight, FolderOpen, UserPlus, ChevronDown, QrCode,
-  RotateCcw, Tag, Lock,
+  RotateCcw, Tag, Lock, AlertTriangle,
 } from 'lucide-react';
 import {
   posApi, formatCents, daysUntilExpiry,
@@ -2092,6 +2092,9 @@ export default function POSPage() {
   const [signOutError,        setSignOutError]        = useState<string | null>(null);
   const [signOutPending,      setSignOutPending]      = useState(false);
   const [quickAddBarcode,     setQuickAddBarcode]      = useState<string | null>(null);
+  // A scan that matched nothing. Held so the cashier can be TOLD, and can then
+  // choose to create the product — rather than a form opening on its own.
+  const [unknownScan,         setUnknownScan]          = useState<string | null>(null);
   const [quickAddToast,       setQuickAddToast]        = useState<string | null>(null);
   const [barcodeLoading,      setBarcodeLoading]       = useState(false);
   const [batchCapToast,       setBatchCapToast]       = useState<string | null>(null);
@@ -2767,8 +2770,17 @@ export default function POSPage() {
       focusNewItemQty(posProduct.id);
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
-        // 3. Truly not in DB → open QuickAddModal
-        setQuickAddBarcode(code);
+        // 3. Not in the database.
+        //
+        // This used to open the new-product form immediately. Most scans that
+        // land here are a mis-scan or a product nobody has entered yet, so the
+        // cashier got a form to fill in and dismiss when all they needed was to
+        // be told the code is unknown — and the form's own loading was read as
+        // the scan being slow. Say it plainly and leave creating the product as
+        // a deliberate choice.
+        sound.error();
+        setUnknownScan(code);
+        setTimeout(() => barcodeRef.current?.focus(), 50);
       } else {
         // 4. Network / server error
         sound.error();
@@ -3332,6 +3344,7 @@ export default function POSPage() {
         if (showShortcuts)        { setShowShortcuts(false);        return; }
         if (showExitBlocked)      { setShowExitBlocked(false);      return; }
         if (showSignOutShift)     { setShowSignOutShift(false);     return; }
+        if (unknownScan)          { setUnknownScan(null); refocusBarcode(); return; }
         if (quickAddBarcode)      { setQuickAddBarcode(null);       return; }
         if (showHolds)            { setShowHolds(false);            return; }
         // Reprint view is read-only — closing it must NOT clear the cart
@@ -4599,6 +4612,29 @@ export default function POSPage() {
       )}
 
       {/* QuickAdd / barcode-error toast */}
+      {unknownScan && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] bg-slate-800 text-white text-xs font-medium rounded-xl px-4 py-3 shadow-2xl flex items-center gap-3 max-w-lg">
+          <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+          <span>
+            No product saved with <span className="font-mono font-bold text-amber-300">{unknownScan}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => { const c = unknownScan; setUnknownScan(null); setQuickAddBarcode(c); }}
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-semibold transition"
+          >
+            Add product
+          </button>
+          <button
+            type="button"
+            onClick={() => { setUnknownScan(null); refocusBarcode(); }}
+            className="text-slate-400 hover:text-white shrink-0"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {quickAddToast && (
         <div
           className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] bg-slate-800 text-white text-xs font-medium rounded-xl px-4 py-3 shadow-2xl flex items-center gap-2 max-w-sm"

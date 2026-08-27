@@ -157,4 +157,19 @@ export const productsApi = {
 
   meta: (): Promise<ProductMeta> =>
     api.get('/products/meta').then((r) => r.data),
+
+  exportCsv: async (): Promise<void> => {
+    const res = await api.get('/products/export/csv', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Deferred, not immediate: Electron opens a Save dialog and does not read
+    // the blob until the user picks a folder, so revoking here would pull the
+    // data out from under an open dialog. Same reason as the backup download.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
 };

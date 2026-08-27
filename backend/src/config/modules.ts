@@ -3,7 +3,7 @@
 // contacts, reports, settings) are always on and NOT listed here. Keys are kept
 // aligned with the future multi-tenant module layer so this ports cleanly.
 
-export const OPTIONAL_MODULES = ['promotions', 'stockTake', 'loyalty', 'quotations', 'userManagement', 'whatsapp', 'dataManagement', 'auditLog'] as const;
+export const OPTIONAL_MODULES = ['promotions', 'stockTake', 'loyalty', 'quotations', 'userManagement', 'whatsapp', 'dataManagement', 'auditLog', 'productExport'] as const;
 export type ModuleKey = (typeof OPTIONAL_MODULES)[number];
 
 export const MODULE_META: Record<ModuleKey, { label: string; description: string }> = {
@@ -15,6 +15,7 @@ export const MODULE_META: Record<ModuleKey, { label: string; description: string
   whatsapp:       { label: 'WhatsApp Messaging',       description: 'Send receipts, reminders and offers to customers over WhatsApp.' },
   dataManagement: { label: 'Data Management',          description: 'Super-admin tools to clear selected records or reset system data.' },
   auditLog:       { label: 'Audit Trail',              description: 'Records who changed what. Read-only, and never writable through the API.' },
+  productExport:  { label: 'Export Product Data',      description: 'Download the catalogue as a spreadsheet, in the same shape the importer reads.' },
 };
 
 export type ModuleFlags = Partial<Record<ModuleKey, boolean>>;
