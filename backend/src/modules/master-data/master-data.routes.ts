@@ -12,19 +12,19 @@ export const router: Router = Router();
 router.use(requireAuth);
 
 // ── Categories ────────────────────────────────────────────────────────────────
-router.get('/categories',     requirePermission('view_products'),    ctrl.listCategories);
+router.get('/categories',     requirePermission('view_products'),    h(ctrl.listCategories));
 router.post('/categories',    requirePermission('settings.master_data'),  h(ctrl.createCategory));
 router.patch('/categories/:id', requirePermission('settings.master_data'), h(ctrl.updateCategory));
 router.delete('/categories/:id', requirePermission('settings.master_data'), h(ctrl.deleteCategory));
 
 // ── Brands ────────────────────────────────────────────────────────────────────
-router.get('/brands',     requirePermission('view_products'),    ctrl.listBrands);
+router.get('/brands',     requirePermission('view_products'),    h(ctrl.listBrands));
 router.post('/brands',    requirePermission('settings.master_data'),  h(ctrl.createBrand));
 router.patch('/brands/:id', requirePermission('settings.master_data'), h(ctrl.updateBrand));
 router.delete('/brands/:id', requirePermission('settings.master_data'), h(ctrl.deleteBrand));
 
 // ── Units ─────────────────────────────────────────────────────────────────────
-router.get('/units',     requirePermission('view_products'),    ctrl.listUnits);
+router.get('/units',     requirePermission('view_products'),    h(ctrl.listUnits));
 router.post('/units',    requirePermission('settings.master_data'),  h(ctrl.createUnit));
 router.patch('/units/:id', requirePermission('settings.master_data'), h(ctrl.updateUnit));
 router.delete('/units/:id', requirePermission('settings.master_data'), h(ctrl.deleteUnit));

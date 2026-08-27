@@ -7,30 +7,30 @@ export const router: Router = Router();
 
 router.use(requireAuth);
 
-router.get('/warehouses', ctrl.getWarehouses);
-router.get('/products', requirePermission('view_products'), ctrl.searchProducts);
+router.get('/warehouses', h(ctrl.getWarehouses));
+router.get('/products', requirePermission('view_products'), h(ctrl.searchProducts));
 router.get('/products/:productId/batches', requirePermission('view_products'), h(ctrl.getProductBatches));
 // Anyone who can ring up a sale can fill in a price the catalogue is missing —
 // the service refuses to touch a product that already has one.
 router.patch('/products/:productId/price', requirePermission('pos_checkout'), h(ctrl.setProductPrice));
-router.get('/sales', requirePermission('view_sales'), ctrl.listSales);
-router.get('/receipt/:id', requirePermission('view_sales'), ctrl.getReceipt);
+router.get('/sales', requirePermission('view_sales'), h(ctrl.listSales));
+router.get('/receipt/:id', requirePermission('view_sales'), h(ctrl.getReceipt));
 
 router.post('/checkout', requirePermission('pos_checkout'), h(ctrl.checkout));
 
 // ── Drafts ────────────────────────────────────────────────────────────────────
-router.get('/drafts',        requirePermission('pos_checkout'), ctrl.listDrafts);
+router.get('/drafts',        requirePermission('pos_checkout'), h(ctrl.listDrafts));
 router.post('/drafts',       requirePermission('pos_checkout'), h(ctrl.saveDraft));
 router.delete('/drafts/:id', requirePermission('pos_checkout'), h(ctrl.deleteDraft));
 
 // ── Customer credit ────────────────────────────────────────────────────────────
-router.get('/customer-credit/:customerId', ctrl.getCustomerCredit);
+router.get('/customer-credit/:customerId', h(ctrl.getCustomerCredit));
 
 // ── Shift management ──────────────────────────────────────────────────────────
 router.post('/shifts/open',          h(ctrl.openShift));
-router.get('/shifts/current',        ctrl.getCurrentShift);
+router.get('/shifts/current',        h(ctrl.getCurrentShift));
 router.post('/shifts/close',         h(ctrl.closeShift));
 router.post('/shifts/:id/force-close', requireRole('ADMIN'), h(ctrl.forceCloseShift));
-router.get('/shifts',                ctrl.listShifts);
+router.get('/shifts',                h(ctrl.listShifts));
 router.get('/shifts/:id/preview',    h(ctrl.previewShift));
-router.get('/shifts/:id',            ctrl.getShift);
+router.get('/shifts/:id',            h(ctrl.getShift));

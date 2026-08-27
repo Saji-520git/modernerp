@@ -8,4 +8,4 @@ export const router: Router = Router();
 router.post('/login', h(ctrl.login));
 // SECURITY: /register is intentionally disabled — user creation is admin-only via POST /api/v1/users
 // router.post('/register', ctrl.register);
-router.get('/me', requireAuth, ctrl.me);
+router.get('/me', requireAuth, h(ctrl.me));

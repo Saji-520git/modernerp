@@ -9,7 +9,7 @@ export const router: Router = Router();
 router.use(requireAuth);
 
 // Meta endpoint first (before /:id to avoid route collision)
-router.get('/meta', requirePermission('view_products'), ctrl.meta);
+router.get('/meta', requirePermission('view_products'), h(ctrl.meta));
 
 // One-time seed data cleanup — ADMIN only (manage_users = ADMIN-only permission)
 router.post('/cleanup-seed-data', requirePermission('manage_users'), h(ctrl.cleanupSeedData));
@@ -17,10 +17,10 @@ router.post('/cleanup-seed-data', requirePermission('manage_users'), h(ctrl.clea
 // Fix scientific-notation barcodes in the DB — ADMIN only
 router.post('/fix-barcodes', requirePermission('manage_users'), h(ctrl.cleanupBarcodes));
 
-router.get('/by-barcode/:barcode', requirePermission('view_products'), ctrl.getByBarcode);
+router.get('/by-barcode/:barcode', requirePermission('view_products'), h(ctrl.getByBarcode));
 
-router.get('/',    requirePermission('view_products'),   ctrl.list);
-router.get('/:id', requirePermission('view_products'),   ctrl.getById);
+router.get('/',    requirePermission('view_products'),   h(ctrl.list));
+router.get('/:id', requirePermission('view_products'),   h(ctrl.getById));
 router.post('/',   requirePermission('manage_products'), h(ctrl.create));
 router.patch('/:id',             requirePermission('manage_products'), h(ctrl.update));
 router.patch('/:id/toggle-active', requirePermission('manage_products'), h(ctrl.toggleActive));
@@ -33,5 +33,5 @@ router.delete('/:id',            requirePermission('manage_products'), h(ctrl.re
 router.get('/export/csv', requireModule('productExport'), requirePermission('view_products'), h(ctrl.exportCsv));
 
 // Unit conversions sub-resource
-router.get( '/:id/conversions', requirePermission('view_products'),   ctrl.getConversions);
+router.get( '/:id/conversions', requirePermission('view_products'),   h(ctrl.getConversions));
 router.put( '/:id/conversions', requirePermission('manage_products'), h(ctrl.setConversions));

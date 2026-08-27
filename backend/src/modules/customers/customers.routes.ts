@@ -7,7 +7,7 @@ export const router: Router = Router();
 
 router.use(requireAuth);
 
-router.get('/', requirePermission('view_contacts'), ctrl.list);
+router.get('/', requirePermission('view_contacts'), h(ctrl.list));
 router.get('/:id', requirePermission('view_contacts'), h(ctrl.getOne));
 
 router.post('/', requirePermission('manage_contacts'), h(ctrl.create));

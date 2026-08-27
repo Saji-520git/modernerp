@@ -11,9 +11,9 @@ export const router: Router = Router();
 router.use(requireAuth, requireModule('userManagement'));
 
 // All user management requires the manage_users permission (ADMIN only by default)
-router.get('/stats', requirePermission('manage_users'), ctrl.stats);
-router.get('/', requirePermission('manage_users'), ctrl.list);
-router.get('/:id', requirePermission('manage_users'), ctrl.getOne);
+router.get('/stats', requirePermission('manage_users'), h(ctrl.stats));
+router.get('/', requirePermission('manage_users'), h(ctrl.list));
+router.get('/:id', requirePermission('manage_users'), h(ctrl.getOne));
 
 router.post('/', requirePermission('manage_users'), h(ctrl.create));
 router.put('/:id', requirePermission('manage_users'), h(ctrl.update));

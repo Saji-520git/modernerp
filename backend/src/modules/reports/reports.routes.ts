@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler as h } from '../../middleware/async-handler.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import * as ctrl from './reports.controller.js';
 
@@ -13,14 +14,14 @@ router.use(requireAuth);
 // view_reports still IMPLIES all of these (see IMPLIED_BY), so nobody who had
 // it loses anything — but a role can now be given the operational reports
 // without the financial ones.
-router.get('/sales/csv', requirePermission('reports.export'),      ctrl.salesCsv);   // before /sales
-router.get('/sales',     requirePermission('reports.sales'),       ctrl.salesReport);
-router.get('/purchases', requirePermission('reports.purchases'),   ctrl.purchasesReport);
-router.get('/products',  requirePermission('reports.products'),    ctrl.productReport);
-router.get('/customers', requirePermission('reports.customers'),   ctrl.customerReport);
-router.get('/inventory', requirePermission('reports.inventory'),   ctrl.inventoryReport);
-router.get('/profit-loss', requirePermission('reports.profit_loss'), ctrl.profitLoss);
-router.get('/aging',       requirePermission('reports.aging'),       ctrl.aging);
-router.get('/pnl',        requirePermission('reports.profit_loss'), ctrl.pnlComparison);
-router.get('/dashboard',  requirePermission('reports.dashboard'),  ctrl.dashboardStats);
-router.get('/today-summary', requirePermission('reports.dashboard'), ctrl.todaySummary);
+router.get('/sales/csv', requirePermission('reports.export'),      h(ctrl.salesCsv));   // before /sales
+router.get('/sales',     requirePermission('reports.sales'),       h(ctrl.salesReport));
+router.get('/purchases', requirePermission('reports.purchases'),   h(ctrl.purchasesReport));
+router.get('/products',  requirePermission('reports.products'),    h(ctrl.productReport));
+router.get('/customers', requirePermission('reports.customers'),   h(ctrl.customerReport));
+router.get('/inventory', requirePermission('reports.inventory'),   h(ctrl.inventoryReport));
+router.get('/profit-loss', requirePermission('reports.profit_loss'), h(ctrl.profitLoss));
+router.get('/aging',       requirePermission('reports.aging'),       h(ctrl.aging));
+router.get('/pnl',        requirePermission('reports.profit_loss'), h(ctrl.pnlComparison));
+router.get('/dashboard',  requirePermission('reports.dashboard'),  h(ctrl.dashboardStats));
+router.get('/today-summary', requirePermission('reports.dashboard'), h(ctrl.todaySummary));
