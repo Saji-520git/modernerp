@@ -14,7 +14,7 @@ export const backup: RequestHandler = async (_req, res) => {
   const data = await backupService.exportAll();
   const stamp = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="brocode-backup-${stamp}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="modernerp-backup-${stamp}.json"`);
   res.send(JSON.stringify(data));
 };
 

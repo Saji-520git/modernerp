@@ -195,7 +195,7 @@ export function generateInvoiceHtml(
   const footer = `
   <footer class="foot">
     <span>${esc(settings.businessName || 'My Business')} · Thank you for your business</span>
-    <span>BROcode ERP</span>
+    <span>ModernERP</span>
   </footer>`;
 
   // Colours below are literal, never the app's theme tokens: this document is

@@ -29,6 +29,9 @@ import { formatStockDisplay } from '../../utils/format';
 
 // v1.0.44 — localStorage key for the in-progress product-form draft. Lets a
 // half-filled form survive a session expiry / reload so the user can recover it.
+// Storage key deliberately left on the old name. It is invisible to the user,
+// and renaming it would silently discard a half-finished product on the next
+// upgrade - a rebrand should not cost anybody their work in progress.
 const PRODUCT_DRAFT_KEY = 'brocode_product_draft';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

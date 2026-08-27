@@ -4,7 +4,7 @@
 process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, session } = require('electron');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -395,12 +395,22 @@ function runMigrations() {
   });
 }
 
-// ── Run seed (based on actual DB user count, NOT the electron-store flag) ──────
-// electron-store persists in AppData\Roaming across uninstall/reinstall, but the
-// pgdata dir is deleted on uninstall. Relying on store.get('seeded') meant a
-// fresh DB after reinstall was never seeded → no admin user → "Invalid
-// credentials". We now ask the database directly: 0 users → seed; >0 → skip.
-function runSeedIfFirstTime() {
+// ── Ensure the seed data exists — on EVERY launch, not only a virgin database ──
+//
+// The seed is idempotent: every statement in it is an upsert with an empty
+// update, so it creates what is missing and touches nothing that is already
+// there. That is what makes it safe to run each time.
+//
+// It used to be gated on "0 users → seed, otherwise skip". That reasoning only
+// holds for a fresh install. An UPGRADE arrives with the previous version's
+// users already in the database, so the gate skipped the seed entirely and any
+// row introduced by the new version was never created — the vendor super-admin
+// added in 1.1.0 simply never appeared, and the machine was left with no way to
+// reach the module switches. Whether a row is missing is not something the user
+// count can answer.
+//
+// The count is still read, but only for the log.
+function ensureSeedData() {
   return new Promise((resolve) => {
     updateSplash('Checking initial data...');
 
@@ -419,15 +429,7 @@ function runSeedIfFirstTime() {
     check.stderr.on('data', d => log.warn('user-count check:', d.toString().trim()));
     check.on('close', (code) => {
       const count = parseInt(output.trim(), 10) || 0;
-
-      if (code === 0 && count > 0) {
-        log.info(`Database has ${count} users — skipping seed`);
-        store.set('seeded', true);
-        return resolve();
-      }
-
-      // No users found (fresh DB, e.g. after reinstall) — must seed
-      log.info('No users in database — running seed...');
+      log.info(`Database has ${count} users — running seed (idempotent) to fill any gaps`);
       updateSplash('Setting up initial data...');
 
       const seedScript = path.join(BACKEND_DIR, 'dist', 'prisma', 'seed.js');
@@ -588,6 +590,45 @@ function cleanOldBackups() {
   }
 }
 
+// ── Downloads (the manual backup in Data Management) ─────────────────────────
+//
+// Without this, a download is whatever Chromium decides on its own: no default
+// folder, no record of whether it finished, and nothing said to the user if it
+// failed. A backup that silently does not arrive is worse than no backup
+// button at all, because the shop believes they have a copy.
+//
+// The app's own backups folder is offered as the default location, so manual
+// backups sit beside the automatic ones instead of scattering into Downloads.
+function installDownloadHandler() {
+  session.defaultSession.on('will-download', (_event, item) => {
+    const suggested = item.getFilename() || 'modernerp-backup.json';
+    item.setSaveDialogOptions({
+      title: 'Save ModernERP backup',
+      defaultPath: path.join(BACKUPS, suggested),
+      filters: [{ name: 'ModernERP backup', extensions: ['json'] }],
+    });
+    log.info('Download started:', suggested);
+
+    item.once('done', (_e, state) => {
+      if (state === 'completed') {
+        log.info('Download complete:', item.getSavePath());
+        try {
+          if (tray) tray.displayBalloon({ title: 'ModernERP', content: 'Backup saved' });
+        } catch (_) { /* balloons are best-effort */ }
+        return;
+      }
+      // 'cancelled' is the user's own choice and needs no alarm; anything else
+      // is a real failure and must not pass in silence.
+      if (state === 'cancelled') { log.info('Download cancelled by user'); return; }
+      log.error('Download failed:', state);
+      dialog.showErrorBox(
+        'Backup not saved',
+        'The backup could not be written. Check that the drive has space and is writable, then try again.',
+      );
+    });
+  });
+}
+
 // ── Splash window ──────────────────────────────────────────────────────────────
 function createSplash() {
   splashWindow = new BrowserWindow({
@@ -603,6 +644,50 @@ function createSplash() {
     },
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  // Whatever we learned last launch, shown as soon as the splash has painted.
+  splashWindow.webContents.once('did-finish-load', applySplashBrand);
+}
+
+// ── The client's own name on the splash ───────────────────────────────────────
+//
+// One shop's name used to be compiled into splash.html and the window title,
+// which is wrong the moment a second client installs the same build. It comes
+// from Settings now — but the splash paints long before PostgreSQL is up, so it
+// can never fetch it live. Instead the name learned on one launch is remembered
+// for the next, and a first-ever launch simply shows the product name.
+function applySplashBrand() {
+  const name = store.get('businessName') || '';
+  if (!name || !splashWindow || splashWindow.isDestroyed()) return;
+  splashWindow.webContents
+    .executeJavaScript(
+      `(function(){ var el = document.getElementById('footer'); if(el) el.textContent = 'Powered by ModernERP  \u00b7  ' + ${JSON.stringify(name)}; })()`
+    )
+    .catch(() => {});
+}
+
+// Read it straight from the database — there is no preload bridge, and adding
+// one just for a caption would be a bigger surface than the caption is worth.
+function rememberBusinessName() {
+  return new Promise((resolve) => {
+    const env = { ...process.env, PGPASSWORD: PG_PASS };
+    const q = spawn(PSQL, [
+      '-U', PG_USER, '-h', '127.0.0.1', '-p', PG_PORT, '-d', PG_DB,
+      '-t', '-A', '-c', 'SELECT "businessName" FROM "AppSettings" LIMIT 1;',
+    ], { env });
+    let out = '';
+    q.stdout.on('data', (d) => (out += d.toString()));
+    q.on('error', () => resolve());
+    q.on('close', () => {
+      const name = out.trim();
+      // "My Business" is the schema default — not a name anyone chose.
+      if (name && name !== 'My Business') {
+        store.set('businessName', name);
+        log.info(`Business name: ${name}`);
+        applySplashBrand();
+      }
+      resolve();
+    });
+  });
 }
 
 function updateSplash(msg) {
@@ -624,7 +709,8 @@ function createMainWindow() {
     minWidth: 1280,
     minHeight: 720,
     show: false,
-    title: 'ModernERP — ACM Groceries',
+    // Client-neutral: this window title shipped with one shop's name baked in.
+    title: 'ModernERP',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -683,7 +769,7 @@ function createTray() {
     tray = new Tray(iconPath);
 
     const menu = Menu.buildFromTemplate([
-      { label: 'BROcode ERP', enabled: false },
+      { label: 'ModernERP', enabled: false },
       { type: 'separator' },
       {
         label: 'Open', click: () => {
@@ -695,7 +781,7 @@ function createTray() {
           runBackup()
             .then(() => {
               tray.displayBalloon({
-                title: 'BROcode ERP',
+                title: 'ModernERP',
                 content: 'Backup completed successfully',
               });
             })
@@ -706,7 +792,7 @@ function createTray() {
       { label: 'Exit', click: () => app.quit() },
     ]);
 
-    tray.setToolTip('BROcode ERP — Running');
+    tray.setToolTip('ModernERP — Running');
     tray.setContextMenu(menu);
     tray.on('double-click', () => {
       if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
@@ -831,7 +917,8 @@ app.whenReady().then(async () => {
     await ensureDatabase();
     dbReady = true;   // DB confirmed to exist — shutdown backup is now safe
     await runMigrations();
-    await runSeedIfFirstTime();
+    await ensureSeedData();
+    await rememberBusinessName();
     await startBackend();
 
     // Give backend 3 seconds to be ready for requests
@@ -842,6 +929,8 @@ app.whenReady().then(async () => {
     clearTimeout(startupTimeout);
     createMainWindow();
     try { createTray(); } catch (e) { log.warn('Tray init failed (non-fatal):', e.message); }
+    // After app-ready: session.defaultSession does not exist before this point.
+    try { installDownloadHandler(); } catch (e) { log.warn('Download handler init failed (non-fatal):', e.message); }
   } catch (err) {
     clearTimeout(startupTimeout);
     log.error('Startup failed:', err);

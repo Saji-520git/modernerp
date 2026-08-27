@@ -44,7 +44,7 @@ export const receiptLabels: Record<ReceiptLang, {
     reprint:    'REPRINT',
     walkIn:     'Walk-in',
     thankYou:   'Thank You! Come Again',
-    poweredBy:  'Powered by BROcode ERP',
+    poweredBy:  'Powered by ModernERP',
   },
   si: {
     invoiceNo:  'ඉන්වොයිස් අංකය',
@@ -67,6 +67,6 @@ export const receiptLabels: Record<ReceiptLang, {
     reprint:    'නැවත මුද්‍රණය',
     walkIn:     'සාමාන්‍ය ගනුදෙනු',
     thankYou:   'ස්තූතියි! නැවත වඩිනු ලැබේවා',
-    poweredBy:  'BROcode ERP මගින් බල ගැන්වේ',
+    poweredBy:  'ModernERP මගින් බල ගැන්වේ',
   },
 };

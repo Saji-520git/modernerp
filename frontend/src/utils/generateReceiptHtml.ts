@@ -307,7 +307,7 @@ export function generateReceiptHtml(
   footer += divider();
 
  
-  footer += `<p style="font-size:11px;color:#000000;font-weight:600;text-align:center;margin-top:6px;border-top:1px dashed #000000;padding-top:4px;">Powered by BROcode Solutions [0757187506]</p>`;
+  footer += `<p style="font-size:11px;color:#000000;font-weight:600;text-align:center;margin-top:6px;border-top:1px dashed #000000;padding-top:4px;">Powered by ModernERP [0757187506]</p>`;
 
   return `<!DOCTYPE html>
 <html lang="${lang}">

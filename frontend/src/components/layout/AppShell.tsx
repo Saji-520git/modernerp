@@ -92,7 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'SYSTEM',
     items: [
       { to: '/users', label: 'User Management', icon: UserCog, roles: ['ADMIN'], module: 'userManagement' },
-      { to: '/audit', label: 'Audit Trail', icon: ShieldCheck, roles: ['ADMIN'] },
+      { to: '/audit', label: 'Audit Trail', icon: ShieldCheck, roles: ['ADMIN'], module: 'auditLog' },
       { to: '/data-management', label: 'Data Management', icon: Database, roles: [], module: 'dataManagement' },
       { to: '/settings/import', label: 'Import Products', icon: Upload, roles: ['ADMIN'] },
       { to: '/settings/categories', label: 'Categories', icon: Tag, roles: ['ADMIN', 'MANAGER'] },
@@ -190,7 +190,7 @@ export default function AppShell() {
         >
           {!collapsed && (
             <span className="text-lg font-bold text-brand-700 truncate select-none">
-              {settings?.businessName || 'BROcode ERP'}
+              {settings?.businessName || 'ModernERP'}
             </span>
           )}
           <button

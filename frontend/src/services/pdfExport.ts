@@ -327,7 +327,7 @@ function drawNewTotals(
 
 /**
  * Draw footer: optional return-policy box, separator line,
- * then "Thank you" (left) · contact (center) · BROcode (right).
+ * then "Thank you" (left) · contact (center) · ModernERP (right).
  */
 function drawNewFooter(doc: jsPDF, settings: AppSettings): void {
   const W = doc.internal.pageSize.getWidth();
@@ -358,7 +358,7 @@ function drawNewFooter(doc: jsPDF, settings: AppSettings): void {
     doc.text(policyLines[0] ?? '', L + 31, boxY + 5);
   }
 
-  // Footer line on every page: thank-you · BROcode · page X of Y.
+  // Footer line on every page: thank-you · ModernERP · page X of Y.
   const name = settings.businessName || 'My Business';
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
@@ -369,7 +369,7 @@ function drawNewFooter(doc: jsPDF, settings: AppSettings): void {
     doc.setFontSize(8);
     doc.setTextColor(...LABEL);
     doc.text(`${name} · Thank you for your business`, L, H - 7);
-    doc.text('BROcode ERP', W / 2, H - 7, { align: 'center' });
+    doc.text('ModernERP', W / 2, H - 7, { align: 'center' });
     doc.text(`Page ${p} of ${total}`, R, H - 7, { align: 'right' });
   }
 }

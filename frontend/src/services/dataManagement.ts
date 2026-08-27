@@ -57,10 +57,18 @@ export const dataManagementApi = {
     const url = URL.createObjectURL(res.data as Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `brocode-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `modernerp-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    // NOT revoked synchronously.
+    //
+    // The packaged app has no will-download handler, so Electron opens a Save
+    // dialog and does not read the blob until the user picks a folder. Revoking
+    // here pulls the data out from under a dialog that is still open - the same
+    // shape as win.print() followed by win.close(), which works in a browser and
+    // silently loses the job in Electron (see CLAUDE.md 12.2). A minute is far
+    // longer than any dialog, and the URL dies with the window regardless.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
 };

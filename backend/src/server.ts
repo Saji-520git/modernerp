@@ -55,6 +55,15 @@ app.use(cors({
   origin: corsOrigins.includes('*') ? true : corsOrigins,
   credentials: true,
 }));
+// Restore posts an ENTIRE backup as one JSON body, so it needs far more room
+// than any ordinary request. Mounted before the global parser: whichever runs
+// first parses the body, and the global 10mb would otherwise reject the upload
+// with a bare 413 long before the route could explain what went wrong.
+//
+// A live export measures ~2.5MB today and grows with the catalogue, so the
+// ceiling is set well clear of it rather than just above it. This is an offline
+// single-tenant desktop app on the shop's own machine, not a public endpoint.
+app.use('/api/v1/data-management', express.json({ limit: '200mb' }));
 app.use(express.json({ limit: '10mb' })); // base64 images need headroom
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -125,7 +134,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 app.listen(env.PORT, async () => {
-  logger.info(`BROcode ERP API listening on http://localhost:${env.PORT}`);
+  logger.info(`ModernERP API listening on http://localhost:${env.PORT}`);
 
   // Warm up the Prisma query engine NOW (during the splash screen) instead of
   // lazily on the first request. Prisma loads its ~15 MB native engine binary

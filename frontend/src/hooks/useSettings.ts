@@ -33,6 +33,6 @@ export function useSettings() {
     formatMoney,
     formatMoneyShort,
     currencySymbol: sym,
-    businessName:   settings?.businessName ?? 'BROcode ERP',
+    businessName:   settings?.businessName ?? 'ModernERP',
   };
 }

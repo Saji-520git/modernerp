@@ -139,7 +139,7 @@ export async function applyRestore(tx: any, tables: Record<string, any[]>): Prom
 
 function validate(backup: any): Record<string, any[]> {
   if (!backup || typeof backup !== 'object' || backup.version !== 1 || !backup.tables || typeof backup.tables !== 'object') {
-    throw new HttpError(400, 'Not a valid BROcode backup file (expected version 1 with a tables object).');
+    throw new HttpError(400, 'Not a valid ModernERP backup file (expected version 1 with a tables object).');
   }
   return backup.tables as Record<string, any[]>;
 }

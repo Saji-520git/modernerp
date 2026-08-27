@@ -256,7 +256,7 @@ export function styledTable(doc: jsPDF, opts: StyledTableOpts): void {
 
 /**
  * Stamp the footer on every page (called once, at the end, so total page count is
- * known): hairline rule + business name · Confidential | BROcode ERP | Page X of Y.
+ * known): hairline rule + business name · Confidential | ModernERP | Page X of Y.
  */
 export function finalizeReport(doc: jsPDF, settings: AppSettings): void {
   const w = doc.internal.pageSize.getWidth();
@@ -272,7 +272,7 @@ export function finalizeReport(doc: jsPDF, settings: AppSettings): void {
     doc.setTextColor(...FAINT);
     const name = settings.businessName || 'My Business';
     doc.text(`${name} · Confidential`, MARGIN, h - 7);
-    doc.text('BROcode ERP', w / 2, h - 7, { align: 'center' });
+    doc.text('ModernERP', w / 2, h - 7, { align: 'center' });
     doc.text(`Page ${p} of ${total}`, w - MARGIN, h - 7, { align: 'right' });
   }
 }

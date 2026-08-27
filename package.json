@@ -1,8 +1,8 @@
 {
   "name": "modernerp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "ModernERP - Retail Management System",
-  "author": "BROcode Solutions",
+  "author": "ModernERP",
   "main": "electron/main.js",
   "scripts": {
     "electron": "electron .",
@@ -16,7 +16,7 @@
   "build": {
     "appId": "com.brocode.modernerp",
     "productName": "ModernERP",
-    "copyright": "Copyright 2026 BROcode Solutions",
+    "copyright": "Copyright 2026 ModernERP",
     "asar": false,
     "npmRebuild": false,
     "directories": {

@@ -29,7 +29,7 @@ import { router as auditRouter }              from './audit/audit.routes.js';
 
 export const router: Router = Router();
 
-router.get('/', (_req, res) => res.json({ name: 'BROcode ERP API', version: 'v1' }));
+router.get('/', (_req, res) => res.json({ name: 'ModernERP API', version: 'v1' }));
 
 router.use('/auth', authRouter);
 router.use('/audit', auditRouter);

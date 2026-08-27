@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi, type AppSettings } from '../services/settings';
 
@@ -29,7 +29,7 @@ const SettingsContext = createContext<SettingsContextValue>({
   formatMoney:       defaultFormat,
   formatMoneyShort:  defaultShort,
   currencySymbol:    'Rs.',
-  businessName:      'BROcode ERP',
+  businessName:      'ModernERP',
   receiptLanguage:   'en',
   receiptPaperWidth: '80mm',
 });
@@ -42,6 +42,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // Don't block the whole app if settings fail — fallback to defaults
     retry: 1,
   });
+
+  // The window title carries the client's own name, read from Settings rather
+  // than compiled in. One shop's name used to be hardcoded here and in the
+  // splash, which is wrong the moment a second client installs the same build.
+  // Electron takes the window title from document.title, so setting it is
+  // enough; the product name stays as the suffix so support can tell what the
+  // application is from a screenshot.
+  useEffect(() => {
+    const name = settings?.businessName?.trim();
+    document.title = name && name !== 'My Business' ? `${name} — ModernERP` : 'ModernERP';
+  }, [settings?.businessName]);
 
   const sym = settings?.currencySymbol ?? 'Rs.';
   const pos = settings?.currencyPosition ?? 'before';
@@ -70,7 +81,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       formatMoney,
       formatMoneyShort,
       currencySymbol:    sym,
-      businessName:      settings?.businessName      ?? 'BROcode ERP',
+      businessName:      settings?.businessName      ?? 'ModernERP',
       receiptLanguage:   settings?.receiptLanguage   ?? 'en',
       receiptPaperWidth: settings?.receiptPaperWidth ?? '80mm',
     }}>
