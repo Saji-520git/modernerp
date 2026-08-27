@@ -565,6 +565,38 @@ function runBackup() {
   });
 }
 
+// ── Periodic backup while the app is running ─────────────────────────────────
+//
+// Backup used to happen only at the two edges of a session: at startup if a day
+// had passed, and at shutdown. A shop leaves the till open for days at a time,
+// so the startup check never comes round again and the only copy is written
+// when they finally close the app. A power cut on day four takes all four days
+// with it, and the shutdown handler is never reached to notice.
+//
+// pg_dump of this database takes one to five seconds, so the cost of running it
+// on a timer is nil next to the loss it prevents.
+const BACKUP_EVERY_MS = 6 * 60 * 60 * 1000;   // six hours
+let backupTimer    = null;
+let backupInFlight = false;
+
+function startBackupTimer() {
+  if (backupTimer) return;
+  backupTimer = setInterval(() => {
+    // dbReady guards the same case the shutdown backup guards: no database
+    // means pg_dump only produces a confusing error.
+    if (backupInFlight || !dbReady) return;
+    backupInFlight = true;
+    runBackup()
+      .catch((e) => log.warn('Periodic backup failed:', e.message))
+      .finally(() => { backupInFlight = false; });
+  }, BACKUP_EVERY_MS);
+  log.info(`Periodic backup armed — every ${BACKUP_EVERY_MS / 3600000}h while running`);
+}
+
+function stopBackupTimer() {
+  if (backupTimer) { clearInterval(backupTimer); backupTimer = null; }
+}
+
 function runAutoBackupIfDue() {
   const lastBackup = store.get('lastBackup', 0);
   const TWENTY_THREE_HOURS = 23 * 60 * 60 * 1000;
@@ -810,6 +842,7 @@ async function shutdown() {
   isShuttingDown = true;
   app.isQuiting = true;
   log.info('Shutting down ModernERP...');
+  stopBackupTimer();
 
   // Only back up if the database was actually created — avoids spurious
   // "database modernerp does not exist" pg_dump errors on a failed startup
@@ -931,6 +964,7 @@ app.whenReady().then(async () => {
     try { createTray(); } catch (e) { log.warn('Tray init failed (non-fatal):', e.message); }
     // After app-ready: session.defaultSession does not exist before this point.
     try { installDownloadHandler(); } catch (e) { log.warn('Download handler init failed (non-fatal):', e.message); }
+    startBackupTimer();
   } catch (err) {
     clearTimeout(startupTimeout);
     log.error('Startup failed:', err);
