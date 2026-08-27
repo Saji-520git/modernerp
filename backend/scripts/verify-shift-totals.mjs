@@ -44,8 +44,15 @@ const main = async () => {
   // This is the exact sequence that broke it: check out, then remove the sale.
   const before = await live();
   const user = await prisma.user.findFirst({ where: { isActive: true }, select: { id: true } });
+  // Stock in the SHIFT'S warehouse. Checkout resolves the open shift by user
+  // AND warehouse, so a product held anywhere else is refused with 'no open
+  // shift' - which reads like a bug in the shift, not in the test's choice.
   const row  = await prisma.stock.findFirst({
-    where: { qty: { gt: 2 }, product: { isActive: true, isBatchTracked: false, priceCents: { gt: 0 } } },
+    where: {
+      qty: { gt: 2 },
+      warehouseId: shift.warehouseId,
+      product: { isActive: true, isBatchTracked: false, priceCents: { gt: 0 } },
+    },
     select: { productId: true, warehouseId: true },
   });
 
@@ -56,7 +63,9 @@ const main = async () => {
         warehouseId: row.warehouseId, paymentMethod: 'CASH',
         items: [{ productId: row.productId, qty: 1 }],
       }),
-      user.id, false, false, false,
+      // The shift's OWN user: checkout resolves the open shift by user and
+      // warehouse, so any other account is told there is no shift to sell on.
+      shift.userId, false, false, false,
     );
     createdSaleId = res?.receipt?.id ?? null;
 

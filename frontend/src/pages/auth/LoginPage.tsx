@@ -66,10 +66,10 @@ export default function LoginPage() {
         {/* Logo area */}
         <div>
           <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center mb-6">
-            <span className="text-3xl font-black text-white">B</span>
+            <span className="text-3xl font-black text-white">M</span>
           </div>
           <h1 className="text-3xl font-black text-white leading-tight">
-            Brocode<span className="text-indigo-400"> ERP</span>
+            Modern<span className="text-indigo-400">ERP</span>
           </h1>
           <p className="text-indigo-300/70 text-sm mt-2">
             Retail &amp; Grocery ERP Platform
@@ -113,7 +113,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
             <div className="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center mx-auto mb-3">
-              <span className="text-2xl font-black text-accent-fg">B</span>
+              <span className="text-2xl font-black text-accent-fg">M</span>
             </div>
             <h1 className="text-2xl font-black text-content">ModernERP</h1>
           </div>
