@@ -985,7 +985,7 @@ model CustomerCreditLedger {
   customerId        String
   customer          Customer  @relation(fields: [customerId], references: [id])
   amountCents       Int                                  // signed
-  reason            String                               // LUMP_SUM_OVERFLOW | APPLIED_TO_SALE | MANUAL_ADJUST | VOID_REVERSAL
+  reason            String                               // LUMP_SUM_OVERFLOW | APPLIED_TO_SALE | MANUAL_ADJUST | VOID_REVERSAL | RETURN_CREDIT
   allocationGroupId String?                              // links back to the originating lump-sum
   refType           String?                              // optional source doc type
   refId             String?                              // optional source doc id

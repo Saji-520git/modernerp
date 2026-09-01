@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { creditIncrementCents } from './return-credit.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
@@ -278,14 +279,17 @@ export const returnsService = {
         });
       }
 
-      // 3. Handle cash/card/bank refund (NONE = store credit only — no payment movement)
+      // 3. Handle cash/card/bank refund (NONE = settle on account — see step 4)
+      const saleBefore = await tx.sale.findUnique({
+        where:  { id: input.saleId },
+        select: { paidCents: true, totalCents: true, customerId: true },
+      });
+      let paidCentsAfterRefund = saleBefore?.paidCents ?? 0;
+
       if (input.refundMethod !== 'NONE' && input.refundedCents > 0) {
         // Reduce paidCents on original sale (customer was refunded). Cannot go below 0.
-        const currentSale = await tx.sale.findUnique({
-          where: { id: input.saleId },
-          select: { paidCents: true },
-        });
-        const newPaidCents = Math.max(0, (currentSale?.paidCents ?? 0) - input.refundedCents);
+        const newPaidCents = Math.max(0, paidCentsAfterRefund - input.refundedCents);
+        paidCentsAfterRefund = newPaidCents;
         await tx.sale.update({
           where: { id: input.saleId },
           data: { paidCents: newPaidCents },
@@ -303,6 +307,67 @@ export const returnsService = {
             note: `Refund for return ${ret.number}`,
           },
         });
+      }
+
+      // 4. Park anything the customer has now overpaid as credit on their
+      //    account. refundMethod NONE was documented as "store credit only",
+      //    but nothing was ever written: the goods came back, the money stayed
+      //    with the shop, and no liability was recorded anywhere. A customer
+      //    handing back a paid-for item received nothing at all.
+      //
+      //    The amount is NOT the return total — see return-credit.ts. On an
+      //    unpaid invoice the return cancels debt instead (the outstanding
+      //    balance already nets returns), and crediting it as well would pay
+      //    the customer twice.
+      //
+      //    Walk-in sales have no customer to hold a balance for, so there is
+      //    nowhere to park it; the return still stands and the stock still
+      //    comes back.
+      const customerId = saleBefore?.customerId ?? null;
+      if (customerId) {
+        // The aggregate includes the return just persisted above, so subtract
+        // its own total to recover the invoice's prior state. Credit is the
+        // DIFFERENCE between the two: crediting the cumulative figure would
+        // pay every earlier return on this invoice a second time.
+        const returnedAgg = await tx.saleReturn.aggregate({
+          where: { saleId: input.saleId },
+          _sum:  { totalCents: true },
+        });
+        const returnedAfter  = returnedAgg._sum.totalCents ?? 0;
+        const returnedBefore = Math.max(0, returnedAfter - totalCents);
+        const saleTotalCents = saleBefore?.totalCents ?? 0;
+
+        const creditCents = creditIncrementCents(
+          {
+            saleTotalCents,
+            returnedCentsIncludingThis: returnedBefore,
+            // Pre-refund figure: any cash handed back belongs to THIS return.
+            paidCentsAfterRefund:       saleBefore?.paidCents ?? 0,
+          },
+          {
+            saleTotalCents,
+            returnedCentsIncludingThis: returnedAfter,
+            paidCentsAfterRefund,
+          },
+        );
+
+        if (creditCents > 0) {
+          await tx.customer.update({
+            where: { id: customerId },
+            data:  { creditBalanceCents: { increment: creditCents } },
+          });
+          await tx.customerCreditLedger.create({
+            data: {
+              customerId,
+              amountCents: creditCents,          // positive = credit added
+              reason:      'RETURN_CREDIT',
+              refType:     'SaleReturn',
+              refId:       ret.id,
+              notes:       `Return ${ret.number} against ${ret.sale.number}`,
+              createdBy:   userId,
+            },
+          });
+        }
       }
 
       return ret;
