@@ -48,7 +48,7 @@ export default function NewReturnModal({ onClose, prefillSaleId }: NewReturnModa
 
   const refundTotal = returnableLines.reduce((sum, l) => {
     const q = parseInt(qtys[l.productId] || '0') || 0;
-    return sum + q * l.unitPriceCents;
+    return sum + q * l.refundUnitCents;
   }, 0);
 
   const hasSelectedItems = returnableLines.some(l => (parseInt(qtys[l.productId] || '0') || 0) > 0);
@@ -64,8 +64,8 @@ export default function NewReturnModal({ onClose, prefillSaleId }: NewReturnModa
         .map(l => ({
           productId: l.productId,
           qty: parseInt(qtys[l.productId]),
-          unitPriceCents: l.unitPriceCents,
-          lineTotalCents: Math.round(l.unitPriceCents * parseInt(qtys[l.productId])),
+          unitPriceCents: l.refundUnitCents,
+          lineTotalCents: Math.round(l.refundUnitCents * parseInt(qtys[l.productId])),
         })),
     }),
     onSuccess: () => {
@@ -193,7 +193,7 @@ export default function NewReturnModal({ onClose, prefillSaleId }: NewReturnModa
                     </div>
                     {enteredQty > 0 && (
                       <span className="text-xs font-semibold text-orange-700 shrink-0">
-                        {formatCents(enteredQty * l.unitPriceCents)}
+                        {formatCents(enteredQty * l.refundUnitCents)}
                       </span>
                     )}
                   </div>
@@ -220,7 +220,7 @@ export default function NewReturnModal({ onClose, prefillSaleId }: NewReturnModa
                     .map(l => (
                       <div key={l.productId} className="flex justify-between text-slate-600">
                         <span>{l.product.name} × {qtys[l.productId]}</span>
-                        <span>{formatCents((parseInt(qtys[l.productId]) || 0) * l.unitPriceCents)}</span>
+                        <span>{formatCents((parseInt(qtys[l.productId]) || 0) * l.refundUnitCents)}</span>
                       </div>
                     ))}
                   <div className="flex justify-between font-black text-base pt-2 border-t border-slate-200 text-slate-800">

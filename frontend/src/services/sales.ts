@@ -175,6 +175,13 @@ export interface SaleForReturn extends Sale {
   lines: (SaleLine & {
     alreadyReturnedQty: number;
     availableToReturn: number;
+    /**
+     * What one returned unit is actually worth back, prorated against the
+     * invoice total. NOT unitPriceCents — that is the list price, before the
+     * line discount, cart discount, promotions and redeemed points that the
+     * customer was actually charged net of.
+     */
+    refundUnitCents: number;
   })[];
 }
 

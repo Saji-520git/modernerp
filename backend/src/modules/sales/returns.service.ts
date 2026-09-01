@@ -2,6 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { creditIncrementCents } from './return-credit.js';
+import { refundUnitCents, cappedReturnTotalCents, cappedRefundCents } from './return-value.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
@@ -125,11 +126,23 @@ export const returnsService = {
       }
     }
 
+    // What each unit is actually worth back. The form used to multiply the
+    // LIST price off the sale line, which over-refunded every discounted,
+    // promoted or points-redeemed sale. Sent from here so the figure the
+    // cashier sees is the same integer the server will store.
+    const grossLinesCents = sale.lines.reduce((n, l) => n + l.lineTotalCents, 0);
+
     const linesWithAvailable = sale.lines.map((l) => ({
       ...l,
       qty: Number(l.qty),
       alreadyReturnedQty: returnedQty.get(l.productId) ?? 0,
       availableToReturn: Number(l.qty) - (returnedQty.get(l.productId) ?? 0),
+      refundUnitCents: refundUnitCents({
+        saleTotalCents:  sale.totalCents,
+        grossLinesCents,
+        lineTotalCents:  l.lineTotalCents,
+        qtySold:         Number(l.qty),
+      }),
     }));
 
     return {
@@ -181,14 +194,59 @@ export const returnsService = {
       }
     }
 
-    const totalCents = input.lines.reduce((s, l) => s + l.lineTotalCents, 0);
+    // ── Value the return from the ORIGINAL invoice, never from the client ────
+    //
+    // unitPriceCents and lineTotalCents arrive in the request and were trusted
+    // outright: quantity was checked against the invoice but price never was,
+    // so a return could be valued at any figure. They are now ignored.
+    //
+    // The value is prorated against what the customer was actually charged, so
+    // a cart discount, a promotion, redeemed points and tax are all carried
+    // through — the form used the list price and over-refunded every one of
+    // them. See return-value.ts.
+    const grossLinesCents = sale.lines.reduce((n, l) => n + l.lineTotalCents, 0);
+
+    const pricedLines = input.lines.map((l) => {
+      const saleLine = sale.lines.find((sl) => sl.productId === l.productId)!;
+      const unitCents = refundUnitCents({
+        saleTotalCents:  sale.totalCents,
+        grossLinesCents,
+        lineTotalCents:  saleLine.lineTotalCents,
+        qtySold:         Number(saleLine.qty),
+      });
+      return {
+        productId:      l.productId,
+        qty:            l.qty,
+        unitPriceCents: unitCents,
+        lineTotalCents: Math.round(unitCents * l.qty),
+      };
+    });
+
+    // Already-returned VALUE, so rounding across many partial returns can never
+    // add up past the invoice.
+    const priorReturnedValue = await prisma.saleReturn.aggregate({
+      where: { saleId: input.saleId },
+      _sum:  { totalCents: true },
+    });
+    const totalCents = cappedReturnTotalCents(
+      pricedLines.reduce((n, l) => n + l.lineTotalCents, 0),
+      sale.totalCents,
+      priorReturnedValue._sum.totalCents ?? 0,
+    );
+
+    // Cash can never exceed the return's value, nor what the customer paid.
+    // Previously bounded only by "integer >= 0": a Rs.100 return could hand
+    // back Rs.10,000 and write a matching negative Payment row.
+    const refundedCents = input.refundMethod === 'NONE'
+      ? 0
+      : cappedRefundCents(input.refundedCents, totalCents, sale.paidCents);
 
     // Which till this refund comes out of. Resolved before the transaction so
     // the lookup does not hold it open, and only for CASH: a store-credit or
     // card refund never touches the drawer, so tying it to a shift would make
     // the close subtract money that never left. Null when no shift is open,
     // which is the normal back-office case.
-    const refundShiftId = input.refundMethod === 'CASH' && input.refundedCents > 0
+    const refundShiftId = input.refundMethod === 'CASH' && refundedCents > 0
       ? await resolveOpenShiftId(userId, sale.warehouseId)
       : null;
 
@@ -210,16 +268,9 @@ export const returnsService = {
           reason: input.reason,
           totalCents,
           refundMethod: input.refundMethod,
-          refundedCents: input.refundedCents,
+          refundedCents,
           createdById: userId,
-          lines: {
-            create: input.lines.map((l) => ({
-              productId: l.productId,
-              qty: l.qty,
-              unitPriceCents: l.unitPriceCents,
-              lineTotalCents: l.lineTotalCents,
-            })),
-          },
+          lines: { create: pricedLines },
         },
         include: {
           lines: true,
@@ -230,7 +281,7 @@ export const returnsService = {
       });
 
       // 2. Add stock back (RETURN_IN) for each line
-      for (const line of input.lines) {
+      for (const line of pricedLines) {
         // Sale-return qty is stored in SALE units (validated against SaleLine.qty).
         // Stock / StockBatch are held in BASE units, so convert the RETURNED qty —
         // NOT saleLine.baseQty, which is the full sold amount — so partial returns
@@ -286,9 +337,9 @@ export const returnsService = {
       });
       let paidCentsAfterRefund = saleBefore?.paidCents ?? 0;
 
-      if (input.refundMethod !== 'NONE' && input.refundedCents > 0) {
+      if (input.refundMethod !== 'NONE' && refundedCents > 0) {
         // Reduce paidCents on original sale (customer was refunded). Cannot go below 0.
-        const newPaidCents = Math.max(0, paidCentsAfterRefund - input.refundedCents);
+        const newPaidCents = Math.max(0, paidCentsAfterRefund - refundedCents);
         paidCentsAfterRefund = newPaidCents;
         await tx.sale.update({
           where: { id: input.saleId },
@@ -301,7 +352,7 @@ export const returnsService = {
         await tx.payment.create({
           data: {
             saleId: input.saleId,
-            amountCents: -input.refundedCents,
+            amountCents: -refundedCents,
             method: refundPaymentMethod as any,
             createdById: userId,
             note: `Refund for return ${ret.number}`,
@@ -323,19 +374,47 @@ export const returnsService = {
       //    Walk-in sales have no customer to hold a balance for, so there is
       //    nowhere to park it; the return still stands and the stock still
       //    comes back.
+      // The aggregate includes the return just persisted above.
+      const returnedAgg = await tx.saleReturn.aggregate({
+        where: { saleId: input.saleId },
+        _sum:  { totalCents: true },
+      });
+      const returnedAfter  = returnedAgg._sum.totalCents ?? 0;
+      const returnedBefore = Math.max(0, returnedAfter - totalCents);
+      const saleTotalCents = saleBefore?.totalCents ?? 0;
+
+      // 3b. Re-derive the invoice's payment status against what is still owed.
+      //
+      // The purchase side has done this since returns were built there; the
+      // sale side never did, so a fully-returned unpaid invoice stayed UNPAID
+      // at its original value. It then kept consuming the customer's credit
+      // limit and kept appearing in collection lists as money to chase.
+      //
+      // Same four branches as purchase-return.service, against the invoice
+      // re-totalled net of every return:
+      const effectiveTotalCents = Math.max(0, saleTotalCents - returnedAfter);
+      const newPaymentStatus =
+        effectiveTotalCents === 0
+          ? 'PAID'
+          : paidCentsAfterRefund >= effectiveTotalCents
+            ? 'PAID'
+            : paidCentsAfterRefund > 0
+              ? 'PARTIAL'
+              : 'UNPAID';
+
+      // paymentStatus ONLY — totalCents and paidCents keep recording what was
+      // billed and what was taken. The return is the document that explains the
+      // difference; rewriting the invoice would erase it.
+      await tx.sale.update({
+        where: { id: input.saleId },
+        data:  { paymentStatus: newPaymentStatus },
+      });
+
       const customerId = saleBefore?.customerId ?? null;
       if (customerId) {
-        // The aggregate includes the return just persisted above, so subtract
-        // its own total to recover the invoice's prior state. Credit is the
-        // DIFFERENCE between the two: crediting the cumulative figure would
-        // pay every earlier return on this invoice a second time.
-        const returnedAgg = await tx.saleReturn.aggregate({
-          where: { saleId: input.saleId },
-          _sum:  { totalCents: true },
-        });
-        const returnedAfter  = returnedAgg._sum.totalCents ?? 0;
-        const returnedBefore = Math.max(0, returnedAfter - totalCents);
-        const saleTotalCents = saleBefore?.totalCents ?? 0;
+        // Credit is the DIFFERENCE between the invoice before and after this
+        // return: crediting the cumulative figure would pay every earlier
+        // return on this invoice a second time.
 
         const creditCents = creditIncrementCents(
           {
