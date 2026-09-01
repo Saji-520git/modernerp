@@ -424,6 +424,7 @@ function RecordPaymentModal({
 
   const [saleId, setSaleId]       = useState('');
   const [amount, setAmount]       = useState('');
+  const [keepOnAccount, setKeepOnAccount] = useState(false);
   const [method, setMethod]       = useState('CASH');
   const [refNo, setRefNo]         = useState('');
   const [bank, setBank]           = useState('');
@@ -434,6 +435,8 @@ function RecordPaymentModal({
   // Auto-fill amount when sale selected
   const selectedSale = outstandingSales.find((s) => s.id === saleId);
   const outstanding  = selectedSale ? saleOutstanding(selectedSale) : 0;
+  const typedCents   = Math.round((parseFloat(amount) || 0) * 100);
+  const excessCents  = Math.max(0, typedCents - Math.max(0, outstanding));
 
   const mutation = useMutation({
     mutationFn: (data: CreateCustomerPaymentInput) => customerPaymentsApi.create(data),
@@ -455,14 +458,20 @@ function RecordPaymentModal({
     if (!saleId) { setError('Select an invoice'); return; }
     const amountCents = Math.round(parseFloat(amount) * 100);
     if (!amountCents || amountCents <= 0) { setError('Enter a valid amount'); return; }
-    if (outstanding > 0 && amountCents > outstanding) {
-      setError(`Amount exceeds outstanding balance of ${fmtCents(outstanding)}`);
+    // Overpaying is a normal counter event — "keep the change on my account".
+    // It used to be refused outright here and again on the server, so the only
+    // way through was the Lump-Sum screen, whose name gives no clue it is the
+    // one that can do this. Now it is offered, but must be ticked: a mistyped
+    // amount should not quietly become a liability.
+    if (excessCents > 0 && !keepOnAccount) {
+      setError(`Amount exceeds the outstanding ${fmtCents(outstanding)}. Tick "keep on account" to hold the extra ${fmtCents(excessCents)} as credit.`);
       return;
     }
     mutation.mutate({
       saleId, amountCents, paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
       paymentDate: date, notes: notes || undefined,
+      keepChangeOnAccount: keepOnAccount || undefined,
     });
   };
 
@@ -521,6 +530,21 @@ function RecordPaymentModal({
               </select>
             </div>
           </div>
+
+          {excessCents > 0 && (
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50 cursor-pointer">
+              <input type="checkbox" checked={keepOnAccount}
+                onChange={(e) => { setKeepOnAccount(e.target.checked); setError(''); }}
+                className="mt-0.5 accent-emerald-600" />
+              <span className="text-xs text-emerald-800">
+                <span className="font-semibold">Keep {fmtCents(excessCents)} on account</span>
+                <span className="block text-emerald-700 mt-0.5">
+                  {fmtCents(Math.max(0, outstanding))} settles this invoice. The rest is held as
+                  credit and reduces what this customer owes.
+                </span>
+              </span>
+            </label>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

@@ -29,6 +29,8 @@ export interface CreateCustomerPaymentInput {
   bankName?:     string;
   paymentDate:   string;
   notes?:        string;
+  /** Hold anything above the outstanding balance as credit on the account. */
+  keepChangeOnAccount?: boolean;
 }
 
 export interface LumpSumCustomerPaymentInput {

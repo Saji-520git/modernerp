@@ -14,6 +14,8 @@ export interface CreateCustomerPaymentInput {
   paymentDate:   string | Date;
   notes?:        string;
   createdBy:     string;
+  /** Hold any excess over the outstanding balance as credit on the customer's account. */
+  keepChangeOnAccount?: boolean;
 }
 
 export interface LumpSumCustomerPaymentInput {
@@ -84,7 +86,7 @@ export const customerPaymentService = {
 
   async createPayment(input: CreateCustomerPaymentInput) {
     const { saleId, amountCents, paymentMethod, referenceNo, bankName,
-            paymentDate, notes, createdBy } = input;
+            paymentDate, notes, createdBy, keepChangeOnAccount = false } = input;
 
     if (amountCents <= 0) throw new HttpError(400, 'Amount must be positive');
 
@@ -106,14 +108,30 @@ export const customerPaymentService = {
     const effectiveTotal = Math.max(0, (sale.totalCents as number) - returnedCents);
 
     const outstanding = effectiveTotal - (sale.paidCents as number);
-    if (amountCents > outstanding) {
+
+    // Paying more than the bill is an ordinary counter event — "keep the change
+    // on my account". It used to be refused outright, so the cashier hit a wall
+    // on the obvious button and the only way through was the Lump-Sum screen,
+    // whose name does not suggest it is the one that can do this.
+    //
+    // Still opt-in: a mistyped amount must not silently become a liability. The
+    // caller says explicitly that the excess is meant to be kept, and the error
+    // now names that option instead of being a dead end.
+    const overpaidCents = Math.max(0, amountCents - Math.max(0, outstanding));
+    if (overpaidCents > 0 && !keepChangeOnAccount) {
       throw new HttpError(
         400,
-        `Payment of ${(amountCents / 100).toFixed(2)} exceeds outstanding balance of ${(outstanding / 100).toFixed(2)}`,
+        `Payment of ${(amountCents / 100).toFixed(2)} exceeds outstanding balance of ${(outstanding / 100).toFixed(2)}. `
+        + `Re-send with keepChangeOnAccount to hold the extra ${(overpaidCents / 100).toFixed(2)} as credit on the customer's account.`,
       );
     }
+    if (overpaidCents > 0 && !sale.customerId) {
+      throw new HttpError(400, 'A walk-in sale has no account to hold the excess on');
+    }
 
-    const newPaid  = (sale.paidCents as number) + amountCents;
+    // Only what the bill can absorb is recorded against it; the rest is parked.
+    const appliedCents = amountCents - overpaidCents;
+    const newPaid  = (sale.paidCents as number) + appliedCents;
     const newStatus = computePaymentStatus(effectiveTotal, newPaid);
     const number    = await nextPaymentNumber();
 
@@ -129,7 +147,9 @@ export const customerPaymentService = {
           paymentNumber: number,
           saleId,
           customerId:   sale.customerId ?? undefined,
-          amountCents,
+          // The row records what settled THIS bill. The parked remainder is a
+          // credit-ledger entry, not part of the invoice's payment history.
+          amountCents:  appliedCents,
           paymentMethod,
           referenceNo:  referenceNo ?? null,
           bankName:     bankName    ?? null,
@@ -144,9 +164,28 @@ export const customerPaymentService = {
         where: { id: saleId },
         data:  { paidCents: newPaid, paymentStatus: newStatus },
       }),
+      // Park the excess. Same two writes the lump-sum path makes, so the
+      // balance and the ledger stay the single story of the account.
+      ...(overpaidCents > 0 ? [
+        (prisma as any).customer.update({
+          where: { id: sale.customerId },
+          data:  { creditBalanceCents: { increment: overpaidCents } },
+        }),
+        (prisma as any).customerCreditLedger.create({
+          data: {
+            customerId:  sale.customerId,
+            amountCents: overpaidCents,      // positive = credit added
+            reason:      'OVERPAYMENT',
+            refType:     'Sale',
+            refId:       saleId,
+            notes:       notes ?? null,
+            createdBy,
+          },
+        }),
+      ] : []),
     ]);
 
-    return payment;
+    return { ...payment, creditAddedCents: overpaidCents };
   },
 
   // ── Lump-sum payment ─────────────────────────────────────────────────────────

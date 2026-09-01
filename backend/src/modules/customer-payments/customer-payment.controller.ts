@@ -6,7 +6,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 
 export const createCustomerPayment: RequestHandler = async (req, res) => {
   const { saleId, amountCents, paymentMethod, referenceNo, bankName,
-          paymentDate, notes } = req.body as {
+          paymentDate, notes, keepChangeOnAccount } = req.body as {
     saleId:        string;
     amountCents:   number;
     paymentMethod: string;
@@ -14,6 +14,7 @@ export const createCustomerPayment: RequestHandler = async (req, res) => {
     bankName?:     string;
     paymentDate:   string;
     notes?:        string;
+    keepChangeOnAccount?: boolean;
   };
 
   if (!saleId)        throw new HttpError(400, 'saleId is required');
@@ -27,6 +28,7 @@ export const createCustomerPayment: RequestHandler = async (req, res) => {
     paymentMethod,
     referenceNo,
     bankName,
+    keepChangeOnAccount: Boolean(keepChangeOnAccount),
     paymentDate,
     notes,
     createdBy: req.auth!.userId,
