@@ -1,6 +1,7 @@
 import { receiptLabels, type ReceiptLang } from '../../utils/receiptI18n';
 import type { Receipt } from '../../services/pos';
 import type { AppSettings } from '../../services/settings';
+import AuthImage from '../common/AuthImage';
 
 // ─── Barcode ──────────────────────────────────────────────────────────────────
 
@@ -115,11 +116,13 @@ export default function ThermalReceipt({
       {/* ── HEADER ── */}
       {settings.receiptShowLogo && settings.logoUrl && (
         <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <img
+          {/* /uploads is authenticated — a plain <img src> cannot send the
+              Bearer token and always 401'd, so the logo never appeared here. */}
+          <AuthImage
             src={settings.logoUrl}
             alt="logo"
             style={{ maxHeight: 48, maxWidth: '80%', objectFit: 'contain' }}
-            onError={e => (e.currentTarget.style.display = 'none')}
+            hideOnError
           />
         </div>
       )}

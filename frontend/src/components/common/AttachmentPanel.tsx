@@ -8,45 +8,7 @@ import {
   type Attachment,
 } from '../../services/attachments';
 import { useAuthStore } from '../../store/authStore';
-
-// ─── AuthImage ─────────────────────────────────────────────────────────────────
-// Fetches the image with the Bearer token and displays it via an object URL.
-// Plain <img src="..."> does NOT send auth headers, so it would get a 401
-// from the authenticated /uploads route.
-
-function AuthImage({
-  src,
-  alt,
-  className,
-  onClick,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-  onClick?: () => void;
-}) {
-  const [url, setUrl] = useState<string>('');
-  const token = useAuthStore((s) => s.accessToken);
-
-  useEffect(() => {
-    let objectUrl = '';
-    fetch(src, { headers: { Authorization: `Bearer ${token ?? ''}` } })
-      .then((r) => r.blob())
-      .then((blob) => {
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      })
-      .catch(() => setUrl(''));
-
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [src, token]);
-
-  return url
-    ? <img src={url} alt={alt} className={className} onClick={onClick} />
-    : <div className={className} />;
-}
+import AuthImage from './AuthImage';
 
 // ─── openFileWithAuth ─────────────────────────────────────────────────────────
 // window.open() does NOT send auth headers either, so we fetch the blob first

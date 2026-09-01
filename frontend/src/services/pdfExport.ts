@@ -4,6 +4,7 @@ import type { Sale, SaleLine } from './sales';
 import type { SaleReturn, SaleReturnLine } from './sales';
 import { settingsApi, type AppSettings } from './settings';
 import { api } from './api';
+import { useAuthStore } from '../store/authStore';
 
 // ─── Types for Purchase (mirrored locally to avoid circular imports) ──────────
 
@@ -56,8 +57,14 @@ function addDays(iso: string, days: number): string {
 }
 
 async function fetchLogoBase64(url: string): Promise<string | null> {
+  // /uploads is authenticated: without the Bearer token this returned 401 and
+  // .blob() then produced the error body, so the logo silently vanished from
+  // every exported PDF. printInvoice.ts already did this correctly.
+  const token = useAuthStore.getState().accessToken;
+  if (!url || !token) return null;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
     const blob = await res.blob();
     return await new Promise<string>((resolve, reject) => {
       const fr = new FileReader();

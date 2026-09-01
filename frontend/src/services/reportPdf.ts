@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { settingsApi, type AppSettings } from './settings';
+import { useAuthStore } from '../store/authStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared professional PDF layer for every report export.
@@ -60,8 +61,14 @@ type Branding = { settings: AppSettings; logo: string | null };
 
 /** Fetch a logo URL as a base64 data URI (same approach as pdfExport). */
 async function fetchLogoBase64(url: string): Promise<string | null> {
+  // /uploads is authenticated: without the Bearer token this returned 401 and
+  // .blob() then produced the error body, so the logo silently vanished from
+  // every exported PDF. printInvoice.ts already did this correctly.
+  const token = useAuthStore.getState().accessToken;
+  if (!url || !token) return null;
   try {
-    const res  = await fetch(url);
+    const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
     const blob = await res.blob();
     return await new Promise<string>((resolve, reject) => {
       const fr = new FileReader();
