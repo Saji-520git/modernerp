@@ -1247,7 +1247,11 @@ model LoyaltyTransaction {
 
 model Quotation {
   id                String    @id @default(cuid())
-  number            String
+  // @unique is load-bearing, not decoration: quotations.service issues the
+  // number inside withNumberRetry(), which only retries on P2002. Without the
+  // constraint the database never raises one, the retry never engages, and two
+  // concurrent saves silently share a number.
+  number            String    @unique
   customerId        String?
   customer          Customer? @relation(fields: [customerId], references: [id])
   title             String?
