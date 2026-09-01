@@ -6,8 +6,8 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 // Ensure uploads directory exists before any request is served
-const uploadsDir = process.env.UPLOAD_PATH ?? path.resolve('uploads');
-fs.mkdirSync(uploadsDir, { recursive: true });
+import { uploadsDir } from './utils/uploads-dir.js';
+fs.mkdirSync(uploadsDir(), { recursive: true });
 
 // ── Prevent unhandled promise rejections from crashing the server ──────────────
 process.on('unhandledRejection', (reason) => {
@@ -20,6 +20,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import { requireAuth } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFound } from './middleware/not-found.js';
 import { router as apiRouter } from './modules/index.js';
@@ -86,13 +87,14 @@ app.use('/api/v1/auth/login', loginLimiter);
 // Authenticated file download — replaces open express.static('/uploads').
 // Checks for Bearer token in Authorization header before serving the file.
 // path.basename strips any directory-traversal attempts (e.g. "../../etc/passwd").
-app.get('/uploads/:filename', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorised' });
-  }
+//
+// The token is VERIFIED here, not merely present. This previously tested only
+// that the header started with "Bearer ", so `Authorization: Bearer x` served
+// any file to anyone who could reach the port. requireAuth performs the real
+// jwt.verify, and is the same guard every /api/v1 route already uses.
+app.get('/uploads/:filename', requireAuth, (req, res) => {
   const filename = path.basename(req.params.filename);
-  const filePath = path.join(uploadsDir, filename);
+  const filePath = path.join(uploadsDir(), filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }

@@ -3,6 +3,7 @@ import path from 'path';
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { logger } from '../../config/logger.js';
+import { uploadedFilePath } from '../../utils/uploads-dir.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export const attachmentService = {
 
     // Try to remove physical file — non-fatal if already missing
     try {
-      fs.unlinkSync(path.resolve('uploads', att.storedName));
+      fs.unlinkSync(uploadedFilePath(att.storedName));
     } catch (err) {
       logger.warn({ err, storedName: att.storedName }, 'Could not delete attachment file from disk');
     }

@@ -1,6 +1,7 @@
 import multer from 'multer';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { uploadsDir } from '../utils/uploads-dir.js';
 
 // ─── Allowed MIME types ───────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ const ALLOWED_MIME = new Set([
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, process.env.UPLOAD_PATH ?? path.resolve('uploads'));
+    cb(null, uploadsDir());
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
