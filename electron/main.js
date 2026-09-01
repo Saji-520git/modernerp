@@ -773,6 +773,37 @@ function createMainWindow() {
     }
     mainWindow.show();
     mainWindow.maximize();
+
+    // Take focus explicitly. show() alone is not enough on Windows.
+    //
+    // The splash is alwaysOnTop and stays up through initdb, migrations, seed
+    // and the backend spawn — long enough on a till PC that the user alt-tabs
+    // away. Windows then refuses to let a background process take the
+    // foreground, so the window appears but the renderer never receives
+    // keyboard focus: fields show a caret and swallow every keystroke. It
+    // clears only once the competing app is closed or the window is clicked
+    // enough to activate, which is exactly the "cannot type in the product
+    // name box" report from ACM.
+    //
+    // Every other path in this file already did this (tray Open, tray
+    // double-click, second-instance); startup was the one that did not.
+    mainWindow.focus();
+    mainWindow.webContents.focus();
+
+    // Windows only grants the foreground to a process that already holds it.
+    // Toggling always-on-top is the supported way to force activation when it
+    // does not; it is a no-op when focus was already granted above.
+    if (!mainWindow.isFocused()) {
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.focus();
+    }
+
+    // Diagnostic: turns the next occurrence into a fact in the log rather than
+    // a theory. Checked on the next tick so the activation above has settled.
+    setImmediate(() => {
+      log.info(`Window shown — focused=${mainWindow.isFocused()} visible=${mainWindow.isVisible()}`);
+    });
   });
 
   // Clear the persisted auth session when the window is closed so that
