@@ -6,7 +6,8 @@
   "main": "electron/main.js",
   "scripts": {
     "electron": "electron .",
-    "compile": "npm --prefix backend run build && npm --prefix frontend run build",
+    "clean": "node -e \"const {rmSync}=require('fs');['backend/dist','frontend/dist'].forEach(x=>rmSync(x,{recursive:true,force:true}))\"",
+    "compile": "npm run clean && npm --prefix backend run build && npm --prefix frontend run build",
     "prebuild": "npm run compile",
     "build": "electron-builder",
     "prebuild:win": "npm run compile",
