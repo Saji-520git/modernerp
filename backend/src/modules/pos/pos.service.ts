@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
@@ -98,10 +99,26 @@ async function aggregateShift(shiftId: string) {
 // ─── Credit helpers ───────────────────────────────────────────────────────────
 
 async function getCustomerCreditBalance(customerId: string): Promise<number> {
-  const [result, customer] = await Promise.all([
+  const openBills: Prisma.SaleWhereInput = {
+    customerId,
+    status: 'CONFIRMED',
+    paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+    deletedAt: null,
+  };
+  const [result, returnsAgg, customer] = await Promise.all([
     prisma.sale.aggregate({
-      where: { customerId, status: 'CONFIRMED', paymentStatus: { in: ['UNPAID', 'PARTIAL'] } },
+      where: openBills,
       _sum: { totalCents: true, paidCents: true },
+    }),
+    // Goods handed back are not money owed. Every other balance in the system
+    // already nets returns — the customer page, single-bill payment, lump-sum
+    // and apply-credit all do — but this one did not, so a customer who
+    // returned half an order still had the full amount held against their
+    // limit and was refused at the till for debt they no longer had. The
+    // customer page said one number and the till enforced another.
+    prisma.saleReturn.aggregate({
+      where: { sale: openBills },
+      _sum: { totalCents: true },
     }),
     // Debt carried in from before go-live counts against the limit like any
     // other. Without it a customer already over their limit on old debt walked
@@ -111,7 +128,10 @@ async function getCustomerCreditBalance(customerId: string): Promise<number> {
       where: { id: customerId }, select: { openingBalanceCents: true },
     }),
   ]);
-  const derived = Math.max(0, (result._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0));
+  const derived = Math.max(
+    0,
+    (result._sum.totalCents ?? 0) - (returnsAgg._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0),
+  );
   return derived + (customer?.openingBalanceCents ?? 0);
 }
 
