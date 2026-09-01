@@ -681,17 +681,46 @@ export const reportsService = {
         JOIN "Sale" s ON s.id = sl."saleId"
         WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
       `,
+      // Returns are netted here as well as in the headline. They were not, so
+      // the P&L summary reported revenue net of returns while the trend chart
+      // beside it plotted gross — the same page disagreeing with itself, which
+      // is the bug already fixed once for the Sales report.
+      //
+      // Returns are aggregated in their own scan and subtracted per month
+      // rather than joined: SaleLine is already fanned out by the join above,
+      // so a joined return would be counted once per line on the invoice.
+      // COGS is deliberately NOT adjusted, matching the headline — returned
+      // goods go back into stock, so their cost never left.
       prisma.$queryRaw<{ period: Date; revenue: bigint; cogs: bigint }[]>`
+        WITH gross AS (
+          SELECT
+            DATE_TRUNC('month', s.date)::date AS period,
+            SUM(s."totalCents")::bigint       AS revenue,
+            COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
+          FROM "Sale" s
+          JOIN "SaleLine" sl ON sl."saleId" = s.id
+          JOIN "Product" p ON p.id = sl."productId"
+          WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL
+            AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
+          GROUP BY 1
+        ),
+        returned AS (
+          SELECT
+            DATE_TRUNC('month', s.date)::date AS period,
+            SUM(sr."totalCents")::bigint      AS returned
+          FROM "SaleReturn" sr
+          JOIN "Sale" s ON s.id = sr."saleId"
+          WHERE s.status = 'CONFIRMED' AND s."deletedAt" IS NULL
+            AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
+          GROUP BY 1
+        )
         SELECT
-          DATE_TRUNC('month', s.date)::date AS period,
-          SUM(s."totalCents")::bigint AS revenue,
-          COALESCE(SUM(sl.qty * p."costCents"), 0)::bigint AS cogs
-        FROM "Sale" s
-        JOIN "SaleLine" sl ON sl."saleId" = s.id
-        JOIN "Product" p ON p.id = sl."productId"
-        WHERE s.status = 'CONFIRMED' AND s.date >= ${from} AND s.date <= ${to} ${scopedSql}
-        GROUP BY 1
-        ORDER BY 1
+          g.period,
+          GREATEST(g.revenue - COALESCE(r.returned, 0), 0)::bigint AS revenue,
+          g.cogs
+        FROM gross g
+        LEFT JOIN returned r ON r.period = g.period
+        ORDER BY g.period
       `,
       // Expenses in the same period — isRecurring: false excludes templates; deletedAt: null excludes soft-deleted
       (prisma as any).expense.findMany({
