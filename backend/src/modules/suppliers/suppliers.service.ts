@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { netOutstandingCents } from '../../utils/outstanding.js';
 import type { SupplierBodyInput, ListSuppliersInput } from './suppliers.schema.js';
 
 // Normalize a name/phone for duplicate comparison (trim + lower-case).
@@ -103,7 +104,17 @@ export const suppliersService = {
       0,
       totalPurchaseAmount - totalPaid - totalReturnedCents,
     );
-    const outstandingBalance = derivedBalance + openingBalanceCents;
+    // Net of any credit sitting with this supplier — an overpayment reduces
+    // what is still owed. Same rule as the customer side (utils/outstanding.ts)
+    // so both halves of the ledger read the same way. Display-only here:
+    // suppliers have no limit to enforce, unlike the customer credit check.
+    const outstandingBalance = netOutstandingCents({
+      invoicedCents:       totalPurchaseAmount,
+      returnedCents:       totalReturnedCents,
+      paidCents:           totalPaid,
+      openingBalanceCents,
+      creditBalanceCents:  (supplier as { creditBalanceCents?: number }).creditBalanceCents ?? 0,
+    });
 
     return {
       ...supplier,

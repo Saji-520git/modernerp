@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { netOutstandingCents } from '../../utils/outstanding.js';
 import type { CustomerBodyInput, ListCustomersInput } from './customers.schema.js';
 
 // Normalize a name/phone for duplicate comparison (trim + lower-case).
@@ -95,22 +96,49 @@ export const customersService = {
     // than folded into it, so the two stay separable on screen: an owner needs
     // to know how much of a balance predates the system.
     const openingBalanceCents = customer.openingBalanceCents ?? 0;
+    // Invoice-side debt only — no opening balance, no credit. Kept because the
+    // UI reports separately how much of a balance predates the system.
     const derivedBalance      = Math.max(0, totalSalesAmount - totalReturned - totalPaid);
-    const outstandingBalance  = derivedBalance + openingBalanceCents;
+    // Net of unapplied credit, and shared with the POS credit-limit check so the
+    // page and the till can never report different numbers again.
+    const creditBalanceCents  = (customer as { creditBalanceCents?: number }).creditBalanceCents ?? 0;
+    const outstandingBalance  = netOutstandingCents({
+      invoicedCents:       totalSalesAmount,
+      returnedCents:       totalReturned,
+      paidCents:           totalPaid,
+      openingBalanceCents,
+      creditBalanceCents,
+    });
     const lastPurchaseDate   = salesAgg._max.date        ?? null;
 
     // Credit used = outstanding balance on unpaid/partial confirmed sales
     let creditUsedCents = 0;
     if (customer.creditEnabled) {
-      const unpaidAgg = await (prisma as any).sale.aggregate({
-        where: {
-          customerId: id, status: 'CONFIRMED', deletedAt: null,
-          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-        },
-        _sum: { totalCents: true, paidCents: true },
+      // Must mirror the POS check exactly — this is the figure the customer is
+      // shown as "limit used", and the till is what actually refuses them.
+      // It previously ignored BOTH returns and credit, so a customer could be
+      // told they had room and still be refused, or the reverse.
+      const openBills = {
+        customerId: id, status: 'CONFIRMED', deletedAt: null,
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+      };
+      const [unpaidAgg, unpaidReturnsAgg] = await Promise.all([
+        (prisma as any).sale.aggregate({
+          where: openBills,
+          _sum: { totalCents: true, paidCents: true },
+        }),
+        (prisma as any).saleReturn.aggregate({
+          where: { sale: openBills },
+          _sum: { totalCents: true },
+        }),
+      ]);
+      creditUsedCents = netOutstandingCents({
+        invoicedCents:       unpaidAgg._sum.totalCents ?? 0,
+        returnedCents:       unpaidReturnsAgg._sum.totalCents ?? 0,
+        paidCents:           unpaidAgg._sum.paidCents ?? 0,
+        openingBalanceCents,
+        creditBalanceCents,
       });
-      creditUsedCents =
-        (unpaidAgg._sum.totalCents ?? 0) - (unpaidAgg._sum.paidCents ?? 0) + openingBalanceCents;
     }
 
     return {

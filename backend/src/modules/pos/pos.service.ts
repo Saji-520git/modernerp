@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { netOutstandingCents } from '../../utils/outstanding.js';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
@@ -125,14 +126,22 @@ async function getCustomerCreditBalance(customerId: string): Promise<number> {
     // in with their entire limit apparently free — the credit check would have
     // been enforcing against a number that ignored most of what they owed.
     prisma.customer.findUnique({
-      where: { id: customerId }, select: { openingBalanceCents: true },
+      where: { id: customerId },
+      select: { openingBalanceCents: true, creditBalanceCents: true },
     }),
   ]);
-  const derived = Math.max(
-    0,
-    (result._sum.totalCents ?? 0) - (returnsAgg._sum.totalCents ?? 0) - (result._sum.paidCents ?? 0),
-  );
-  return derived + (customer?.openingBalanceCents ?? 0);
+  // Shared with the customer page so the two can never drift apart again —
+  // the arithmetic lives in customer-balance.ts, only the aggregation differs.
+  return netOutstandingCents({
+    invoicedCents:       result._sum.totalCents ?? 0,
+    returnedCents:       returnsAgg._sum.totalCents ?? 0,
+    paidCents:           result._sum.paidCents ?? 0,
+    openingBalanceCents: customer?.openingBalanceCents ?? 0,
+    // Unapplied cash the shop is holding. Without this a customer who left
+    // change on their account still had it counted as debt against their
+    // limit, so paying MORE could push them closer to being refused.
+    creditBalanceCents:  customer?.creditBalanceCents ?? 0,
+  });
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
