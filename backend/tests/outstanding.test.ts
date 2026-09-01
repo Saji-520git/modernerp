@@ -1,4 +1,4 @@
-import { netOutstandingCents, type OutstandingInput } from '../src/utils/outstanding';
+import { netOutstandingCents, netOutstandingFromInvoices, type OutstandingInput } from '../src/utils/outstanding';
 
 const bal = (o: Partial<OutstandingInput> = {}): OutstandingInput => ({
   invoicedCents:       1_000_000,   // Rs.10,000 billed
@@ -104,5 +104,44 @@ describe('customer net outstanding', () => {
     }));
     expect(unapplied).toBe(500_000);
     expect(applied).toBe(unapplied);
+  });
+});
+
+describe('net outstanding across invoices', () => {
+  const inv = (totalCents: number, returnedCents: number, paidCents: number) =>
+    ({ totalCents, returnedCents, paidCents });
+
+  it('clamps EACH invoice, so an overpaid one cannot cancel another\'s debt', () => {
+    // The live-data bug: C is overpaid by 9,000 after a return against an
+    // already-settled bill. Clamping the sum would net it off B's 80,000 and
+    // report 71,000 — then the credit (which is that same 9,000) subtracts it
+    // a second time.
+    const rows = [
+      inv(40_000,      0, 40_000),   // A — settled
+      inv(100_000, 20_000,      0),  // B — owes 80,000
+      inv(36_000,   9_000, 36_000),  // C — overpaid by 9,000
+      inv(8_500,        0,  8_500),  // D — settled
+    ];
+    expect(netOutstandingFromInvoices(rows, 0, 0)).toBe(80_000);
+    // With the 9,000 held as credit, it comes off exactly once.
+    expect(netOutstandingFromInvoices(rows, 0, 10_500)).toBe(69_500);
+  });
+
+  it('matches the naive sum when no invoice is overpaid', () => {
+    const rows = [inv(50_000, 0, 20_000), inv(30_000, 5_000, 0)];
+    expect(netOutstandingFromInvoices(rows, 0, 0)).toBe(55_000);
+  });
+
+  it('adds the opening balance and subtracts credit once', () => {
+    const rows = [inv(50_000, 0, 20_000)];
+    expect(netOutstandingFromInvoices(rows, 10_000, 5_000)).toBe(35_000);
+  });
+
+  it('never goes negative', () => {
+    expect(netOutstandingFromInvoices([inv(10_000, 0, 10_000)], 0, 50_000)).toBe(0);
+  });
+
+  it('is zero for no invoices', () => {
+    expect(netOutstandingFromInvoices([], 0, 0)).toBe(0);
   });
 });

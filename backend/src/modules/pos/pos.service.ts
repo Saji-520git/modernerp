@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { netOutstandingCents } from '../../utils/outstanding.js';
+import { netOutstandingFromInvoices } from '../../utils/outstanding.js';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
@@ -106,20 +106,12 @@ async function getCustomerCreditBalance(customerId: string): Promise<number> {
     paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
     deletedAt: null,
   };
-  const [result, returnsAgg, customer] = await Promise.all([
-    prisma.sale.aggregate({
-      where: openBills,
-      _sum: { totalCents: true, paidCents: true },
-    }),
-    // Goods handed back are not money owed. Every other balance in the system
-    // already nets returns — the customer page, single-bill payment, lump-sum
-    // and apply-credit all do — but this one did not, so a customer who
-    // returned half an order still had the full amount held against their
-    // limit and was refused at the till for debt they no longer had. The
-    // customer page said one number and the till enforced another.
-    prisma.saleReturn.aggregate({
-      where: { sale: openBills },
-      _sum: { totalCents: true },
+  const [openRows, customer] = await Promise.all([
+    // Per invoice, so an overpaid bill cannot cancel another bill's debt and
+    // then be subtracted again as credit — see utils/outstanding.ts.
+    prisma.sale.findMany({
+      where:  openBills,
+      select: { totalCents: true, paidCents: true, returns: { select: { totalCents: true } } },
     }),
     // Debt carried in from before go-live counts against the limit like any
     // other. Without it a customer already over their limit on old debt walked
@@ -130,18 +122,18 @@ async function getCustomerCreditBalance(customerId: string): Promise<number> {
       select: { openingBalanceCents: true, creditBalanceCents: true },
     }),
   ]);
-  // Shared with the customer page so the two can never drift apart again —
-  // the arithmetic lives in customer-balance.ts, only the aggregation differs.
-  return netOutstandingCents({
-    invoicedCents:       result._sum.totalCents ?? 0,
-    returnedCents:       returnsAgg._sum.totalCents ?? 0,
-    paidCents:           result._sum.paidCents ?? 0,
-    openingBalanceCents: customer?.openingBalanceCents ?? 0,
-    // Unapplied cash the shop is holding. Without this a customer who left
-    // change on their account still had it counted as debt against their
-    // limit, so paying MORE could push them closer to being refused.
-    creditBalanceCents:  customer?.creditBalanceCents ?? 0,
-  });
+  // Goods handed back are not money owed, and cash left on the account is not
+  // debt. Shared with the customer page so the till and the screen can never
+  // report different numbers again.
+  return netOutstandingFromInvoices(
+    openRows.map((s) => ({
+      totalCents:    s.totalCents,
+      returnedCents: s.returns.reduce((n, r) => n + r.totalCents, 0),
+      paidCents:     s.paidCents,
+    })),
+    customer?.openingBalanceCents ?? 0,
+    customer?.creditBalanceCents ?? 0,
+  );
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

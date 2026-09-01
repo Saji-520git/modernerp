@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
-import { netOutstandingCents } from '../../utils/outstanding.js';
+import { netOutstandingFromInvoices } from '../../utils/outstanding.js';
 import type { CustomerBodyInput, ListCustomersInput } from './customers.schema.js';
 
 // Normalize a name/phone for duplicate comparison (trim + lower-case).
@@ -102,13 +102,23 @@ export const customersService = {
     // Net of unapplied credit, and shared with the POS credit-limit check so the
     // page and the till can never report different numbers again.
     const creditBalanceCents  = (customer as { creditBalanceCents?: number }).creditBalanceCents ?? 0;
-    const outstandingBalance  = netOutstandingCents({
-      invoicedCents:       totalSalesAmount,
-      returnedCents:       totalReturned,
-      paidCents:           totalPaid,
+
+    // Per invoice, not on the aggregate. Clamping the sum lets an overpaid
+    // invoice cancel another invoice's debt, and once that overpayment is also
+    // held as credit it comes off twice — see utils/outstanding.ts.
+    const invoiceRows = await (prisma as any).sale.findMany({
+      where:  { customerId: id, status: 'CONFIRMED', deletedAt: null },
+      select: { totalCents: true, paidCents: true, returns: { select: { totalCents: true } } },
+    });
+    const outstandingBalance = netOutstandingFromInvoices(
+      invoiceRows.map((s: { totalCents: number; paidCents: number; returns: { totalCents: number }[] }) => ({
+        totalCents:    s.totalCents,
+        returnedCents: s.returns.reduce((n, r) => n + r.totalCents, 0),
+        paidCents:     s.paidCents,
+      })),
       openingBalanceCents,
       creditBalanceCents,
-    });
+    );
     const lastPurchaseDate   = salesAgg._max.date        ?? null;
 
     // Credit used = outstanding balance on unpaid/partial confirmed sales
@@ -122,23 +132,19 @@ export const customersService = {
         customerId: id, status: 'CONFIRMED', deletedAt: null,
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
       };
-      const [unpaidAgg, unpaidReturnsAgg] = await Promise.all([
-        (prisma as any).sale.aggregate({
-          where: openBills,
-          _sum: { totalCents: true, paidCents: true },
-        }),
-        (prisma as any).saleReturn.aggregate({
-          where: { sale: openBills },
-          _sum: { totalCents: true },
-        }),
-      ]);
-      creditUsedCents = netOutstandingCents({
-        invoicedCents:       unpaidAgg._sum.totalCents ?? 0,
-        returnedCents:       unpaidReturnsAgg._sum.totalCents ?? 0,
-        paidCents:           unpaidAgg._sum.paidCents ?? 0,
+      const openRows = await (prisma as any).sale.findMany({
+        where:  openBills,
+        select: { totalCents: true, paidCents: true, returns: { select: { totalCents: true } } },
+      });
+      creditUsedCents = netOutstandingFromInvoices(
+        openRows.map((s: { totalCents: number; paidCents: number; returns: { totalCents: number }[] }) => ({
+          totalCents:    s.totalCents,
+          returnedCents: s.returns.reduce((n, r) => n + r.totalCents, 0),
+          paidCents:     s.paidCents,
+        })),
         openingBalanceCents,
         creditBalanceCents,
-      });
+      );
     }
 
     return {

@@ -60,3 +60,36 @@ export function netOutstandingCents(input: OutstandingInput): number {
 
   return Math.max(0, grossOwed - creditBalanceCents);
 }
+
+// ─── Per-invoice clamping ─────────────────────────────────────────────────────
+
+export type InvoiceOwed = {
+  totalCents:    number;
+  returnedCents: number;
+  paidCents:     number;
+};
+
+/**
+ * Net owed across a set of invoices, clamping EACH one at zero before summing.
+ *
+ * Clamping the aggregate instead lets one invoice's overpayment cancel another
+ * invoice's debt — and once that overpayment is also held as credit, it is
+ * subtracted twice. Found on live data: an invoice overpaid by Rs.90 (a return
+ * against an already-settled bill) knocked Rs.90 off an unrelated unpaid
+ * invoice AND Rs.90 of credit, so the customer page read Rs.605 while the
+ * credit-limit figure beside it read the correct Rs.695.
+ *
+ * A customer never owes a negative amount on one bill. Money paid beyond a bill
+ * is credit, and credit is subtracted exactly once, here.
+ */
+export function netOutstandingFromInvoices(
+  invoices: InvoiceOwed[],
+  openingBalanceCents: number,
+  creditBalanceCents: number,
+): number {
+  const onInvoices = invoices.reduce(
+    (n, i) => n + Math.max(0, i.totalCents - i.returnedCents - i.paidCents),
+    0,
+  );
+  return Math.max(0, onInvoices + openingBalanceCents - creditBalanceCents);
+}
