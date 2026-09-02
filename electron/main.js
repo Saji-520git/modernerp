@@ -55,6 +55,7 @@ let splashWindow = null;
 let backendProcess = null;
 let tray = null;
 let dbReady = false;   // true once the modernerp database exists (gates shutdown backup)
+let freshInstall = false;   // true when initdb ran this launch — there is no data yet to protect
 
 // ── Ensure required directories exist ─────────────────────────────────────────
 function ensureDirs() {
@@ -162,6 +163,7 @@ function initDbIfNeeded() {
       log.info('PostgreSQL data dir exists — skipping initdb');
       return resolve();
     }
+    freshInstall = true;
     log.info('Running initdb — first time setup...');
     updateSplash('Setting up database (first time)...');
     const passFile = writePassFile();
@@ -537,32 +539,33 @@ function startBackend() {
 }
 
 // ── Backup: run pg_dump ────────────────────────────────────────────────────────
-function runBackup() {
-  return new Promise((resolve) => {
-    const date = new Date().toISOString().slice(0, 10);
-    const file = path.join(BACKUPS, `modernerp_${date}.sql`);
-    log.info('Running backup to', file);
-    const env = { ...process.env, PGPASSWORD: PG_PASS };
-    const proc = spawn(PG_DUMP, [
-      '-U', PG_USER,
-      '-h', '127.0.0.1',
-      '-p', PG_PORT,
-      '-F', 'p',   // plain SQL
-      '-f', file,
-      PG_DB,
-    ], { env });
-    proc.stderr.on('data', d => log.warn('pg_dump:', d.toString().trim()));
-    proc.on('close', code => {
-      if (code === 0) {
-        store.set('lastBackup', Date.now());
-        log.info('Backup complete:', file);
-        cleanOldBackups();
-      } else {
-        log.warn('Backup failed with code', code);
-      }
-      resolve();
-    });
-  });
+//
+// The writing/verifying/rotating mechanics live in electron/backup.js so they
+// can be tested — see electron/tests/backup.test.js. Only the parts that need
+// `store` (the last-backup clock) stay here.
+const { createBackupRunner } = require('./backup.js');
+
+const backupRunner = createBackupRunner({
+  backupsDir: BACKUPS,
+  pgDump: PG_DUMP,
+  pgUser: PG_USER,
+  pgPort: PG_PORT,
+  pgPass: PG_PASS,
+  pgDb:   PG_DB,
+  log,
+});
+
+/**
+ * @param {{label?: string}} opts
+ * @returns {Promise<boolean>} true only if a VERIFIED dump landed on disk.
+ */
+async function runBackup(opts = {}) {
+  const ok = await backupRunner.runBackup(opts);
+  // Only a verified dump may move the clock. Stamping it on exit-0 alone let a
+  // truncated file buy 23 hours of silence from runAutoBackupIfDue. A labelled
+  // (pre-migration) backup is extra, not the daily one, so it does not count.
+  if (ok && !opts.label) store.set('lastBackup', Date.now());
+  return ok;
 }
 
 // ── Periodic backup while the app is running ─────────────────────────────────
@@ -607,18 +610,39 @@ function runAutoBackupIfDue() {
   return runBackup();
 }
 
-function cleanOldBackups() {
-  try {
-    const files = fs.readdirSync(BACKUPS)
-      .filter(f => f.startsWith('modernerp_') && f.endsWith('.sql'))
-      .sort();
-    while (files.length > 30) {
-      const old = files.shift();
-      fs.unlinkSync(path.join(BACKUPS, old));
-      log.info('Deleted old backup:', old);
-    }
-  } catch (e) {
-    log.warn('cleanOldBackups error:', e.message);
+// ── Safety backup taken BEFORE an upgrade applies its migrations ─────────────
+//
+// runMigrations() runs `prisma migrate deploy` against the shop's live data,
+// and a failed migration is deliberately non-fatal — the app boots anyway. That
+// combination used to sit AHEAD of the only backup call in the startup path, so
+// the newest copy at the moment schema changes landed could be 23 hours old.
+// An upgrade that went wrong would cost a day of trading.
+//
+// Only an actual version change triggers this. Re-launching the same build has
+// nothing pending to apply, and a first install has no data to lose.
+async function backupBeforeMigrations() {
+  const current  = app.getVersion();
+  const previous = store.get('lastMigratedVersion', null);
+
+  if (freshInstall) {
+    store.set('lastMigratedVersion', current);
+    log.info('Fresh install — no pre-migration backup needed');
+    return;
+  }
+  if (previous === current) {
+    log.info('Same version as last migrate — no pre-migration backup needed');
+    return;
+  }
+
+  log.info(`Upgrade detected (${previous || 'unknown'} → ${current}) — backing up before migrating`);
+  updateSplash('Backing up your data before upgrading...');
+  const ok = await runBackup({ label: 'premigration' });
+  if (ok) {
+    // Recorded only on success, so a failed attempt is retried on the next
+    // launch instead of being marked done.
+    store.set('lastMigratedVersion', current);
+  } else {
+    log.error('Pre-migration backup FAILED — migrations will still run; see log above');
   }
 }
 
@@ -980,6 +1004,7 @@ app.whenReady().then(async () => {
 
     await ensureDatabase();
     dbReady = true;   // DB confirmed to exist — shutdown backup is now safe
+    await backupBeforeMigrations();
     await runMigrations();
     await ensureSeedData();
     await rememberBusinessName();

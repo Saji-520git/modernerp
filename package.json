@@ -12,7 +12,8 @@
     "build": "electron-builder",
     "prebuild:win": "npm run compile",
     "build:win": "electron-builder --win --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "test:electron": "node --test \"electron/tests/**/*.test.js\""
   },
   "build": {
     "appId": "com.brocode.modernerp",
