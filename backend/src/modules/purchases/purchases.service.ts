@@ -10,6 +10,7 @@ import { recordStockMovement } from '../../utils/stock-movement.js';
 import { createFullReceiptRecord } from './purchase-receipt.service.js';
 import type { CreatePurchaseInput, UpdatePurchaseInput, ListPurchasesInput, FromAlertsInput } from './purchases.schema.js';
 import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
+import { localDayRange } from '../../utils/local-date.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,12 +74,8 @@ export const purchaseService = {
       deletedAt: null,
       ...(status && { status }),
       ...(supplierId && { supplierId }),
-      ...(from || to ? {
-        date: {
-          ...(from ? { gte: new Date(from) } : {}),
-          ...(to ? { lte: new Date(to + 'T23:59:59Z') } : {}),
-        },
-      } : {}),
+      // Local calendar days, not UTC — see utils/local-date.ts.
+      ...(localDayRange(from, to) ? { date: localDayRange(from, to) } : {}),
       ...(search && {
         OR: [
           { number: { contains: search, mode: 'insensitive' as const } },

@@ -4,6 +4,7 @@ import { HttpError } from '../../middleware/error-handler.js';
 import { creditIncrementCents } from './return-credit.js';
 import { refundUnitCents, cappedReturnTotalCents, cappedRefundCents } from './return-value.js';
 import { loyaltyReturnDelta } from '../loyalty/loyalty-return.js';
+import { localDayRange } from '../../utils/local-date.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
@@ -30,12 +31,8 @@ export const returnsService = {
     const where = {
       ...(saleId     && { saleId }),
       ...(customerId && { sale: { customerId } }),
-      ...(from || to ? {
-        createdAt: {
-          ...(from ? { gte: new Date(from) } : {}),
-          ...(to ? { lte: new Date(to + 'T23:59:59Z') } : {}),
-        },
-      } : {}),
+      // Local calendar days, not UTC — see utils/local-date.ts.
+      ...(localDayRange(from, to) ? { createdAt: localDayRange(from, to) } : {}),
       ...(search && {
         OR: [
           { number: { contains: search, mode: 'insensitive' as const } },

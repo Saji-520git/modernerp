@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
+import { localDayRange } from '../../utils/local-date.js';
 
 export interface ListAuditInput {
   search?:   string;
@@ -27,15 +28,10 @@ export const auditService = {
       ...(action   ? { action }   : {}),
       ...(userId   ? { userId }   : {}),
       ...(entityId ? { entityId } : {}),
-      ...(from || to
-        ? {
-            at: {
-              ...(from ? { gte: new Date(from) } : {}),
-              // `to` is a date, and a day includes its last second.
-              ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}),
-            },
-          }
-        : {}),
+      // A day is the SHOP's day, and includes its last millisecond. Built as a
+      // UTC window this filed anything before 05:30 in Colombo under the
+      // previous date — see utils/local-date.ts.
+      ...(localDayRange(from, to) ? { at: localDayRange(from, to) } : {}),
       ...(search
         ? {
             OR: [

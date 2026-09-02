@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
+import { localDayRange } from '../../utils/local-date.js';
 import type {
   CreateExpenseInput, UpdateExpenseInput, ListExpensesInput,
   CreateCategoryInput, UpdateCategoryInput,
@@ -68,12 +69,8 @@ export const expensesService = {
       isRecurring: false,
       deletedAt:   null,
       ...(categoryId ? { categoryId } : {}),
-      ...(from || to ? {
-        date: {
-          ...(from ? { gte: new Date(from) } : {}),
-          ...(to   ? { lte: new Date(to + 'T23:59:59Z') } : {}),
-        },
-      } : {}),
+      // Local calendar days, not UTC — see utils/local-date.ts.
+      ...(localDayRange(from, to) ? { date: localDayRange(from, to) } : {}),
       ...(search ? {
         OR: [
           { description: { contains: search, mode: 'insensitive' as const } },

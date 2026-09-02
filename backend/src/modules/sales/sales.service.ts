@@ -7,6 +7,7 @@ import { deductBatchesFEFO } from '../../utils/batch-expiry.js';
 import { recomputeStockQty } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
+import { localDayRange } from '../../utils/local-date.js';
 import type { CreateSaleInput, ListSalesInput, RecordPaymentInput } from './sales.schema.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,12 +108,11 @@ export const salesService = {
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (customerId) where.customerId = customerId;
     if (warehouseId) where.warehouseId = warehouseId;
-    if (from || to) {
-      where.date = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to   ? { lte: new Date(to + 'T23:59:59Z') } : {}),
-      };
-    }
+    // Local calendar days, not UTC — see utils/local-date.ts. Built by hand as
+    // UTC bounds, "1 September" meant 05:30 on the 1st to 05:29 on the 2nd in
+    // Colombo, so an early sale was filed under the previous day.
+    const dateRange = localDayRange(from, to);
+    if (dateRange) where.date = dateRange;
     if (search) {
       where.OR = [
         { number: { contains: search, mode: 'insensitive' } },

@@ -38,3 +38,50 @@ export function localMidnightDaysAgo(daysAgo: number): Date {
   d.setDate(d.getDate() - daysAgo);
   return d;
 }
+
+/** `YYYY-MM-DD` exactly — anything else is passed through to the Date parser. */
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Start of a local calendar day, from a `YYYY-MM-DD` string.
+ *
+ * `new Date('2026-09-01')` does NOT do this: the ISO date-only form is defined
+ * to parse as UTC, so in any timezone ahead of UTC it lands part-way through
+ * the previous local day. Constructing from parts builds the local instant the
+ * shop actually means.
+ */
+export function localDayStart(ymd: string): Date {
+  if (!YMD.test(ymd)) return new Date(ymd);
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
+/** Last millisecond of a local calendar day, from a `YYYY-MM-DD` string. */
+export function localDayEnd(ymd: string): Date {
+  if (!YMD.test(ymd)) return new Date(ymd);
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+}
+
+/**
+ * Prisma `gte`/`lte` bounds for an inclusive local date range, or undefined
+ * when neither end was given.
+ *
+ * Every list filter used to build this by hand as
+ * `gte: new Date(from)` / `lte: new Date(to + 'T23:59:59Z')` — both UTC. In
+ * Colombo (UTC+5:30) asking for "1 September" therefore returned 05:30 on the
+ * 1st through 05:29 on the 2nd: an early-morning sale was filed under the
+ * previous day, and a sale just after midnight appeared under the wrong one.
+ * The dashboard already used local midnight, so the two disagreed about what
+ * "today" meant on the same screen.
+ */
+export function localDayRange(
+  from?: string | null,
+  to?: string | null,
+): { gte?: Date; lte?: Date } | undefined {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { gte: localDayStart(from) } : {}),
+    ...(to   ? { lte: localDayEnd(to) }     : {}),
+  };
+}
