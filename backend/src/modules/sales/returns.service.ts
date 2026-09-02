@@ -298,17 +298,42 @@ export const returnsService = {
         const baseQtyNum = Number(baseQty);
 
         // Create a StockBatch lot for the returned goods in BASE units so the
-        // aggregate has batch backing and survives recomputeStockQty. Returned
-        // goods have no purchase origin (purchaseLineId null) and unknown expiry
-        // (null → FEFO sorts it last). Replaces the bare stock.upsert(increment),
-        // which left the returned qty with no batch row behind it.
+        // aggregate has batch backing and survives recomputeStockQty.
+        //
+        // Carry the ORIGIN batch's identity where the sale recorded one. Every
+        // returned lot used to land with expiryDate, supplierId and cost all
+        // empty, which had three consequences: the lot sat in stock valued at
+        // zero, batch matching could not group it with the goods it came from,
+        // and — worst for a grocery — FEFO sorts a null expiry LAST, so
+        // returned perishables queued up behind fresher stock and were the last
+        // thing sold rather than the first.
+        //
+        // SaleLine.batchId is populated only when the batch was picked by hand.
+        // A FEFO sale records the quantity it took but not which lots it took
+        // it from (deductBatchesFEFO returns a number), so for those the origin
+        // is genuinely unknown and expiry stays null rather than being invented
+        // — a guessed expiry date on perishable goods is worse than an absent
+        // one. Cost still falls back to the product, so no lot is valued at zero.
+        const originBatch = saleLine?.batchId
+          ? await tx.stockBatch.findUnique({
+              where:  { id: saleLine.batchId },
+              select: { expiryDate: true, supplierId: true, unitCostCents: true, batchNumber: true },
+            })
+          : null;
+        const productCost = await tx.product.findUnique({
+          where: { id: line.productId }, select: { costCents: true },
+        });
+
         await tx.stockBatch.create({
           data: {
             productId:      line.productId,
             warehouseId:    sale.warehouseId,
             purchaseLineId: null,
             qty:            baseQty,
-            expiryDate:     null,
+            expiryDate:     originBatch?.expiryDate ?? null,
+            supplierId:     originBatch?.supplierId ?? null,
+            batchNumber:    originBatch?.batchNumber ?? null,
+            unitCostCents:  originBatch?.unitCostCents ?? productCost?.costCents ?? 0,
           },
         });
         await recomputeStockQty(tx, line.productId, sale.warehouseId);
@@ -414,6 +439,45 @@ export const returnsService = {
         where: { id: input.saleId },
         data:  { paymentStatus: newPaymentStatus },
       });
+
+      // 3c. Release any promotion this sale consumed, once the whole invoice
+      //     has come back.
+      //
+      //     A promotion's usage is discrete: promotions.engine refuses a promo
+      //     when timesUsed >= usageLimit, and checkout increments it by one per
+      //     sale. A partially returned sale still happened, so it still counts;
+      //     a fully returned one did not, and holding its slot would retire a
+      //     limited offer early on business that was undone.
+      //
+      //     Edge-triggered on the invoice CROSSING into fully-returned, so a
+      //     second return against the same sale cannot release it twice. The
+      //     SalePromotion rows are left in place — they are the record of what
+      //     was applied, and deleting them would erase why the invoice totalled
+      //     what it did.
+      const becameFullyReturned =
+        saleTotalCents > 0 &&
+        returnedBefore < saleTotalCents &&
+        returnedAfter >= saleTotalCents;
+
+      if (becameFullyReturned) {
+        const applied = await tx.salePromotion.findMany({
+          where:  { saleId: input.saleId },
+          select: { promotionId: true },
+        });
+        for (const { promotionId } of applied) {
+          const promo = await tx.promotion.findUnique({
+            where: { id: promotionId }, select: { timesUsed: true },
+          });
+          if (!promo) continue;
+          // Floored rather than a bare decrement: a counter edited by hand, or
+          // a sale predating this release path, must not push it negative and
+          // hand out more uses than the limit allows.
+          await tx.promotion.update({
+            where: { id: promotionId },
+            data:  { timesUsed: Math.max(0, promo.timesUsed - 1) },
+          });
+        }
+      }
 
       const customerId = saleBefore?.customerId ?? null;
       if (customerId) {
