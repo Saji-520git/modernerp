@@ -79,6 +79,62 @@ export const loyaltyService = {
     }
     await tx.customer.update({ where: { id: customerId }, data: { loyaltyPoints: balance } });
   },
+
+  /**
+   * Reverse a sale's loyalty when goods come back, inside the return
+   * transaction. Takes back points the sale awarded and hands back points it
+   * consumed — see loyalty-return.ts for why both directions are needed.
+   *
+   * Runs whenever the SALE recorded points, regardless of whether the loyalty
+   * module is switched on today. Gating it on the current flag would make
+   * turning the module off a way to keep points earned while it was on.
+   *
+   * The balance floors at zero, matching `adjust`: a customer who already spent
+   * the points cannot be pushed into a negative balance by a return. The ledger
+   * records what actually moved, not what was asked for, so the running balance
+   * stays honest.
+   */
+  reverseForReturn: async (
+    tx: Prisma.TransactionClient,
+    params: {
+      customerId: string; saleId: string; returnNumber: string;
+      earnedReversal: number; redeemRestore: number;
+    },
+  ): Promise<void> => {
+    const { customerId, saleId, returnNumber, earnedReversal, redeemRestore } = params;
+    if (earnedReversal <= 0 && redeemRestore <= 0) return;
+
+    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { loyaltyPoints: true } });
+    let balance = c?.loyaltyPoints ?? 0;
+
+    // Claw back first, then restore: doing it the other way round would let the
+    // restored points absorb the clawback and hide it from the floor at zero.
+    if (earnedReversal > 0) {
+      const before = balance;
+      balance = Math.max(0, before - earnedReversal);
+      await tx.loyaltyTransaction.create({
+        data: {
+          customerId, saleId, type: 'RETURN_REVERSAL',
+          points: -(before - balance),          // what actually moved, after the floor
+          balanceBefore: before, balanceAfter: balance,
+          note: `Reversed on return ${returnNumber}`,
+        },
+      });
+    }
+    if (redeemRestore > 0) {
+      const before = balance;
+      balance = before + redeemRestore;
+      await tx.loyaltyTransaction.create({
+        data: {
+          customerId, saleId, type: 'RETURN_RESTORE',
+          points: redeemRestore,
+          balanceBefore: before, balanceAfter: balance,
+          note: `Redemption returned on ${returnNumber}`,
+        },
+      });
+    }
+    await tx.customer.update({ where: { id: customerId }, data: { loyaltyPoints: balance } });
+  },
 };
 
 export { pointsForAmount };

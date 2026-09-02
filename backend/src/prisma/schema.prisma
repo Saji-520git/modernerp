@@ -1229,7 +1229,7 @@ model LoyaltyTransaction {
   customer      Customer  @relation(fields: [customerId], references: [id])
   saleId        String?
   sale          Sale?     @relation(fields: [saleId], references: [id])
-  type          String    // EARN | REDEEM | ADJUST
+  type          String    // EARN | REDEEM | ADJUST | RETURN_REVERSAL | RETURN_RESTORE
   points        Int       // signed: + earned, - redeemed
   balanceBefore Int
   balanceAfter  Int

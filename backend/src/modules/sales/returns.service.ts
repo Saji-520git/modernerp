@@ -3,6 +3,8 @@ import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import { creditIncrementCents } from './return-credit.js';
 import { refundUnitCents, cappedReturnTotalCents, cappedRefundCents } from './return-value.js';
+import { loyaltyReturnDelta } from '../loyalty/loyalty-return.js';
+import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { convertToBaseUnit } from '../../utils/unit-converter.js';
 import { recomputeStockQty, settleShortfall } from '../../utils/stock-utils.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
@@ -333,7 +335,10 @@ export const returnsService = {
       // 3. Handle cash/card/bank refund (NONE = settle on account — see step 4)
       const saleBefore = await tx.sale.findUnique({
         where:  { id: input.saleId },
-        select: { paidCents: true, totalCents: true, customerId: true },
+        select: {
+          paidCents: true, totalCents: true, customerId: true,
+          pointsEarned: true, pointsRedeemed: true,
+        },
       });
       let paidCentsAfterRefund = saleBefore?.paidCents ?? 0;
 
@@ -447,6 +452,30 @@ export const returnsService = {
             },
           });
         }
+
+        // 5. Loyalty. Points earned on the sale are clawed back and points it
+        //    consumed are handed back, both scaled to how much of the invoice
+        //    has now come back. Without this a customer could buy, collect the
+        //    points, return the goods and keep them — on a loop.
+        //
+        //    Same before/after shape as the credit above: the rule answers what
+        //    the cumulative reversal should be, and only the difference is
+        //    applied, so a second return cannot reverse the first one's points
+        //    again.
+        const loyalty = loyaltyReturnDelta({
+          pointsEarnedOnSale:   saleBefore?.pointsEarned ?? 0,
+          pointsRedeemedOnSale: saleBefore?.pointsRedeemed ?? 0,
+          saleTotalCents,
+          returnedCentsBefore:  returnedBefore,
+          returnedCentsAfter:   returnedAfter,
+        });
+        await loyaltyService.reverseForReturn(tx, {
+          customerId,
+          saleId:        input.saleId,
+          returnNumber:  ret.number,
+          earnedReversal: loyalty.earnedReversal,
+          redeemRestore:  loyalty.redeemRestore,
+        });
       }
 
       return ret;
