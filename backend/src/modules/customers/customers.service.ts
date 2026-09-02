@@ -110,15 +110,18 @@ export const customersService = {
       where:  { customerId: id, status: 'CONFIRMED', deletedAt: null },
       select: { totalCents: true, paidCents: true, returns: { select: { totalCents: true } } },
     });
-    const outstandingBalance = netOutstandingFromInvoices(
-      invoiceRows.map((s: { totalCents: number; paidCents: number; returns: { totalCents: number }[] }) => ({
-        totalCents:    s.totalCents,
-        returnedCents: s.returns.reduce((n, r) => n + r.totalCents, 0),
-        paidCents:     s.paidCents,
-      })),
-      openingBalanceCents,
-      creditBalanceCents,
-    );
+    const owedRows = invoiceRows.map((s: { totalCents: number; paidCents: number; returns: { totalCents: number }[] }) => ({
+      totalCents:    s.totalCents,
+      returnedCents: s.returns.reduce((n, r) => n + r.totalCents, 0),
+      paidCents:     s.paidCents,
+    }));
+    const outstandingBalance = netOutstandingFromInvoices(owedRows, openingBalanceCents, creditBalanceCents);
+
+    // The same figure BEFORE credit is applied. Needed because netting makes a
+    // customer read as settled while individual invoices are still genuinely
+    // unpaid — they are covered by credit nobody has applied yet, not paid. The
+    // screen has to be able to say which of the two it is.
+    const grossOutstandingCents = netOutstandingFromInvoices(owedRows, openingBalanceCents, 0);
     const lastPurchaseDate   = salesAgg._max.date        ?? null;
 
     // Credit used = outstanding balance on unpaid/partial confirmed sales
@@ -152,6 +155,9 @@ export const customersService = {
       totalSalesAmount,
       totalPaid,
       outstandingBalance,
+      // Before credit — lets the UI distinguish "nothing owed" from "owed, but
+      // covered by credit on account".
+      grossOutstandingCents,
       // Surfaced separately so the UI can say how much predates the system.
       derivedBalance,
       openingBalanceCents,

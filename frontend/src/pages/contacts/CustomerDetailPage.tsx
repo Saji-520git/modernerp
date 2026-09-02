@@ -1688,7 +1688,14 @@ export default function CustomerDetailPage() {
           value={fmtCents(outstanding)}
           sub={
             outstanding === 0
-              ? 'All invoices settled'
+              // "Settled" and "covered by credit" are not the same thing, and
+              // the invoice list shows the difference: a bill can still read
+              // UNPAID while the customer holds enough credit to clear it.
+              // Claiming everything is settled there contradicts the row right
+              // below it, so say which of the two is actually true.
+              ? (customer.grossOutstandingCents ?? 0) > 0
+                ? `${fmtCents(customer.grossOutstandingCents ?? 0)} owed, covered by credit on account`
+                : 'All invoices settled'
               // Said out loud when part of the balance predates the system, so
               // nobody hunts for an invoice that was never raised here.
               : (customer.openingBalanceCents ?? 0) > 0

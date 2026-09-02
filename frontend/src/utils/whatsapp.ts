@@ -45,6 +45,12 @@ export function formatWAPhone(phone: string | null | undefined): string {
   return '';
 }
 
+/**
+ * Name of the reused browser window/tab for WhatsApp Web. Any non-'_blank'
+ * name makes the browser reuse the same tab for every subsequent send.
+ */
+const WA_WINDOW_NAME = 'modernerp-whatsapp';
+
 /** Max length of the percent-encoded `text` query value before we truncate. */
 const WA_TEXT_ENCODED_LIMIT = 1800;
 const WA_TRUNCATION_SUFFIX  = '\n...(truncated)';
@@ -98,11 +104,16 @@ export function fillTemplate(
   tpl: string,
   vars: Record<string, string | number | null | undefined>,
 ): string {
-  let out = tpl;
-  for (const [key, value] of Object.entries(vars)) {
-    out = out.split(`{${key}}`).join(String(value ?? ''));
-  }
-  return out;
+  // Single pass. Replacing key by key means an earlier substitution's VALUE is
+  // still on the table when the next key is replaced, so a customer literally
+  // named "{total}" would have their name rewritten into the bill amount. One
+  // pass over the template resolves each placeholder from the original text
+  // only, so values are never re-read as placeholders.
+  return tpl.replace(/\{(\w+)\}/g, (whole, key) =>
+    Object.prototype.hasOwnProperty.call(vars, key)
+      ? String(vars[key] ?? '')
+      : whole,   // unknown placeholder is left visible rather than blanked
+  );
 }
 
 export interface WAItemLine {
@@ -177,12 +188,19 @@ export function openWhatsApp(
 
   // An anchor click rather than window.open(): window.open is subject to the
   // popup blocker and returns null on a custom scheme even when it worked, so
-  // there is nothing reliable to test. A target=_blank anchor is not
-  // popup-blocked, is the standard way to trigger a protocol handler, and in
-  // Electron still routes through setWindowOpenHandler to shell.openExternal.
+  // there is nothing reliable to test. An anchor is not popup-blocked, is the
+  // standard way to trigger a protocol handler, and in Electron still routes
+  // through setWindowOpenHandler to shell.openExternal.
+  //
+  // A NAMED target, not '_blank'. '_blank' opens a fresh tab on every single
+  // send, so a shop messaging twenty customers ends the morning with twenty
+  // abandoned web.whatsapp.com tabs. A named window is reused: the second send
+  // navigates the tab the first one opened. Electron is unaffected either way —
+  // its window-open handler inspects only the URL and denies the window before
+  // one is created, so the app-scheme path never opens a tab at all.
   const a = document.createElement('a');
   a.href   = link;
-  a.target = '_blank';
+  a.target = WA_WINDOW_NAME;
   a.rel    = 'noopener noreferrer';
   a.style.display = 'none';
   document.body.appendChild(a);

@@ -43,6 +43,9 @@ export interface CustomerDetail extends Customer {
   totalSalesAmount: number;
   totalPaid: number;
   outstandingBalance: number;
+  /** Owed BEFORE unapplied credit is netted off — lets the UI say
+   *  "owed, covered by credit" rather than claiming everything is settled. */
+  grossOutstandingCents?: number;
   /** The part derived from documents in this system (outstanding minus opening). */
   derivedBalance: number;
   lastPurchaseDate: string | null;
