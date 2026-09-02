@@ -305,6 +305,7 @@ instance — only a full process restart does.
 | After any code change | Kill server (Ctrl+C) → `npm run dev` |
 | After `prisma generate` | Restart server — old DLL stays in memory until process exits |
 | Before committing | `npm run typecheck` on both backend and frontend |
+| After touching electron/backup.js | `npm run test:electron` (22 tests; 2 need a throwaway PG on :5439 and skip without one) |
 | Before packaging | `npm run build:win` (or `npm run build`) — never `npm run electron`, which does NOT compile |
 | New session | Read CLAUDE.md sections 7 + 13 before writing any code |
 
@@ -547,6 +548,11 @@ After completing a module:
 | 11 | Second scan of the same item set qty to the whole shelf — the scanner typed its barcode into the auto-focused qty box (and, once overselling lifted the cap, would have committed the barcode itself as the quantity) | POSPage.tsx / cartLines.ts | HIGH | Resolved 2026-08-26 |
 | 12 | A barcode landing in a discount box read as a FULL discount (clamped to 100% / whole subtotal) and, on the cart-total box, opened payment on top of it | DiscountInput.tsx | HIGH | Resolved 2026-08-26 |
 | 13 | Rapid double-scan opened the payment popup — the scanner's trailing Enter arrived after setBarcodeInput('') had flushed, and the empty-Enter→pay branch sat ABOVE the scan debounce with no timing guard | POSPage.tsx | HIGH | Resolved 2026-08-26 |
+| 14 | A failed/killed pg_dump destroyed the day's good backup — `-f` truncates the target on open, and the daily filename is date-based, so the 6-hourly timer reopened the same path. Proved: 3.6KB good copy → 45KB unrestorable fragment | electron/main.js | CRITICAL | Resolved 2026-09-03 |
+| 15 | Backup success was judged by exit code alone; a truncated dump also moved the `lastBackup` clock, buying 23h of silence from the startup check | electron/main.js | HIGH | Resolved 2026-09-03 |
+| 16 | No backup before `migrate deploy` on upgrade — migrations run against live data and are non-fatal, but sat AHEAD of the only backup call; newest copy could be 23h old | electron/main.js | CRITICAL | Resolved 2026-09-03 |
+| 17 | Backup filename used `toISOString()` (UTC). At UTC+5:30 every backup between 00:00 and 05:30 local was filed under YESTERDAY and overwrote it — a till left open overnight destroyed the prior day's copy, nightly | electron/main.js | HIGH | Resolved 2026-09-03 |
+| 18 | A POS product that cannot be sold rendered greyed-out with no reason given — cashier sees overselling ON and one dead product. (Rule itself correct: batch-tracked products are excluded from overselling by design) | POSPage.tsx | MEDIUM | Resolved 2026-09-03 |
 
 ### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
 
