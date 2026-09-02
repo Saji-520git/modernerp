@@ -1,3 +1,11 @@
+// Makes this file a MODULE rather than a script. Without it TypeScript treats
+// every import-less test file as sharing one global scope, and this file's
+// `threeBills` collides with the identically-named helper in
+// apply-credit.test.ts (TS2451). The failure is cache-dependent: on a cold
+// ts-jest cache the whole suite fails to compile, and on a warm one it passes —
+// so CI and a fresh clone broke while a developer's machine looked clean.
+export {};
+
 /**
  * Lump-Sum Payment Allocation Tests
  *

@@ -1,3 +1,8 @@
+// Makes this file a MODULE rather than a script — see the same note in
+// lump-sum-payment.test.ts. Both files declare `threeBills` at top level, and
+// without this they share one global scope and collide (TS2451).
+export {};
+
 /**
  * Apply-Credit Allocation Tests
  *
