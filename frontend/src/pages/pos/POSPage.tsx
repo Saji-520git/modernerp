@@ -326,6 +326,22 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
   const isLow       = !trueOut && displayQty < 10;
   const isDisabled  = trueOut && !mayOversell;
 
+  // The card would have sold past zero, and is dead ONLY because the product is
+  // batch-tracked. Worth saying out loud: with overselling on, every other
+  // out-of-stock product stays clickable, so this one reads as a broken tile
+  // rather than a deliberate rule. The cashier got no reason at all before —
+  // just a greyed-out card.
+  const blockedByBatch =
+    isDisabled && (settings?.allowNegativeStock ?? false) && !!product.isBatchTracked;
+
+  const disabledReason = !isDisabled
+    ? undefined
+    : blockedByBatch
+      ? `${product.name} is batch-tracked, so it cannot be sold below stock even with overselling on — an uncovered unit would carry no batch number or expiry. Receive the delivery first, or turn batch tracking off for this product.`
+      : allExpired && policy === 'BLOCK'
+        ? `${product.name} has only expired stock, and expired sales are blocked in Settings.`
+        : `${product.name} is out of stock.`;
+
   // Badge colour
   const badgeBg    = trueOut     ? '#FCEBEB'
                    : allExpired  ? '#FEF3C7'   // amber for WARN/ALLOW expired
@@ -360,6 +376,7 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
       <button
         type="button"
         disabled={isDisabled}
+        title={disabledReason}
         onClick={handleClick}
         className={cls(
           'relative flex flex-col rounded-xl border text-left transition-all active:scale-95 bg-white hover:border-indigo-400 hover:shadow-md',
@@ -374,6 +391,15 @@ function ProductCard({ product, onAdd, isSelected = false }: { product: PosProdu
           cursor:  isDisabled ? 'not-allowed' : 'pointer',
         }}
       >
+        {/* Batch-tracked and out of stock while overselling is on. Without this
+            the tile is simply dead: every other product sells past zero, so the
+            cashier has no way to tell a rule from a fault. */}
+        {blockedByBatch && !allExpired && (
+          <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, fontWeight: 700,
+            background: '#E0E7FF', color: '#3730A3', padding: '1px 5px', borderRadius: 3 }}>
+            BATCH
+          </span>
+        )}
         {/* Top-right badge: all-expired (BLOCK shows EXP, WARN/ALLOW show orange Exp) */}
         {allExpired && policy === 'BLOCK' && (
           <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 9, fontWeight: 700,
