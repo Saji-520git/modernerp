@@ -57,8 +57,9 @@ export const movementsListSchema = z.object({
       'WRITE_OFF',
     ])
     .optional(),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  // YYYY-MM-DD, resolved against the shop's day in the service.
+  from: z.string().optional(),
+  to: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(2000).default(20),
 });

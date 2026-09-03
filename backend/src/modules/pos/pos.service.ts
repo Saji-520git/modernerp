@@ -15,6 +15,7 @@ import { planRedemption, pointsForAmount } from '../loyalty/loyalty.calc.js';
 import { recordStockMovement } from '../../utils/stock-movement.js';
 import { checkCreditLimit } from './credit-limit.js';
 import { expectedCashCents, cashVarianceCents } from './shift-cash.js';
+import { localDayRange } from '../../utils/local-date.js';
 import { nextDocNumber, withNumberRetry, type NumberedDelegate } from '../../utils/doc-number.js';
 import { SETTINGS_ID } from '../settings/settings.service.js';
 import type { CheckoutInput, ProductSearchInput, ListSalesInput, SaveDraftInput, OpenShiftInput, CloseShiftInput, ForceCloseShiftInput, ListShiftsInput } from './pos.schema.js';
@@ -959,7 +960,9 @@ export const posService = {
           { customer: { name: { contains: search, mode: 'insensitive' as const } } },
         ],
       } : {}),
-      ...(from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+      // The shop's day, inclusive of its last millisecond. Built as a UTC
+      // window this hid every sale after 05:30 on the closing date.
+      ...(localDayRange(from, to) ? { date: localDayRange(from, to) } : {}),
     };
 
     const [total, data] = await prisma.$transaction([
@@ -1287,10 +1290,7 @@ export const posService = {
       ...(warehouseId ? { warehouseId }         : {}),
       ...(userId      ? { userId }               : {}),
       ...(status      ? { status }               : {}),
-      ...(from || to  ? { openedAt: {
-        ...(from ? { gte: from } : {}),
-        ...(to   ? { lte: to }   : {}),
-      }} : {}),
+      ...(localDayRange(from, to) ? { openedAt: localDayRange(from, to) } : {}),
     };
 
     const [total, data] = await prisma.$transaction([
@@ -1307,6 +1307,32 @@ export const posService = {
         },
       }),
     ]);
+
+    // An OPEN shift's snapshot columns are not its figures. They are written AT
+    // CLOSE, so while a till is trading they hold either zero or whatever a
+    // previous write left there — the page showed Rs.300 over 3 sales for a
+    // shift that had actually taken Rs.800 over 5, and disagreed with the POS
+    // header standing next to it. The close dialog already learned this lesson
+    // for cashSalesCents; the list had not.
+    //
+    // Closed shifts keep their stored snapshot: it is the figure that was
+    // signed off, and recomputing it later would let history drift.
+    const openIds = data.filter((s) => s.status === 'OPEN').map((s) => s.id);
+    if (openIds.length > 0) {
+      const live = await prisma.sale.groupBy({
+        by:    ['shiftId'],
+        where: { shiftId: { in: openIds }, status: 'CONFIRMED', deletedAt: null },
+        _sum:  { totalCents: true },
+        _count: { _all: true },
+      });
+      const byShift = new Map(live.map((r) => [r.shiftId, r]));
+      for (const shift of data) {
+        if (shift.status !== 'OPEN') continue;
+        const agg = byShift.get(shift.id);
+        shift.totalSalesCents = agg?._sum.totalCents ?? 0;
+        shift.saleCount       = agg?._count._all ?? 0;
+      }
+    }
 
     return { total, page, pageSize, data };
   },

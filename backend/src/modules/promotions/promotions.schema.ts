@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDayStart, localDayEnd } from '../../utils/local-date.js';
 
 export const createPromotionSchema = z.object({
   name:             z.string().min(1).max(200),
@@ -11,8 +12,14 @@ export const createPromotionSchema = z.object({
   value:            z.number().int().min(0),
   minQty:           z.number().min(0).nullable().optional(),
   minCartCents:     z.number().int().min(0).nullable().optional(),
-  startsAt:         z.coerce.date().nullable().optional(),
-  endsAt:           z.coerce.date().nullable().optional(),
+  // A promotion runs for whole SHOP days. Coerced as a plain date these were
+  // UTC midnight, so at +5:30 one advertised "until the 3rd" stopped working at
+  // 05:30 that morning and lost 18 hours of its last day. A value carrying a
+  // real time is passed through untouched, so a timed promotion still works.
+  startsAt:         z.union([z.string(), z.date()]).nullable().optional()
+                      .transform((v) => (v == null ? v : localDayStart(typeof v === 'string' ? v : v.toISOString()))),
+  endsAt:           z.union([z.string(), z.date()]).nullable().optional()
+                      .transform((v) => (v == null ? v : localDayEnd(typeof v === 'string' ? v : v.toISOString()))),
   priority:         z.number().int().min(0).default(0),
   stackable:        z.boolean().default(false),
   maxDiscountCents: z.number().int().min(0).nullable().optional(),

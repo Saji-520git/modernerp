@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { localDayRange } from '../../utils/local-date.js';
 import { prisma } from '../../config/prisma.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../middleware/error-handler.js';
@@ -899,7 +900,7 @@ export const inventoryService = {
       ...(warehouseId ? { warehouseId } : {}),
       ...(type ? { type } : {}),
       ...(from || to
-        ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+        ? { createdAt: localDayRange(from, to) as object }
         : {}),
     };
 

@@ -116,3 +116,54 @@ describe('localDayRange', () => {
     expect(nextDawn  <= r.lte!).toBe(false);
   });
 });
+
+// ─── The filters and windows that were still on UTC ───────────────────────────
+//
+// localDayRange fixed the sales/purchases/expenses lists. Three more filters
+// hid in Zod schemas as z.coerce.date(), which parses 'YYYY-MM-DD' as UTC
+// midnight, and two date WINDOWS had the same fault with worse consequences.
+describe('the UTC window that hid a day of trading', () => {
+  const tzOffsetMin = -new Date().getTimezoneOffset();
+
+  it('an inclusive day range covers a shift opened after 05:30', () => {
+    // The exact case: a till opened 06:03 local on 2 Sept vanished from a
+    // from=to=2026-09-02 filter, because lte was 2026-09-02T00:00:00Z.
+    const opened = new Date(2026, 8, 2, 6, 3, 36);
+    const r = localDayRange('2026-09-02', '2026-09-02')!;
+    expect(opened >= r.gte!).toBe(true);
+    expect(opened <= r.lte!).toBe(true);
+
+    if (tzOffsetMin > 0) {
+      // and the old bound, shown excluding it
+      expect(opened <= new Date('2026-09-02')).toBe(false);
+    }
+  });
+
+  it('covers the very end of the closing day', () => {
+    const lateSale = new Date(2026, 8, 3, 23, 59, 30);
+    const r = localDayRange('2026-09-01', '2026-09-03')!;
+    expect(lateSale <= r.lte!).toBe(true);
+    if (tzOffsetMin > 0) {
+      expect(lateSale <= new Date('2026-09-03')).toBe(false);
+    }
+  });
+
+  it('a promotion ending on a day runs to the END of that day', () => {
+    // `now > endsAt` disables it, so endsAt must be the last millisecond.
+    const endsAt = localDayEnd('2026-09-03');
+    const duringLastDay = new Date(2026, 8, 3, 18, 0, 0);
+    expect(duringLastDay > endsAt).toBe(false);          // still running
+    expect(new Date(2026, 8, 4, 0, 0, 1) > endsAt).toBe(true);  // over
+
+    if (tzOffsetMin > 0) {
+      // the old value killed it at 05:30 that morning
+      expect(duringLastDay > new Date('2026-09-03')).toBe(true);
+    }
+  });
+
+  it('a promotion starting on a day runs from the START of that day', () => {
+    const startsAt = localDayStart('2026-09-01');
+    const earlyMorning = new Date(2026, 8, 1, 0, 5, 0);
+    expect(earlyMorning < startsAt).toBe(false);
+  });
+});

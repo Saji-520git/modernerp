@@ -42,8 +42,11 @@ export const listSalesSchema = z.object({
   page:     z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   search:   z.string().optional(),
-  from:     z.coerce.date().optional(),
-  to:       z.coerce.date().optional(),
+  // Kept as YYYY-MM-DD, resolved with localDayRange in the service.
+  // z.coerce.date() parses a date-only string as UTC midnight, so at +5:30
+  // `to=today` excluded everything after 05:30 this morning.
+  from:     z.string().optional(),
+  to:       z.string().optional(),
 });
 
 // ─── Draft ────────────────────────────────────────────────────────────────────
@@ -97,8 +100,9 @@ export const listShiftsSchema = z.object({
   warehouseId: z.string().optional(),
   userId:      z.string().optional(),
   status:      z.enum(['OPEN', 'CLOSED']).optional(),
-  from:        z.coerce.date().optional(),
-  to:          z.coerce.date().optional(),
+  // Same as listSales — see the note there.
+  from:        z.string().optional(),
+  to:          z.string().optional(),
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
