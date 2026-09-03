@@ -8,7 +8,14 @@ export const router: Router = Router();
 
 // Switched off per client like any other optional module. Enforced here as well
 // as in the nav: hiding a menu item is presentation, not a control.
-router.use(requireModule('auditLog'));
+//
+// requireAuth MUST come first. requireModule reads req.auth to let a super-admin
+// through a gate they are the ones configuring, and req.auth is only set by
+// requireAuth. Mounted alone — with requireAuth left to the individual routes —
+// the gate ran while req.auth was still undefined, so the bypass never fired and
+// the vendor could not reach the trail on any client whose auditLog flag was
+// unset. Every other module-gated router already pairs them this way.
+router.use(requireAuth, requireModule('auditLog'));
 
 // Read-only, and gated on manage_users — seeing who did what is an
 // administrative power, not a reporting one. There is deliberately no POST,

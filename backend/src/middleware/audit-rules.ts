@@ -46,8 +46,30 @@ export function redact(value: unknown, depth = 0): unknown {
 }
 
 /**
+ * The route as it was requested, from `req.originalUrl`.
+ *
+ * `req.path` cannot be used for this. Express REWRITES `req.url` (and therefore
+ * `req.path`) as a request descends into each nested router, stripping the part
+ * already matched. The audit write happens on `res.on('finish')`, by which time
+ * only the innermost remainder is left: `/api/v1/customers` reads as `/`,
+ * `/api/v1/auth/login` as `/login`, and `/api/v1/customers/:id` as just the id.
+ *
+ * That is exactly what happened — every entity in the trail was a last path
+ * segment, the word "unknown", or a raw cuid, and none was an entity name.
+ * `originalUrl` is never rewritten, so it is the only safe source.
+ *
+ * Strips the query string and the API version prefix.
+ */
+export function routePathOf(originalUrl: string): string {
+  const noQuery = originalUrl.split('?')[0];
+  return noQuery.replace(/^\/api\/v\d+/, '') || '/';
+}
+
+/**
  * First path segment — "sales", "purchases", "settings". Enough to answer "what
  * happened to invoices today" without every service having to declare itself.
+ *
+ * Feed this `routePathOf(req.originalUrl)`, never `req.path`.
  */
 export function entityOf(path: string): string {
   const seg = path.split('?')[0].split('/').filter(Boolean);

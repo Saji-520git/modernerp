@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 import { prisma } from '../config/prisma.js';
 import { logger } from '../config/logger.js';
 import {
-  redact, entityOf, entityIdOf, actionOf, shouldRecord, MAX_META_CHARS,
+  redact, entityOf, entityIdOf, actionOf, shouldRecord, routePathOf, MAX_META_CHARS,
 } from './audit-rules.js';
 
 // ─── Audit trail ──────────────────────────────────────────────────────────────
@@ -52,12 +52,19 @@ export const auditTrail: RequestHandler = (req, res, next) => {
   // show what was sent, not what survived.
   const body = redact(req.body);
 
+  // The route, captured for the SAME reason and taken from originalUrl. Express
+  // rewrites req.url/req.path as the request descends into nested routers, so
+  // reading them on `finish` yields only the innermost remainder — which is how
+  // every entity in the trail came to be a last path segment, "unknown", or a
+  // raw cuid. See routePathOf.
+  const routePath = routePathOf(req.originalUrl);
+
   res.on('finish', () => {
-    if (!shouldRecord(method, req.path, res.statusCode)) return;
+    if (!shouldRecord(method, routePath, res.statusCode)) return;
 
     const auth   = req.auth;
-    const entity = entityOf(req.path);
-    const action = actionOf(method, req.path);
+    const entity = entityOf(routePath);
+    const action = actionOf(method, routePath);
 
     let metaText = '';
     try { metaText = JSON.stringify(body); } catch { metaText = ''; }
@@ -74,7 +81,7 @@ export const auditTrail: RequestHandler = (req, res, next) => {
             userRole: auth?.role ?? 'ANONYMOUS',
             action,
             entity,
-            entityId: entityIdOf(req.path),
+            entityId: entityIdOf(routePath),
             summary:  `${action} ${entity}${res.statusCode >= 500 ? ' (failed)' : ''}`,
             method,
             path:     req.originalUrl.split('?')[0],
@@ -87,7 +94,7 @@ export const auditTrail: RequestHandler = (req, res, next) => {
         }),
       )
       .catch((err) => {
-        logger.error({ err, path: req.path }, 'audit trail write failed');
+        logger.error({ err, path: routePath }, 'audit trail write failed');
       });
   });
 

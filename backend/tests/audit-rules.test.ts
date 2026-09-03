@@ -12,7 +12,7 @@
  *   * dropping 5xx would lose exactly the requests that may have half-landed
  */
 import {
-  redact, entityOf, entityIdOf, actionOf, shouldRecord,
+  redact, entityOf, entityIdOf, actionOf, shouldRecord, routePathOf,
 } from '../src/middleware/audit-rules';
 
 describe('redact', () => {
@@ -146,5 +146,72 @@ describe('shouldRecord', () => {
     expect(shouldRecord('POST',  '/auth/refresh', 200)).toBe(false);
     expect(shouldRecord('PATCH', '/alerts/abc/read', 200)).toBe(false);
     expect(shouldRecord('POST',  '/alerts/read-all', 200)).toBe(false);
+  });
+});
+
+// ─── routePathOf — the bug that made every entity wrong ───────────────────────
+//
+// The trail derived entity and entityId from `req.path`, read inside
+// res.on('finish'). Express rewrites req.url/req.path as a request descends
+// into nested routers, so by then only the innermost remainder is left. Every
+// row recorded a last path segment, the word "unknown", or a raw cuid — and the
+// entity filter is the main way the trail is read.
+//
+// These pin the real observed values from the live trail.
+describe('routePathOf — derive the route from originalUrl, never req.path', () => {
+  it('strips the api version prefix', () => {
+    expect(routePathOf('/api/v1/customers')).toBe('/customers');
+    expect(routePathOf('/api/v2/sales/abc')).toBe('/sales/abc');
+  });
+
+  it('strips the query string', () => {
+    expect(routePathOf('/api/v1/sales?from=2026-09-01&to=2026-09-03')).toBe('/sales');
+  });
+
+  it('leaves an already-clean path alone', () => {
+    expect(routePathOf('/customers')).toBe('/customers');
+  });
+
+  it('never returns empty', () => {
+    expect(routePathOf('/api/v1')).toBe('/');
+    expect(routePathOf('/api/v1/')).toBe('/');
+  });
+
+  it('yields the right entity for the routes that were recorded wrong', () => {
+    // left: what the trail actually stored. right: what it should have.
+    const cases: [string, string, string][] = [
+      ['/api/v1/customers',                   'unknown',                     'customers'],
+      ['/api/v1/customers/cmtlrz2kt0001510v', 'cmtlrz2kt0001510v',           'customers'],
+      ['/api/v1/customer-payments/lump-sum',  'lump-sum',                    'customer-payments'],
+      ['/api/v1/supplier-payments/lump-sum',  'lump-sum',                    'supplier-payments'],
+      ['/api/v1/auth/login',                  'login',                       'auth'],
+      ['/api/v1/pos/checkout',                'checkout',                    'pos'],
+      ['/api/v1/sales/returns',               'returns',                     'sales'],
+    ];
+    for (const [url, wrong, right] of cases) {
+      expect(entityOf(routePathOf(url))).toBe(right);
+      expect(entityOf(routePathOf(url))).not.toBe(wrong);
+    }
+  });
+
+  it('still finds the record id in a nested route', () => {
+    // req.path at finish would have been '/payments' here, losing the id
+    // entirely — the "everything that happened to this invoice" view.
+    expect(entityIdOf(routePathOf('/api/v1/sales/cmtjd4upu005ec19omuixiz7f/payments')))
+      .toBe('cmtjd4upu005ec19omuixiz7f');
+    expect(entityOf(routePathOf('/api/v1/sales/cmtjd4upu005ec19omuixiz7f/payments')))
+      .toBe('sales');
+  });
+
+  it('keeps the action verb readable through the prefix', () => {
+    expect(actionOf('POST', routePathOf('/api/v1/sales/cmtjd4upu005ec19omuixiz7f/confirm'))).toBe('CONFIRM');
+    expect(actionOf('POST', routePathOf('/api/v1/pos/shifts/close'))).toBe('CLOSE');
+  });
+
+  it('the skip list still matches once the prefix is gone', () => {
+    // SKIP patterns are anchored at /auth/refresh, so they only work against a
+    // prefix-stripped path — another reason this must not be raw originalUrl.
+    expect(shouldRecord('POST', routePathOf('/api/v1/auth/refresh'), 200)).toBe(false);
+    expect(shouldRecord('POST', routePathOf('/api/v1/auth/login'), 200)).toBe(true);
   });
 });
