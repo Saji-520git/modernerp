@@ -553,6 +553,14 @@ After completing a module:
 | 16 | No backup before `migrate deploy` on upgrade — migrations run against live data and are non-fatal, but sat AHEAD of the only backup call; newest copy could be 23h old | electron/main.js | CRITICAL | Resolved 2026-09-03 |
 | 17 | Backup filename used `toISOString()` (UTC). At UTC+5:30 every backup between 00:00 and 05:30 local was filed under YESTERDAY and overwrote it — a till left open overnight destroyed the prior day's copy, nightly | electron/main.js | HIGH | Resolved 2026-09-03 |
 | 18 | A POS product that cannot be sold rendered greyed-out with no reason given — cashier sees overselling ON and one dead product. (Rule itself correct: batch-tracked products are excluded from overselling by design) | POSPage.tsx | MEDIUM | Resolved 2026-09-03 |
+| 19 | Manual documents stored the picked date as UTC midnight (`new Date('2026-09-03')`), so every invoice/PO/payment displayed 05:30 AM — a time it never happened — and the real moment was discarded. POS was never affected (`new Date()`) | SalesPage / PurchasesPage / contact pages | HIGH | Resolved 2026-09-03 |
+| 20 | Date pickers defaulted via `toISOString().slice(0,10)`, which is YESTERDAY between 00:00 and 05:30 local. PO-2026-0008 was raised 00:14 on 2 Sept and filed under 1 Sept. 25+ sites | frontend (many) | HIGH | Resolved 2026-09-03 |
+| 21 | Shift / POS-sales / stock-movement filters used `z.coerce.date()` (UTC midnight), so `to=today` cut off at 05:30 that morning — a till opened 06:03 was absent from its own day | pos.schema / inventory.schema | HIGH | Resolved 2026-09-03 |
+| 22 | A promotion ending on a date stopped at 05:30 that morning, losing 18h of its last day (`now > endsAt`). Same for quotation validity | promotions.schema / quotations.schema | MEDIUM | Resolved 2026-09-03 |
+| 23 | POS Shifts page read an OPEN shift's totals from the snapshot columns, which are written AT CLOSE — showed Rs.300/3 for a shift that had taken Rs.800/5, disagreeing with the POS header beside it | pos.service listShifts | HIGH | Resolved 2026-09-03 |
+| 24 | Cash paid to a supplier at the counter had no shiftId, so it left the drawer unrecorded and the shift closed SHORT by exactly that amount | SupplierPayment / shift-cash | HIGH | Resolved 2026-09-03 |
+| 25 | Audit entity/entityId came from `req.path` read on `finish`, but Express rewrites it per nested router — not one of 117 rows carried a correct entity, and entityId was null for every nested route | middleware/audit.ts | HIGH | Resolved 2026-09-03 |
+| 26 | audit.routes mounted `requireModule` BEFORE `requireAuth`, so req.auth was undefined and the super-admin bypass never fired. With auditLog absent from moduleFlags (true on the live install) the whole trail 403'd and rendered as an empty table | audit.routes.ts | HIGH | Resolved 2026-09-03 |
 
 ### 12.3 The upgrade path, proved on a real install (2026-09-03)
 
@@ -700,6 +708,18 @@ Phase 3 sprints completed:
 - Sprint 17b: expiredStockPolicy 3-option radio (BLOCK/WARN/ALLOW) replacing boolean blockExpiredSales toggle; Settings UI 3-option radio; POS card policy-aware badge/confirm dialog; checkout warnings in response) ✓
 - Sprint 18: Barcode System (BarcodeInput shared component, GET /products/by-barcode/:barcode endpoint, barcode inline duplicate check + search-Enter in Products page, POS unknown barcode → API fallback → QuickAddModal, Purchases scan-to-add-line, Inventory Adjust + Transfer scan-to-select; all type=text, loading states, focus management) ✓
 - Sprint 18: Purchasing Power-Ups (Supplier Payments rich modal, Product Import page wired up, Partial Delivery / GRN receipts with batch+expiry per line, Auto-PO from Low Stock Alerts with Generate PO modal) ✓
+
+**Phase 3 Sprint 26: Time correctness, counter payments, audit repair ✓** (2026-09-03)
+  Shipped as **1.1.8** (`v1.1.8-production`). See issues 19-26.
+  - one definition of "the shop's day" on each side: backend
+    `utils/local-date.ts`, frontend `utils/local-date.ts`. Never use
+    `toISOString().slice(0,10)` or `z.coerce.date()` for a day boundary.
+  - migration `20260903120000_backfill_utc_midnight_dates` repairs the 21
+    rows already stored at UTC midnight (proved on a copy of production:
+    every calendar day and money total unchanged)
+  - counter payments at the till (collect from customer / pay supplier),
+    with `cashPayoutsCents` completing the shift-cash rule
+  - manual invoices gained product search + barcode scanning (POS parity)
 
 **Current: Phase 3 continuing**
 **Next sprint: Choose from:**
