@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { todayLocalYMD, ymdToTransactionISO } from '../../utils/local-date';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -428,7 +429,7 @@ function RecordPaymentModal({
   const [method, setMethod]       = useState('CASH');
   const [refNo, setRefNo]         = useState('');
   const [bank, setBank]           = useState('');
-  const [date, setDate]           = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]           = useState(todayLocalYMD());
   const [notes, setNotes]         = useState('');
   const [error, setError]         = useState('');
 
@@ -470,7 +471,7 @@ function RecordPaymentModal({
     mutation.mutate({
       saleId, amountCents, paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
-      paymentDate: date, notes: notes || undefined,
+      paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
       keepChangeOnAccount: keepOnAccount || undefined,
     });
   };
@@ -620,7 +621,7 @@ function LumpSumPaymentModal({
   const [method, setMethod] = useState('CASH');
   const [refNo, setRefNo]   = useState('');
   const [bank, setBank]     = useState('');
-  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]     = useState(todayLocalYMD());
   const [notes, setNotes]   = useState('');
   const [error, setError]   = useState('');
   const [result, setResult] = useState<import('../../services/customerPayments').LumpSumCustomerPaymentResult | null>(null);
@@ -646,7 +647,7 @@ function LumpSumPaymentModal({
     mutationFn: () => customerPaymentsApi.createLumpSum({
       customerId, amountCents, paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
-      paymentDate: date, notes: notes || undefined,
+      paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
     }),
     onSuccess: (res) => {
       setResult(res);
@@ -849,7 +850,7 @@ function ApplyCreditModal({
   const applicableMax = Math.min(availableCents, totalOutstanding);
 
   const [amount, setAmount] = useState('');
-  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]     = useState(todayLocalYMD());
   const [notes, setNotes]   = useState('');
   const [error, setError]   = useState('');
   const [result, setResult] = useState<import('../../services/customerPayments').ApplyCreditCustomerResult | null>(null);
@@ -874,7 +875,7 @@ function ApplyCreditModal({
 
   const mutation = useMutation({
     mutationFn: () => customerPaymentsApi.applyCredit({
-      customerId, amountCents, paymentDate: date, notes: notes || undefined,
+      customerId, amountCents, paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
     }),
     onSuccess: (res) => {
       setResult(res);

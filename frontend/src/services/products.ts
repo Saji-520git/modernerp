@@ -1,4 +1,5 @@
 import { api } from './api';
+import { todayLocalYMD } from '../utils/local-date';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ export const productsApi = {
     const url = URL.createObjectURL(res.data as Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `products-${todayLocalYMD()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();

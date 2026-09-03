@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { todayLocalYMD, localMonthStartYMD } from '../../utils/local-date';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CornerUpLeft, Plus, X, CheckCircle, XCircle, Trash2, Eye,
@@ -284,10 +285,10 @@ function ReturnDetailModal({ ret, onClose }: { ret: PurchaseReturn; onClose: () 
 
 function thisMonthStart(): string {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  return localMonthStartYMD();
 }
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayLocalYMD();
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────

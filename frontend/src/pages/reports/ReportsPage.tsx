@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toLocalYMD } from '../../utils/local-date';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -320,7 +321,7 @@ function DateRangePicker({
     if (p === '30d') { onFromChange(thirtyDaysAgoISO()); onToChange(today); }
     else if (p === '90d') {
       const d = new Date(); d.setDate(d.getDate() - 89);
-      onFromChange(d.toISOString().slice(0, 10)); onToChange(today);
+      onFromChange(toLocalYMD(d)); onToChange(today);
     } else if (p === 'ytd') { onFromChange(thisYearStartISO()); onToChange(today); }
     else setPreset('custom');
   };

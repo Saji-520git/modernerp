@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { todayLocalYMD, localMonthStartYMD } from '../../utils/local-date';
 import { useQuery } from '@tanstack/react-query';
 import {
   RotateCcw, Plus, Search, X, ChevronLeft, ChevronRight,
@@ -15,10 +16,10 @@ function cls(...a: (string | false | null | undefined)[]) {
 
 function thisMonthStart(): string {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  return localMonthStartYMD();
 }
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayLocalYMD();
 }
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────

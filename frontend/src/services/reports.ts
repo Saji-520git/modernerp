@@ -1,4 +1,5 @@
 import { api } from './api';
+import { toLocalYMD } from '../utils/local-date';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -22,12 +23,9 @@ export function formatMoneyShort(cents: number): string {
 // Use local date components so the "today" boundary is the user's
 // calendar day — toISOString() returns UTC which can be yesterday
 // for users in timezones ahead of UTC.
-function localDateISO(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// Delegates to the shared helper so there is ONE definition of "the local
+// calendar day" in the frontend — two copies is how this bug came back.
+const localDateISO = toLocalYMD;
 
 export function todayISO(): string {
   return localDateISO(new Date());

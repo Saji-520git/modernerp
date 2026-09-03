@@ -1,4 +1,5 @@
 import { api } from './api';
+import { todayLocalYMD } from '../utils/local-date';
 
 export interface DataSummary {
   products: number;
@@ -57,7 +58,7 @@ export const dataManagementApi = {
     const url = URL.createObjectURL(res.data as Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `modernerp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `modernerp-backup-${todayLocalYMD()}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();

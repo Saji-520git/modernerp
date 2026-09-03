@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { todayLocalYMD, localMonthStartYMD, ymdToTransactionISO, toLocalYMD } from '../../utils/local-date';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Pencil, Trash2, X, DollarSign,
@@ -16,8 +17,8 @@ import {
 function cls(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(' ');
 }
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-function nowMonth() { return new Date().toISOString().slice(0, 7); }
+function todayIso() { return todayLocalYMD(); }
+function nowMonth() { return toLocalYMD(new Date()).slice(0, 7); }
 
 // ─── Expense Modal ────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ function ExpenseModal({
       categoryId,
       amount: amountCents,
       description: description.trim(),
-      date: new Date(date).toISOString(),
+      date: ymdToTransactionISO(date),
       paymentMethod,
       reference: reference.trim() || null,
       isRecurring,
@@ -250,10 +251,10 @@ function DeleteConfirm({ msg, onConfirm, onClose, pending }: {
 
 function thisMonthStart(): string {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  return localMonthStartYMD();
 }
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayLocalYMD();
 }
 
 // ─── Expenses Tab ─────────────────────────────────────────────────────────────

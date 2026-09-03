@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { todayLocalYMD, ymdToTransactionISO } from '../../utils/local-date';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -722,7 +723,7 @@ function RecordSupplierPaymentModal({
   const [method, setMethod]         = useState<SupplierPaymentMethod>('CASH');
   const [refNo, setRefNo]           = useState('');
   const [bank, setBank]             = useState('');
-  const [date, setDate]             = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]             = useState(todayLocalYMD());
   const [notes, setNotes]           = useState('');
   const [error, setError]           = useState('');
 
@@ -739,7 +740,7 @@ function RecordSupplierPaymentModal({
     mutationFn: () => supplierPaymentsApi.create({
       purchaseId, amountCents: Math.round(parseFloat(amount) * 100), paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
-      paymentDate: date, notes: notes || undefined,
+      paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supplier-payments-by', supplierId] });
@@ -906,7 +907,7 @@ function LumpSumSupplierPaymentModal({
   const [method, setMethod] = useState<SupplierPaymentMethod>('CASH');
   const [refNo, setRefNo]   = useState('');
   const [bank, setBank]     = useState('');
-  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]     = useState(todayLocalYMD());
   const [notes, setNotes]   = useState('');
   const [error, setError]   = useState('');
   const [result, setResult] = useState<LumpSumSupplierPaymentResult | null>(null);
@@ -931,7 +932,7 @@ function LumpSumSupplierPaymentModal({
     mutationFn: () => supplierPaymentsApi.createLumpSum({
       supplierId, amountCents, paymentMethod: method,
       referenceNo: refNo || undefined, bankName: bank || undefined,
-      paymentDate: date, notes: notes || undefined,
+      paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
     }),
     onSuccess: (res) => {
       setResult(res);
@@ -1129,7 +1130,7 @@ function ApplyCreditSupplierModal({
   const applicableMax = Math.min(availableCents, totalOutstanding);
 
   const [amount, setAmount] = useState('');
-  const [date, setDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]     = useState(todayLocalYMD());
   const [notes, setNotes]   = useState('');
   const [error, setError]   = useState('');
   const [result, setResult] = useState<ApplyCreditSupplierResult | null>(null);
@@ -1154,7 +1155,7 @@ function ApplyCreditSupplierModal({
 
   const mutation = useMutation({
     mutationFn: () => supplierPaymentsApi.applyCredit({
-      supplierId, amountCents, paymentDate: date, notes: notes || undefined,
+      supplierId, amountCents, paymentDate: ymdToTransactionISO(date), notes: notes || undefined,
     }),
     onSuccess: (res) => {
       setResult(res);
