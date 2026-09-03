@@ -11,7 +11,7 @@ import { expectedCashCents, cashVarianceCents } from '../src/modules/pos/shift-c
 
 const nil = {
   openingFloatCents: 0, cashSalesCents: 0, splitCashCents: 0,
-  cashSettlementsCents: 0, cashRefundsCents: 0,
+  cashSettlementsCents: 0, cashRefundsCents: 0, cashPayoutsCents: 0,
 };
 
 describe('expectedCashCents — the movements that used to be missed', () => {
@@ -40,6 +40,7 @@ describe('expectedCashCents — the movements that used to be missed', () => {
       splitCashCents:       45_000,
       cashSettlementsCents: 22_500,
       cashRefundsCents:     17_500,
+      cashPayoutsCents:     0,
     })).toBe(140_000);
   });
 });
@@ -99,5 +100,56 @@ describe('regression — the scenarios that produced phantom variances', () => {
   it('a shift whose only activity was a cash refund now reconciles to zero', () => {
     const expected = expectedCashCents({ ...nil, openingFloatCents: 50_000, cashRefundsCents: 17_500 });
     expect(cashVarianceCents(32_500, expected)).toBe(0);   // old rule: -17,500 phantom shortage
+  });
+});
+
+// ─── Paying a supplier out of the till ────────────────────────────────────────
+//
+// A rep collects on delivery and the cashier pays from the drawer. The money is
+// gone, but until SupplierPayment carried a shiftId nothing recorded which till
+// it left, so the close read as a shortage of exactly the amount handed over.
+describe('expectedCashCents — cash paid out to a supplier', () => {
+  it('subtracts a supplier payment made from the drawer', () => {
+    // Float 10,000 + cash sales 50,000 - paid to supplier 15,000 = 45,000
+    expect(expectedCashCents({
+      ...nil, openingFloatCents: 10_000, cashSalesCents: 50_000, cashPayoutsCents: 15_000,
+    })).toBe(45_000);
+  });
+
+  it('is ignored when the supplier was paid by any non-cash method', () => {
+    // A bank transfer to a supplier moves no money through the drawer, so the
+    // caller passes 0 and the expectation is unchanged.
+    expect(expectedCashCents({
+      ...nil, openingFloatCents: 10_000, cashSalesCents: 50_000, cashPayoutsCents: 0,
+    })).toBe(60_000);
+  });
+
+  it('nets against every other movement in one shift', () => {
+    // float 10,000 + cash sales 40,000 + split cash 5,000 + settlement 8,000
+    //   - refund 3,000 - supplier payout 12,000 = 48,000
+    expect(expectedCashCents({
+      openingFloatCents: 10_000, cashSalesCents: 40_000, splitCashCents: 5_000,
+      cashSettlementsCents: 8_000, cashRefundsCents: 3_000, cashPayoutsCents: 12_000,
+    })).toBe(48_000);
+  });
+
+  it('still cannot expect a negative drawer', () => {
+    // Paying out more than was ever taken in would imply the till owes money.
+    expect(expectedCashCents({
+      ...nil, openingFloatCents: 5_000, cashPayoutsCents: 20_000,
+    })).toBe(0);
+  });
+
+  it('a payout makes the drawer short by exactly that amount if not recorded', () => {
+    // The regression stated as arithmetic: same counted cash, one shift knows
+    // about the payout and one does not.
+    const movements = { ...nil, openingFloatCents: 10_000, cashSalesCents: 50_000 };
+    const counted   = 45_000;   // 15,000 was handed to the supplier
+
+    const withPayout    = cashVarianceCents(counted, expectedCashCents({ ...movements, cashPayoutsCents: 15_000 }));
+    const withoutPayout = cashVarianceCents(counted, expectedCashCents(movements));
+
+    expect(withPayout).toBe(0);            // balances
+    expect(withoutPayout).toBe(-15_000);   // the invented shortage
   });
 });

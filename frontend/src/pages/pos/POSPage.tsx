@@ -3,6 +3,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import CounterPaymentsModal from '../../components/pos/CounterPaymentsModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShoppingCart, Search, Trash2, X, Clock,
@@ -2103,6 +2104,7 @@ export default function POSPage() {
   const [showReturn,          setShowReturn]          = useState(false);
   const [returnPrefillId,     setReturnPrefillId]     = useState<string | undefined>(undefined);
   const [showShortcuts,       setShowShortcuts]       = useState(false);
+  const [showCounterPayments, setShowCounterPayments] = useState(false);
   const [showExitBlocked,     setShowExitBlocked]     = useState(false);
   const [showWhDropdown,      setShowWhDropdown]      = useState(false);
   const [showQuickAddCustomer,setShowQuickAddCustomer]= useState(false);
@@ -3917,6 +3919,16 @@ export default function POSPage() {
               🧾 {reprintLoading ? 'Loading…' : 'Last Receipt'}
             </button>
 
+            {/* Counter payments — money crossing the counter that is not a sale.
+                A customer settling a bill, or a supplier's rep collecting on
+                delivery. Both record against this shift so the drawer balances. */}
+            <button type="button"
+              onClick={() => setShowCounterPayments(true)}
+              title="Collect from a customer or pay a supplier"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '.5px solid var(--line)', borderRadius: 6, background: 'var(--surface)', fontSize: 12, color: 'var(--content)', cursor: 'pointer' }}>
+              💵 Payments
+            </button>
+
             {/* Right side */}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               {/* Shortcuts — F1 */}
@@ -4406,6 +4418,10 @@ export default function POSPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showCounterPayments && (
+        <CounterPaymentsModal onClose={() => setShowCounterPayments(false)} />
       )}
 
       {/* Close Shift & Sign Out modal */}

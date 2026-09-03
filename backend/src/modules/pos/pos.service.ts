@@ -88,12 +88,22 @@ async function aggregateShift(shiftId: string) {
     _sum:  { refundedCents: true },
   });
 
+  // Cash handed to a supplier's rep at this counter. CREDIT_APPLIED and
+  // CREDIT_RECEIVED are ledger movements against a supplier's balance, not
+  // money out of the drawer, so both are excluded — the same distinction the
+  // settlement aggregate above draws for customers.
+  const payouts = await prisma.supplierPayment.aggregate({
+    where: { shiftId, isActive: true, paymentMethod: 'CASH', paymentType: 'PAYMENT' },
+    _sum:  { amountCents: true },
+  });
+
   return {
     cashSalesCents, cardSalesCents, bankTransferCents, qrPayCents, creditSalesCents,
     totalSalesCents, saleCount,
     splitCashCents:       split._sum.paidCents ?? 0,
     cashSettlementsCents: settlements._sum.amountCents ?? 0,
     cashRefundsCents:     refunds._sum.refundedCents ?? 0,
+    cashPayoutsCents:     payouts._sum.amountCents ?? 0,
   };
 }
 
@@ -1186,6 +1196,7 @@ export const posService = {
       splitCashCents:       agg.splitCashCents,
       cashSettlementsCents: agg.cashSettlementsCents,
       cashRefundsCents:     agg.cashRefundsCents,
+      cashPayoutsCents:     agg.cashPayoutsCents,
     });
     const varianceCents = cashVarianceCents(closingCashCents, expected);
 
@@ -1229,6 +1240,7 @@ export const posService = {
       splitCashCents:       agg.splitCashCents,
       cashSettlementsCents: agg.cashSettlementsCents,
       cashRefundsCents:     agg.cashRefundsCents,
+      cashPayoutsCents:     agg.cashPayoutsCents,
     });
 
     // A force-close previously wrote no closingCashCents and no varianceCents,
@@ -1324,6 +1336,7 @@ export const posService = {
       splitCashCents:       agg.splitCashCents,
       cashSettlementsCents: agg.cashSettlementsCents,
       cashRefundsCents:     agg.cashRefundsCents,
+      cashPayoutsCents:     agg.cashPayoutsCents,
     });
 
     return {

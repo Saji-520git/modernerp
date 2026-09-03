@@ -687,6 +687,9 @@ model PosShift {
   // Cash movements that are not sales but still pass through this till.
   saleReturns      SaleReturn[]
   customerPayments CustomerPayment[]
+  // Cash paid OUT to a supplier collecting at the counter. Without this the
+  // money left the drawer with nothing recording which till it came from.
+  supplierPayments SupplierPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -831,6 +834,10 @@ model SupplierPayment {
   bankName      String?
   paymentDate   DateTime
   notes         String?
+  // The till this payment left, when it was made at one. Null for back-office
+  // payments, which move no drawer cash. Mirrors CustomerPayment.shiftId.
+  shiftId       String?
+  shift         PosShift?             @relation(fields: [shiftId], references: [id])
   // Groups the N rows created by one lump-sum payment. Null = standalone payment.
   allocationGroupId String?
   createdById   String
@@ -840,6 +847,9 @@ model SupplierPayment {
   updatedAt     DateTime              @updatedAt
 
   @@index([allocationGroupId])
+  // Closing a shift aggregates its cash payouts by shiftId, same as
+  // CustomerPayment does for settlements.
+  @@index([shiftId])
   @@map("supplier_payments")
 }
 

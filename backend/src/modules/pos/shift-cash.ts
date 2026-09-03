@@ -26,6 +26,13 @@ export type ShiftCashMovements = {
   cashSettlementsCents: number;
   /** Cash handed back out of this till for refunds. */
   cashRefundsCents: number;
+  /**
+   * Cash paid OUT of this till to a supplier — a rep collecting on delivery.
+   * Money physically leaves the drawer, so a shift that ignored it read as a
+   * shortage of exactly the amount paid, and the cashier was asked to account
+   * for a discrepancy the system had created.
+   */
+  cashPayoutsCents: number;
 };
 
 /** What the drawer should contain. Never negative — a till cannot owe money. */
@@ -35,7 +42,8 @@ export function expectedCashCents(m: ShiftCashMovements): number {
     + m.cashSalesCents
     + m.splitCashCents
     + m.cashSettlementsCents
-    - m.cashRefundsCents;
+    - m.cashRefundsCents
+    - m.cashPayoutsCents;
 
   // Refunds exceeding everything taken in would imply the drawer owes money,
   // which is not a state a physical till can be in. Clamping keeps the variance

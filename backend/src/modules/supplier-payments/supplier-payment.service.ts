@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma.js';
 import { HttpError } from '../../middleware/error-handler.js';
 import type { PaymentMethod, PurchasePaymentStatus } from '@prisma/client';
 import { nextDocNumber, withNumberRetry } from '../../utils/doc-number.js';
+import { resolveOpenShiftId } from '../pos/resolve-shift.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,12 @@ export const supplierPaymentService = {
     const effectiveTotalCents = Math.max(0, payableCents - returnedCents);
     const paymentStatus = derivePaymentStatus(newPaidCents, effectiveTotalCents);
 
+    // Which till this cash left, when it was paid at one. A supplier's rep
+    // collecting at the counter empties the drawer, and a shift that did not
+    // know about it closed short by exactly that amount. Null for back-office
+    // payments, which move no drawer cash.
+    const shiftId = await resolveOpenShiftId(userId);
+
     // Number issued inside the retry, wrapping the transaction as a unit so the
     // payment row and the purchase totals it updates stay together.
     return withNumberRetry(async () => {
@@ -162,6 +169,7 @@ export const supplierPaymentService = {
           bankName:      data.bankName    ?? null,
           paymentDate:   new Date(data.paymentDate),
           notes:         data.notes       ?? null,
+          shiftId,
           createdById:   userId,
         },
         include: {
@@ -196,6 +204,10 @@ export const supplierPaymentService = {
             paymentDate, notes, recordedById } = input;
 
     if (amountCents <= 0) throw new HttpError(400, 'Payment amount must be greater than 0');
+
+    // Same reasoning as the single payment: a lump sum settled in cash at the
+    // counter leaves the drawer, so every row it writes carries the till.
+    const shiftId = await resolveOpenShiftId(recordedById);
 
     const supplier = await (prisma as any).supplier.findUnique({
       where:  { id: supplierId },
@@ -259,6 +271,7 @@ export const supplierPaymentService = {
             supplierId,
             amountCents:   applied,
             paymentMethod,
+            shiftId,
             referenceNo:   referenceNo ?? null,
             bankName:      bankName    ?? null,
             paymentDate:   paidDate,
