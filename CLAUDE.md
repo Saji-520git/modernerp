@@ -554,6 +554,46 @@ After completing a module:
 | 17 | Backup filename used `toISOString()` (UTC). At UTC+5:30 every backup between 00:00 and 05:30 local was filed under YESTERDAY and overwrote it — a till left open overnight destroyed the prior day's copy, nightly | electron/main.js | HIGH | Resolved 2026-09-03 |
 | 18 | A POS product that cannot be sold rendered greyed-out with no reason given — cashier sees overselling ON and one dead product. (Rule itself correct: batch-tracked products are excluded from overselling by design) | POSPage.tsx | MEDIUM | Resolved 2026-09-03 |
 
+### 12.3 The upgrade path, proved on a real install (2026-09-03)
+
+Installed `ModernERP Setup 1.1.7.exe` over a live 1.1.7 with real data and
+watched the whole lifecycle. This is the first time the upgrade path has been
+exercised end to end rather than reasoned about.
+
+**First launch after install** — `main.log`:
+```
+01:42:38.864  Upgrade detected (unknown → 1.1.7) — backing up before migrating
+01:42:38.867  Running backup to ...modernerp_2026-09-03_premigration_014238.sql
+01:42:40.210  Backup complete
+01:42:40.230  Running prisma migrate deploy...
+```
+Backup finished 20ms BEFORE migrations started — the ordering that issue #16 was
+about. `lastMigratedVersion` is absent on any machine upgrading from a build
+older than this one, so the first launch always backs up; that is deliberate.
+
+**The UTC bug, caught in the act.** The backup ran at 01:42 local, when UTC was
+still 2026-09-02. Old code would have written `modernerp_2026-09-02.sql` and
+destroyed the existing copy of that name. It wrote `2026-09-03` instead and both
+files survive. The same fingerprint is visible in this machine's own history:
+`modernerp_2026-08-31.sql` has an mtime of Sep 1 01:20, `modernerp_2026-08-26.sql`
+of Aug 27 00:05 — two nights already overwritten before the fix.
+
+**Shutdown** wrote `modernerp_2026-09-03.sql` (daily, verified) without touching
+the pre-migration copy — the separate-rotation change working.
+
+**Second launch** logged `Same version as last migrate — no pre-migration backup
+needed`, then `Backup not due yet — skipping`. No redundant dumps on a restart.
+
+**Restore drill** (the thing that had never been done): the pre-migration dump
+restored into a clean cluster with `ON_ERROR_STOP=1`, exit 0, no errors, and
+matched the live database on 43 of 44 tables. The single delta was `audit_logs`
+75 vs 74 — one login recorded after the snapshot, i.e. correct.
+
+**Still not exercised:** a migration that actually changes schema. Both launches
+hit "No pending migrations to apply". The ORDER is proven; recovery from a
+migration that fails midway is not. The next release carrying a schema change is
+the real test, and the pre-migration backup will be there for it.
+
 ### 12.2 ⚠️ Two traps that cost a full debugging session (2026-08-18)
 
 **1. A "rebuild" that rebuilds nothing.** The Electron app loads
