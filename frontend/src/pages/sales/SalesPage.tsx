@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import {
   DollarSign, TrendingUp, Package, Paperclip,
 } from 'lucide-react';
 import { PortalDropdown } from '../../components/ui/PortalDropdown';
+import { todayLocalYMD, localMonthStartYMD, apiDateToYMD, ymdToTransactionISO } from '../../utils/local-date';
 import {
   salesApi, formatCents, STATUS_LABELS, STATUS_COLORS, PAYMENT_LABELS,
   type SaleStatus, type PaymentMethod, type SaleProduct, type SaleLine, type SaleForReturn, type SaleReturn,
@@ -25,6 +26,10 @@ import { useAppSettings } from '../../context/SettingsContext';
 import { useModule } from '../../hooks/useModule';
 import { useAuthStore } from '../../store/authStore';
 import BatchPickerModal from '../../components/common/BatchPickerModal';
+import SearchableSelect from '../../components/common/SearchableSelect';
+import BarcodeInput from '../../components/common/BarcodeInput';
+import { productsApi } from '../../services/products';
+import axios from 'axios';
 import type { ProductBatch } from '../../services/pos';
 import { isAdminRole, isManagerOrAbove } from '../../utils/roles';
 import AttachmentPanel from '../../components/common/AttachmentPanel';
@@ -203,7 +208,7 @@ function CustomerPaymentSection({ saleId, totalCents, paidCents }: {
   const [method, setMethod]     = useState<PaymentMethod>('CASH');
   const [refNo, setRefNo]       = useState('');
   const [bank, setBank]         = useState('');
-  const [date, setDate]         = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]         = useState(todayLocalYMD());
   const [notes, setNotes]       = useState('');
   const [formErr, setFormErr]   = useState('');
 
@@ -658,7 +663,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
   const [warehouseId, setWarehouseId] = useState(editSale?.warehouse?.id ?? '');
   const [customerId, setCustomerId]   = useState(editSale?.customer?.id ?? '');
   const [date, setDate]               = useState(
-    editSale ? new Date(editSale.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+    editSale ? apiDateToYMD(editSale.date) : todayLocalYMD(),
   );
   const [note, setNote]               = useState(editSale?.note ?? '');
   const [lines, setLines]             = useState<LineForm[]>(
@@ -682,6 +687,74 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
 
   const addLine = () => setLines(p => [...p, { key: Date.now(), productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }]);
   const removeLine = (key: number) => setLines(p => p.filter(l => l.key !== key));
+
+  // Name and SKU are shown; the barcode only has to MATCH, so it rides in
+  // `keywords` rather than cluttering the closed trigger. Stock is on the label
+  // because choosing a line without knowing what is on the shelf is how an
+  // invoice ends up promising goods that are not there.
+  const productOptions = useMemo(
+    () => products.map((p: any) => ({
+      value: p.id,
+      label: `${p.name} (${p.sku})${p.stockQty !== undefined ? ` · ${Number(p.stockQty)} in stock` : ''}`,
+      keywords: p.barcode ?? '',
+    })),
+    [products],
+  );
+
+  // ── Scan to add a line ──────────────────────────────────────────────────────
+  //
+  // Mirrors the till and the purchase form: a repeat scan bumps the quantity of
+  // the line that already holds the product rather than opening a second one.
+  // The lookup goes through the API rather than the loaded list so a code that
+  // belongs to a unit conversion still resolves, exactly as it does at the till.
+  const [scanToast, setScanToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const scanToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (scanToastTimer.current) clearTimeout(scanToastTimer.current); }, []);
+
+  function showScanToast(msg: string, ok: boolean) {
+    if (scanToastTimer.current) clearTimeout(scanToastTimer.current);
+    setScanToast({ msg, ok });
+    scanToastTimer.current = setTimeout(() => setScanToast(null), 2500);
+  }
+
+  async function handleInvoiceScan(barcode: string) {
+    try {
+      const found = await productsApi.getByBarcode(barcode);
+
+      const existing = lines.find(l => l.productId === found.id);
+      if (existing) {
+        setLines(prev => prev.map(l =>
+          l.key === existing.key ? { ...l, qty: String((parseFloat(l.qty) || 0) + 1) } : l,
+        ));
+        showScanToast(`✓ ${found.name} — qty +1`, true);
+        return;
+      }
+
+      // A product with several open lots must go through the same picker the
+      // dropdown uses, otherwise a scan would silently draw from an unstated
+      // batch while choosing by hand asks which one.
+      const inList = products.find((x: any) => x.id === found.id);
+      const blank  = lines.find(l => !l.productId);
+      const key    = blank ? blank.key : Date.now();
+      if (!blank) {
+        setLines(prev => [...prev, { key, productId: '', qty: '1', unitPrice: '', taxPercent: '0', discountCents: '0' }]);
+      }
+
+      if (inList && (inList.batchCount ?? 0) > 1) {
+        setPendingBatchLine({ key, productId: found.id, productName: found.name, priceCents: found.priceCents });
+        showScanToast(`${found.name} — choose a batch`, true);
+      } else {
+        selectProduct(key, found.id);
+        showScanToast(`✓ ${found.name} added`, true);
+      }
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        showScanToast(`No product: "${barcode}". Add it in Products first.`, false);
+      } else {
+        showScanToast('Scan error — try again', false);
+      }
+    }
+  }
 
   // Finalizes a product selection on a line — with an optional manually-picked
   // batch, which supplies its own selling price. Used both for plain product
@@ -741,7 +814,7 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
   const buildPayload = () => ({
     customerId: customerId || undefined,
     warehouseId,
-    date: date ? new Date(date).toISOString() : undefined,
+    date: ymdToTransactionISO(date),
     note: note || undefined,
     lines: lines.filter(l => l.productId).map(l => ({
       productId: l.productId,
@@ -824,17 +897,35 @@ function NewInvoiceModal({ onClose, editSale }: { onClose: () => void; editSale?
                 <Plus className="w-3.5 h-3.5" /> Add Line
               </button>
             </div>
+
+            {/* Scan to add — the same habit as the till, so a clerk raising an
+                invoice by hand is not forced to hunt through a dropdown. */}
+            <div className="mb-3">
+              <BarcodeInput
+                onScan={(code) => { void handleInvoiceScan(code); }}
+                placeholder="Scan barcode to add a line…"
+                showScanning
+              />
+              {scanToast && (
+                <div className={`mt-2 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                  scanToast.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                               : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {scanToast.msg}
+                </div>
+              )}
+            </div>
             <div className="space-y-2">
               {lines.map(l => {
                 const unitOpts = getSaleUnitOptions(products.find((x: any) => x.id === l.productId));
                 return (
                 <div key={l.key} className="grid grid-cols-12 gap-2 items-center">
                   <div className="col-span-3">
-                    <select value={l.productId} onChange={e => handleProductSelect(l.key, e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                      <option value="">— Product —</option>
-                      {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={l.productId}
+                      onChange={(val) => handleProductSelect(l.key, val)}
+                      options={productOptions}
+                      placeholder="Search product…"
+                    />
                   </div>
                   <div className="col-span-2">
                     <input type="number" min="0.01" step="0.01" placeholder="Qty" value={l.qty} onChange={e => updateLine(l.key, 'qty', e.target.value)}
@@ -1031,7 +1122,7 @@ function RecordPaymentModal({
   const outstanding = totalCents - paidCents;
   const [amount, setAmount]   = useState((outstanding / 100).toFixed(2));
   const [method, setMethod]   = useState<PaymentMethod>('CASH');
-  const [date, setDate]       = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate]       = useState(todayLocalYMD());
   const [note, setNote]       = useState('');
   const [error, setError]     = useState('');
 
@@ -1144,11 +1235,10 @@ function RecordPaymentModal({
 // ─── Date helpers ──────────────────────────────────────────────────────────────
 
 function thisMonthStart(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  return localMonthStartYMD();
 }
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayLocalYMD();
 }
 
 // ─── Main Sales Page ───────────────────────────────────────────────────────────

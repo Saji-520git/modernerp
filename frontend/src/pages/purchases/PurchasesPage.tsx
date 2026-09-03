@@ -35,6 +35,7 @@ import { inventoryApi } from '../../services/inventory';
 import { exportPurchaseOrder } from '../../services/pdfExport';
 import { productsApi } from '../../services/products';
 import BarcodeInput from '../../components/common/BarcodeInput';
+import { todayLocalYMD, localMonthStartYMD, apiDateToYMD, ymdToTransactionISO, ymdToLocalMidnightISO } from '../../utils/local-date';
 import axios from 'axios';
 import {
   purchaseReturnsApi, printDebitNote,
@@ -99,7 +100,7 @@ function SupplierPaymentSection({
   const [method,     setMethod]     = useState<SupplierPaymentMethod>('CASH');
   const [refNo,      setRefNo]      = useState('');
   const [bankName,   setBankName]   = useState('');
-  const [payDate,    setPayDate]    = useState(new Date().toISOString().slice(0, 10));
+  const [payDate,    setPayDate]    = useState(todayLocalYMD());
   const [notes,      setNotes]      = useState('');
   const [err,           setErr]          = useState('');
   const [expandedPayId, setExpandedPayId] = useState<string | null>(null);
@@ -109,7 +110,7 @@ function SupplierPaymentSection({
   const [creditAmount,   setCreditAmount]   = useState('');
   const [creditMethod,   setCreditMethod]   = useState<SupplierPaymentMethod>('CASH');
   const [creditRef,      setCreditRef]      = useState('');
-  const [creditDate,     setCreditDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [creditDate,     setCreditDate]     = useState(todayLocalYMD());
   const [creditNotes,    setCreditNotes]    = useState('');
   const [creditError,    setCreditError]    = useState('');
 
@@ -191,7 +192,7 @@ function SupplierPaymentSection({
     setCreditAmount((creditOwed / 100).toFixed(2));
     setCreditMethod('CASH');
     setCreditRef('');
-    setCreditDate(new Date().toISOString().slice(0, 10));
+    setCreditDate(todayLocalYMD());
     setCreditNotes('');
     setCreditError('');
     setShowCredit(true);
@@ -1366,11 +1367,10 @@ function PurchaseDetailModal({
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function thisMonthStart(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  return localMonthStartYMD();
 }
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayLocalYMD();
 }
 
 // ─── Orders Tab ───────────────────────────────────────────────────────────────
@@ -1719,7 +1719,7 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
   const [supplierId, setSupplierId] = useState(editPO?.supplier?.id ?? '');
   const [warehouseId, setWarehouseId] = useState(editPO?.warehouse?.id ?? '');
   const [date, setDate] = useState(
-    editPO ? new Date(editPO.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+    editPO ? apiDateToYMD(editPO.date) : todayLocalYMD(),
   );
   const [note, setNote] = useState(editPO?.note ?? '');
   const [lines, setLines] = useState<LineForm[]>(
@@ -1731,7 +1731,7 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
           unitCost:   (l.unitCostCents / 100).toFixed(2),
           taxPercent: String(l.taxPercent),
           expiryDate: (l as any).expiryDate
-            ? new Date((l as any).expiryDate).toISOString().slice(0, 10)
+            ? apiDateToYMD((l as any).expiryDate)
             : '',
         }))
       : [],
@@ -2040,7 +2040,7 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
     const payload = {
       supplierId,
       warehouseId,
-      date: new Date(date).toISOString(),
+      date: ymdToTransactionISO(date),
       note: note || undefined,
       lines: lines.map((l) => {
         const product    = l.productId ? productMap[l.productId] : null;
@@ -2051,7 +2051,7 @@ function NewOrderTab({ onSuccess, editPO }: { onSuccess: () => void; editPO?: Pu
           unitCostCents: Math.round((parseFloat(l.unitCost) || 0) * 100),
           taxPercent:    parseFloat(l.taxPercent) || 0,
           unitId:        l.unitId && l.unitId !== baseUnitId ? l.unitId : undefined,
-          expiryDate:    l.expiryDate ? new Date(l.expiryDate).toISOString() : null,
+          expiryDate:    ymdToLocalMidnightISO(l.expiryDate) ?? null,
         };
       }),
     };

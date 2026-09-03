@@ -45,6 +45,10 @@ export const salesService = {
         id: true,
         name: true,
         sku: true,
+        // The invoice form searches on this and shows it, the same way the till
+        // does. Without it a scanned code could only be resolved by a second
+        // round trip, and typing a barcode into the picker matched nothing.
+        barcode: true,
         priceCents: true,
         taxPercent: true,
         isBatchTracked: true,

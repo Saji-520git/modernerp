@@ -30,6 +30,7 @@ export interface SaleProduct {
   id: string;
   name: string;
   sku: string;
+  barcode?: string | null;
   priceCents: number;
   taxPercent: number;
   stockQty: number;

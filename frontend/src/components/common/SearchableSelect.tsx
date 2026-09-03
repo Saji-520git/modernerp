@@ -4,6 +4,12 @@ import { ChevronDown, Plus, Search } from 'lucide-react';
 export interface SearchableSelectOption {
   value: string;
   label: string;
+  /**
+   * Extra text this option should MATCH on but not display — a barcode, an
+   * alternate code. Without it the only way to make a field searchable was to
+   * put it in the label, which then has to be shown in the closed trigger too.
+   */
+  keywords?: string;
 }
 
 interface SearchableSelectProps {
@@ -50,7 +56,11 @@ export default function SearchableSelect({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        (o.keywords ? o.keywords.toLowerCase().includes(q) : false),
+    );
   }, [options, query]);
 
   const exactMatchExists = options.some(
