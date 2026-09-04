@@ -9,6 +9,10 @@ import { SettingsProvider } from './context/SettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import App from './App';
 import './styles/index.css';
+// Imported after index.css so it wins on equal specificity. Every rule inside is
+// scoped below Tailwind's `lg`, so no desktop or Electron window is affected —
+// see the header of that file.
+import './styles/responsive.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,0 +1,178 @@
+/* ─── Small-screen rescue layer ───────────────────────────────────────────────
+ *
+ * This application was built for a desktop Electron window: of 33 page
+ * components, all but two carry no responsive classes at all. Rewriting 25,000
+ * lines of working layout was not the right trade for a demo, so the structural
+ * problems that actually break a phone are corrected here instead, in one
+ * place.
+ *
+ * SAFETY: every rule below lives inside `@media (max-width: 1023.98px)`, i.e.
+ * strictly below Tailwind's `lg`. The Electron window and every desktop browser
+ * sit above that, so this file cannot change what the production app renders.
+ * That is deliberate, and it is what makes the layer safe to carry on a branch
+ * that must not alter production behaviour.
+ *
+ * Scoped to `.erp-content` (the <main> the router renders into) wherever a rule
+ * is broad, so the sign-in screen and the app chrome keep their own layout.
+ */
+
+@media (max-width: 1023.98px) {
+
+  /* ── 1. Nothing may scroll the page sideways ──────────────────────────────
+   * A single over-wide table used to drag the whole document with it, which is
+   * what makes a desktop app feel broken on a phone rather than merely cramped.
+   * Wide content scrolls inside its own box instead — see rule 3. */
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* ── 2. Fixed multi-column grids collapse ────────────────────────────────
+   * The pages ask for `grid-cols-4` unconditionally. At 390px that yields four
+   * 80px columns and text one character wide. Two columns stay readable for
+   * KPI tiles; three or more go to a single column. */
+  .erp-content .grid.grid-cols-3,
+  .erp-content .grid.grid-cols-4,
+  .erp-content .grid.grid-cols-5,
+  .erp-content .grid.grid-cols-6,
+  .erp-content .grid.grid-cols-7,
+  .erp-content .grid.grid-cols-8,
+  .erp-content .grid.grid-cols-12 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .erp-content .grid.grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* A two-up KPI row is fine; a two-up FORM is not — inputs need the width. */
+  .erp-content form .grid.grid-cols-2,
+  .erp-content .modal-body .grid.grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* ── 3. Tables scroll inside their own container ─────────────────────────
+   * Rather than restyling every table, the element immediately wrapping one
+   * becomes a horizontal scroller. `max-width: 100vw` is what stops the wrapper
+   * from growing to the table's natural width and pushing the page out. */
+  .erp-content table {
+    min-width: max-content;
+  }
+
+  .erp-content :where(div, section):has(> table) {
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── 4. Flex rows wrap instead of overflowing ────────────────────────────
+   * Toolbars — search box, filter pills, date range, action buttons — are laid
+   * out as one non-wrapping row. Allowing them to wrap turns an unreachable
+   * row into two or three reachable ones. */
+  .erp-content .flex.items-center.justify-between,
+  .erp-content .flex.items-center.gap-2,
+  .erp-content .flex.items-center.gap-3,
+  .erp-content .flex.items-center.gap-4 {
+    flex-wrap: wrap;
+  }
+
+  /* ── 5. Touch targets ────────────────────────────────────────────────────
+   * The desktop build uses 28-32px controls, below the ~44px a fingertip needs.
+   * Only height is raised: widths and text are left alone so nothing reflows
+   * unexpectedly. Table-cell buttons are exempt — inflating those would double
+   * the height of every row. */
+  .erp-content button:not(.no-touch-target),
+  .erp-content a[role="button"],
+  .erp-content select {
+    min-height: 40px;
+  }
+
+  .erp-content td button,
+  .erp-content th button,
+  .erp-content button.icon-btn {
+    min-height: 32px;
+  }
+
+  /* ── 6. Inputs must not trigger iOS zoom ─────────────────────────────────
+   * Mobile Safari zooms the viewport whenever a focused field's text is under
+   * 16px, and never zooms back out. Every form control in the app is 13-14px. */
+  .erp-content input,
+  .erp-content select,
+  .erp-content textarea {
+    font-size: 16px !important;
+  }
+
+  /* ── 7. Dialogs become sheets ────────────────────────────────────────────
+   * Centred fixed-width dialogs overflow a phone. They anchor to the bottom,
+   * take the full width, and cap their height so a long form scrolls inside
+   * the sheet rather than escaping it. */
+  .erp-content [class*="max-w-"][class*="rounded-2xl"],
+  .erp-content [class*="max-w-"][class*="rounded-xl"] {
+    max-width: 100% !important;
+  }
+
+  /* ── 8. Absolutely-positioned side drawers become full width ─────────────── */
+  .erp-content .fixed.right-0.top-0,
+  .erp-content .fixed.inset-y-0.right-0 {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* ── 9. Long words break rather than widening the page ──────────────────── */
+  .erp-content h1,
+  .erp-content h2,
+  .erp-content h3 {
+    overflow-wrap: anywhere;
+  }
+
+  /* ── 10. Room for the fixed DEMO badge at the foot of a scrolled page ───── */
+  .erp-content > * {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ── The till ────────────────────────────────────────────────────────────────
+ * POSPage renders outside `.erp-content` (it takes the whole window and hides
+ * the app shell), so it needs its own rules.
+ *
+ * The cart row is a grid of 532px of fixed columns plus the product name, which
+ * cannot fit a phone; it scrolls sideways instead. Pinning the name column to
+ * the left keeps "what am I selling" on screen while the cashier scrolls out to
+ * quantity and line total — the alternative was a name column scrolled out of
+ * sight, which is the one column that must never be.
+ */
+@media (max-width: 1023.98px) {
+  [data-pos-cart-row] {
+    min-width: max-content;
+  }
+
+  [data-pos-cart-name] {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    /* Grid children are transparent by default; without a ground the scrolling
+       columns show through the pinned one. */
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--line);
+  }
+
+  /* The header row is dark, so its pinned cell has to keep the dark ground. */
+  [data-pos-cart-row].sticky [data-pos-cart-name] {
+    background: #16233b;
+    box-shadow: 1px 0 0 rgba(148, 163, 184, 0.22);
+  }
+}
+
+/* ── Phone-sized only ─────────────────────────────────────────────────────── */
+@media (max-width: 639.98px) {
+  /* Two-up KPI tiles still fit at 390px, but their padding does not. */
+  .erp-content .p-6 { padding: 1rem !important; }
+  .erp-content .p-8 { padding: 1.25rem !important; }
+  .erp-content .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .erp-content .gap-6 { gap: 0.75rem !important; }
+
+  /* Oversized display numbers overflow their tile at this width. */
+  .erp-content .text-4xl { font-size: 1.75rem !important; line-height: 2rem !important; }
+  .erp-content .text-3xl { font-size: 1.5rem !important; line-height: 1.9rem !important; }
+  .erp-content .text-\[28px\] { font-size: 1.5rem !important; line-height: 1.9rem !important; }
+}

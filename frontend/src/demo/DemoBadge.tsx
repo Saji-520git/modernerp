@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, RotateCcw, X, Loader2 } from 'lucide-react';
 import { resetDb } from './db';
+import { usePosStore } from '../store/posStore';
 
 /**
  * The always-visible "this is a demo" marker, plus the reset control.
@@ -18,6 +19,13 @@ export default function DemoBadge() {
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const queryClient = useQueryClient();
+
+  // The till is the one screen that anchors controls to the bottom edge: below
+  // `lg` it stacks a shortcut strip, a basket bar, and — with the cart sheet
+  // open — a totals footer with CANCEL and PAY NOW. The badge lifts above all
+  // of them there, and only there, so no other page pays for it with an oddly
+  // floating pill.
+  const inTill = usePosStore((s) => s.isFullscreen);
 
   async function handleReset() {
     setResetting(true);
@@ -36,10 +44,11 @@ export default function DemoBadge() {
         type="button"
         onClick={() => setOpen(true)}
         title="This is a demo — tap for options"
-        className="fixed z-[100] bottom-3 right-3 flex items-center gap-1.5 rounded-full
+        className={`fixed z-[45] right-3 flex items-center gap-1.5 rounded-full
                    bg-amber-500 px-3 py-2 text-[11px] font-bold uppercase tracking-wide
                    text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600
-                   active:scale-95 sm:bottom-4 sm:right-4 sm:text-xs"
+                   active:scale-95 lg:bottom-4 lg:right-4 sm:text-xs
+                   ${inTill ? 'bottom-[10rem]' : 'bottom-3 sm:bottom-4'}`}
       >
         <FlaskConical size={14} />
         Demo

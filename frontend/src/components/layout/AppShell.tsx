@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import { usePosStore } from '../../store/posStore';
@@ -11,6 +11,7 @@ import {
   BarChart3, Archive, TrendingUp, Clock,
   UserCog, Settings, LogOut, ChevronLeft, ChevronRight, Upload, ShieldCheck,
   Bell, CornerUpLeft, Tag, Layers, Ruler, Percent, ClipboardCheck, Gift, ScrollText, Database,
+  Menu, X,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppSettings } from '../../context/SettingsContext';
@@ -132,6 +133,42 @@ export default function AppShell() {
   // v1.0.49 — open-shift warning before sign out (replaces window.alert)
   const [showShiftWarning, setShowShiftWarning] = useState(false);
 
+  // ── Mobile navigation ───────────────────────────────────────────────────────
+  // Below `lg` the sidebar is an off-canvas drawer rather than a permanent rail:
+  // a 240px rail on a 390px phone leaves no room for the page. Every rule that
+  // implements this is behind a `lg:` prefix or a max-width media query, so at
+  // desktop widths — the only widths the Electron build ever runs at — the
+  // markup renders exactly as it did before.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Tapping a link must close the drawer, or the page loads behind it.
+  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+
+  // A drawer over the page should not let the page scroll underneath it.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileNavOpen]);
+
+  // The collapse preference is a DESKTOP rail setting. The drawer is a fixed
+  // 17rem panel with room for labels, so a rail collapsed on desktop must not
+  // strip the labels out of it — that produced a drawer of unlabelled icons.
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  /** What the sidebar should render as: the rail collapses only on desktop. */
+  const railCollapsed = isDesktop && collapsed;
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? 'true' : 'false');
@@ -179,26 +216,80 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen bg-slate-50">
+      {/* Mobile top bar — below `lg` only. Gives the drawer a handle and keeps
+          the shop name and the alert bell reachable without the rail. */}
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-slate-200 bg-white px-3 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 active:scale-95"
+        >
+          <Menu size={20} />
+        </button>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-brand-700">
+          {settings?.businessName || 'ModernERP'}
+        </span>
+        {settings?.alertBellEnabled !== false && (
+          <button
+            type="button"
+            onClick={() => navigate('/alerts')}
+            aria-label="Stock alerts"
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 active:scale-95"
+          >
+            <Bell size={18} />
+            {alertCount && alertCount.count > 0 && (
+              <span className={`absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[9px] font-bold text-white ${
+                alertCount.critical > 0 ? 'bg-red-500' : 'bg-amber-500'
+              }`}>
+                {alertCount.count > 99 ? '99+' : alertCount.count}
+              </span>
+            )}
+          </button>
+        )}
+      </header>
+
+      {/* Drawer backdrop */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
-        className={`${collapsed ? 'w-16' : 'w-60'} bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-200`}
+        className={`${railCollapsed ? 'lg:w-16' : 'lg:w-60'} bg-white border-r border-slate-200 flex flex-col shrink-0 transition-transform duration-200 lg:transition-all
+                    fixed inset-y-0 left-0 z-50 w-[17rem] max-w-[85vw]
+                    ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}
+                    lg:static lg:z-auto lg:translate-x-0 lg:max-w-none`}
       >
+        {/* Drawer close — mobile only; desktop keeps the collapse chevron below. */}
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(false)}
+          aria-label="Close menu"
+          className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 lg:hidden"
+        >
+          <X size={18} />
+        </button>
         {/* Logo + toggle */}
         <div
           className={`flex items-center h-14 border-b border-slate-200 ${
-            collapsed ? 'justify-center px-0' : 'px-4 justify-between'
+            railCollapsed ? 'justify-center px-0' : 'px-4 justify-between'
           }`}
         >
-          {!collapsed && (
+          {!railCollapsed && (
             <span className="text-lg font-bold text-brand-700 truncate select-none">
               {settings?.businessName || 'ModernERP'}
             </span>
           )}
           <button
             onClick={() => setCollapsed((c) => !c)}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition shrink-0"
           >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            {railCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
 
@@ -209,7 +300,7 @@ export default function AppShell() {
             if (visible.length === 0) return null;
             return (
               <div key={group.label}>
-                {!collapsed && (
+                {!railCollapsed && (
                   <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest px-2 mb-1 select-none">
                     {group.label}
                   </p>
@@ -220,10 +311,10 @@ export default function AppShell() {
                       key={item.to}
                       to={item.to}
                       end={item.end}
-                      title={collapsed ? item.label : undefined}
+                      title={railCollapsed ? item.label : undefined}
                       className={({ isActive }) =>
                         `relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          collapsed ? 'justify-center' : ''
+                          railCollapsed ? 'justify-center' : ''
                         } ${
                           isActive
                             ? 'bg-blue-600 text-white'
@@ -232,15 +323,15 @@ export default function AppShell() {
                       }
                     >
                       <item.icon className="w-4 h-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{item.label}</span>}
-                      {!collapsed && item.to === '/alerts' && alertCount && alertCount.count > 0 && (
+                      {!railCollapsed && <span className="truncate">{item.label}</span>}
+                      {!railCollapsed && item.to === '/alerts' && alertCount && alertCount.count > 0 && (
                         <span className={`ml-auto min-w-[18px] h-4 rounded-full text-white text-[10px] font-bold flex items-center justify-center px-1 ${
                           alertCount.critical > 0 ? 'bg-red-500' : 'bg-amber-500'
                         }`}>
                           {alertCount.count > 99 ? '99+' : alertCount.count}
                         </span>
                       )}
-                      {collapsed && item.to === '/alerts' && alertCount && alertCount.count > 0 && (
+                      {railCollapsed && item.to === '/alerts' && alertCount && alertCount.count > 0 && (
                         <span className={`absolute mt-[-18px] ml-[18px] min-w-[14px] h-3.5 rounded-full text-white text-[8px] font-bold flex items-center justify-center px-0.5 ${
                           alertCount.critical > 0 ? 'bg-red-500' : 'bg-amber-500'
                         }`}>
@@ -257,7 +348,7 @@ export default function AppShell() {
 
         {/* User footer */}
         <div className="border-t border-slate-200 p-2 space-y-1">
-          {!collapsed && user && (
+          {!railCollapsed && user && (
             <div className="px-2 py-1 flex items-center justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-slate-700 truncate">{user.fullName}</p>
@@ -282,7 +373,7 @@ export default function AppShell() {
               )}
             </div>
           )}
-          {collapsed && settings?.alertBellEnabled !== false && (
+          {railCollapsed && settings?.alertBellEnabled !== false && (
             <button
               onClick={() => navigate('/alerts')}
               title="Stock Alerts"
@@ -304,7 +395,7 @@ export default function AppShell() {
               out, where a settings-ish control is looked for. Hidden while the
               rail is collapsed — the three-state segment needs the width, and
               the choice persists regardless. */}
-          {!collapsed && (
+          {!railCollapsed && (
             <div className="px-2 py-1 flex items-center justify-between">
               <span className="text-xs text-slate-500">Theme</span>
               <ThemeToggle />
@@ -314,16 +405,18 @@ export default function AppShell() {
             onClick={handleLogout}
             title="Sign out"
             className={`flex w-full items-center gap-2 px-2 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition ${
-              collapsed ? 'justify-center' : ''
+              railCollapsed ? 'justify-center' : ''
             }`}
           >
             <LogOut className="w-4 h-4 shrink-0" />
-            {!collapsed && 'Sign out'}
+            {!railCollapsed && 'Sign out'}
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto erp-content">
+      {/* pt-14 clears the fixed mobile top bar; from `lg` up the bar is gone and
+          so is the padding, leaving the desktop layout untouched. */}
+      <main className="flex-1 overflow-auto erp-content pt-14 lg:pt-0">
         <Outlet />
       </main>
 

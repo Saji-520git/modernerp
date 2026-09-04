@@ -681,6 +681,7 @@ const CartLine = forwardRef<CartLineHandle, {
       {/* Single flush table row with per-cell vertical dividers — columns match the
           dark CART_GRID header: Product | Unit | Price | Qty | Disc | Disc Tot | Total | trash */}
       <div
+        data-pos-cart-row
         className={selected ? 'transition-colors' : 'transition-colors group-hover:bg-slate-50/70'}
         style={{
           display: 'grid',
@@ -690,7 +691,7 @@ const CartLine = forwardRef<CartLineHandle, {
         }}
       >
         {/* 1 — Product name (service charge gets amber styling) */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
+        <div data-pos-cart-name style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', borderRight: CART_COL_BORDER, minWidth: 0 }}>
           <span className={`text-sm font-semibold truncate ${item.isServiceCharge ? 'text-amber-700' : 'text-slate-800'}`}>
             {item.isServiceCharge && <span style={{ fontSize: 9, marginRight: 4, background: 'var(--warning-subtle)', color: 'var(--warning)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>SVC</span>}
             {item.product.name}
@@ -1947,6 +1948,29 @@ export default function POSPage() {
   const gridRef         = useRef<HTMLDivElement>(null);
   // Products/cart panel container — measured to clamp the draggable divider
   const panelContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Narrow-screen till ──────────────────────────────────────────────────────
+  // The till is a resizable two-pane split, which needs roughly 900px to work.
+  // On a phone the cart pane lands entirely off-screen: a visitor can add items
+  // and then has no way to see the basket or pay. Below `lg` the products pane
+  // therefore takes the full width and the cart becomes a full-height sheet,
+  // opened from a summary bar pinned to the bottom of the screen.
+  //
+  // Nothing here runs at desktop widths: `isNarrowTill` is false from 1024px up,
+  // and every branch below collapses to exactly the markup that shipped.
+  const [isNarrowTill, setIsNarrowTill] = useState(
+    () => typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches,
+  );
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      setIsNarrowTill(!e.matches);
+      if (e.matches) setCartSheetOpen(false);   // widening reveals the real pane
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   // Per-cart-item refs for keyboard focus flow (scan → qty → D:discount → Enter:barcode)
   const cartLineRefs    = useRef<Record<string, CartLineHandle | null>>({});
   // Total cart discount ref (Shift+Enter from anywhere)
@@ -3642,7 +3666,10 @@ export default function POSPage() {
       {/* ═══════════════════════════════════════════════════════════════
           TOP BAR
       ═══════════════════════════════════════════════════════════════ */}
-      <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0" style={{ height: 52 }}>
+      <header
+        className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0 min-w-0 overflow-x-auto lg:overflow-x-visible"
+        style={{ height: 52 }}
+      >
 
         {/* Logo */}
         <div className="flex items-center gap-2 shrink-0">
@@ -3760,11 +3787,15 @@ export default function POSPage() {
       <div
         ref={panelContainerRef}
         className="overflow-hidden"
-        style={{ display: 'grid', gridTemplateColumns: `${leftPanelWidth}px ${PANEL_HANDLE_WIDTH}px 1fr` }}
+        style={
+          isNarrowTill
+            ? { display: 'grid', gridTemplateColumns: '1fr' }
+            : { display: 'grid', gridTemplateColumns: `${leftPanelWidth}px ${PANEL_HANDLE_WIDTH}px 1fr` }
+        }
       >
 
         {/* ─── LEFT PANEL: products ─────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50">
+        <div className="flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50 min-w-0">
 
           {/* Search + barcode row */}
           <div className="bg-white border-b border-slate-200 px-4 py-3 space-y-2 shrink-0">
@@ -3889,7 +3920,19 @@ export default function POSPage() {
                so the checkout column reclaims the full-width footer's height.
                Shortcut handlers (F1/F4/L/Ctrl+Shift+X) live in the global
                keydown effect — independent of where these buttons render. ── */}
-          <footer className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: 'var(--surface-inset)', borderTop: '.5px solid var(--line)' }}>
+          {/* On a narrow till these buttons overflow the width, and the fixed
+              basket bar covers the last 64px of the screen — so the strip
+              scrolls sideways and reserves room beneath itself. */}
+          <footer
+            className="shrink-0"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
+              background: 'var(--surface-inset)', borderTop: '.5px solid var(--line)',
+              ...(isNarrowTill
+                ? { overflowX: 'auto' as const, marginBottom: 64, WebkitOverflowScrolling: 'touch' as const }
+                : {}),
+            }}
+          >
 
             {/* Hold — F4 */}
             <button type="button"
@@ -3966,7 +4009,7 @@ export default function POSPage() {
           }}
           title="Drag to resize · double-click to reset"
           style={{ touchAction: 'none' }}
-          className={`group relative cursor-col-resize select-none ${isResizingPanels ? 'bg-indigo-400' : 'bg-slate-200 hover:bg-indigo-300'} transition-colors`}
+          className={`group relative cursor-col-resize select-none ${isResizingPanels ? 'bg-indigo-400' : 'bg-slate-200 hover:bg-indigo-300'} transition-colors ${isNarrowTill ? 'hidden' : ''}`}
         >
           {/* Widened invisible grab area — 6px is fine for a mouse but far too
               thin for a fingertip. Overhangs only the panels' own padding. */}
@@ -3975,11 +4018,33 @@ export default function POSPage() {
         </div>
 
         {/* ─── RIGHT PANEL: cart ────────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden bg-white">
+        {/* On a narrow screen this same panel is promoted to a full-screen sheet
+            rather than being rebuilt: the totals, discount and PAY NOW controls
+            all live inside it, so lifting it wholesale keeps one checkout path
+            for both layouts. */}
+        <div
+          className={
+            isNarrowTill
+              ? cartSheetOpen
+                ? 'fixed inset-0 z-40 flex flex-col overflow-hidden bg-white'
+                : 'hidden'
+              : 'flex flex-col overflow-hidden bg-white'
+          }
+        >
 
           {/* Cart header */}
           <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2 font-bold text-slate-800">
+              {isNarrowTill && (
+                <button
+                  type="button"
+                  onClick={() => setCartSheetOpen(false)}
+                  aria-label="Back to products"
+                  className="-ml-1 flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                >
+                  <ChevronDown size={20} />
+                </button>
+              )}
               <ShoppingCart size={17} className="text-indigo-500" />
               Cart
               {cart.length > 0 && (
@@ -4037,6 +4102,7 @@ export default function POSPage() {
               >
                 {/* Fixed dark column-header — aligns with every CartLine via CART_GRID */}
                 <div
+                  data-pos-cart-row
                   className="sticky top-0 z-10 text-[10px] font-bold uppercase"
                   style={{
                     display: 'grid', gridTemplateColumns: CART_GRID, columnGap: 0,
@@ -4046,7 +4112,7 @@ export default function POSPage() {
                     boxShadow: '0 2px 5px rgba(15,23,42,0.25)',
                   }}
                 >
-                  <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER }}>Item</span>
+                  <span data-pos-cart-name style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER }}>Item</span>
                   <span style={{ padding: '9px 6px', borderRight: CART_HDR_BORDER, textAlign: 'center' }}>Unit</span>
                   <span style={{ padding: '9px 10px', borderRight: CART_HDR_BORDER, textAlign: 'right' }}>Price</span>
                   <span style={{ padding: '9px 6px', borderRight: CART_HDR_BORDER, textAlign: 'center' }}>Qty</span>
@@ -4229,6 +4295,44 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── Narrow-screen basket bar ──────────────────────────────────
+          The only route to the cart when the pane is collapsed. Always shown
+          (not just when the cart has items) so the control is where the eye
+          learned to expect it, and it states the count and the total so the
+          basket can be read without opening it. */}
+      {isNarrowTill && !cartSheetOpen && (
+        <button
+          type="button"
+          onClick={() => setCartSheetOpen(true)}
+          className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-indigo-700
+                     bg-indigo-600 px-4 py-3 text-left text-white shadow-[0_-4px_16px_rgba(0,0,0,0.18)]
+                     active:bg-indigo-700"
+        >
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15">
+            <ShoppingCart size={18} />
+            {cart.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center
+                               rounded-full bg-amber-400 px-1 text-[10px] font-bold text-slate-900">
+                {cart.reduce((s, i) => s + i.qty, 0)}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-medium uppercase tracking-wide text-indigo-200">
+              {cart.length === 0
+                ? 'Basket empty'
+                : `${cart.length} ${cart.length === 1 ? 'line' : 'lines'} in basket`}
+            </span>
+            <span className="block truncate text-lg font-extrabold leading-tight">
+              {formatCents(grandTotal)}
+            </span>
+          </span>
+          <span className="shrink-0 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold uppercase tracking-wide">
+            View
+          </span>
+        </button>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════
           DIALOGS / MODALS
