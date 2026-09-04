@@ -721,6 +721,43 @@ Phase 3 sprints completed:
     with `cashPayoutsCents` completing the shift-cash rule
   - manual invoices gained product search + barcode scanning (POS parity)
 
+### Branch `demo/client-preview` — hosted client demo (2026-09-05)
+
+A frontend-only build of the ERP for a prospective client to click through
+online. Cut from `electron-v1.0` at `c607d83`. **Not for merging into
+`electron-v1.0`** — read `docs/DEMO.md` first if that is ever proposed.
+
+- No backend. The single axios instance in `services/api.ts` gets a replacement
+  ADAPTER, which intercepts 100% of API traffic; `src/demo/` holds a seeded
+  store, the route table and localStorage persistence. Writes are real: a POS
+  sale deducts stock and moves the dashboard and reports.
+- Data is FICTIONAL — a hardware/building-supplies trade. No ACM data was read
+  or derived from, and `demo_data.sql` was not used.
+- Demo credentials are demo-only; the production seed pair
+  (`modernerp@gmail.com` / `superadmin123`) appears nowhere in the build.
+  Neither demo account is SUPER_ADMIN.
+
+**Three rules, each enforced rather than remembered** (`npm run verify:demo`):
+
+1. `dist/` must never contain demo code. It DID on the first build — the
+   guarded branches were eliminated but Rollup kept the imported modules,
+   because nothing declares them side-effect free. `vite.config.ts` now severs
+   the import outside `--mode demo` rather than trusting tree-shaking. This is
+   §12.2 applied: grep the bundle, do not assume.
+2. The demo builds to `dist-demo/`, never `dist/` — Electron packages `dist/`,
+   and a demo build landing there would ship fictional data to a real client.
+3. `src/demo` must not import from `src/services`: api.ts imports the demo
+   installer, so the reverse closes a cycle. Importing `ALL_PERMISSIONS` from
+   `services/users.ts` threw "Cannot access before initialization" and took
+   every page down.
+
+Also on this branch: the app is responsive below `lg` for the first time
+(`styles/responsive.css`, an AppShell drawer, and a POS cart sheet). Every rule
+is behind `lg:` or `@media (max-width: 1023.98px)`, so desktop and Electron
+render unchanged — verified at 1440x900.
+
+Tests: `src/demo/demo.test.ts`, 26 cases (117 total on this branch).
+
 **Current: Phase 3 continuing**
 **Next sprint: Choose from:**
   A - Reports upgrade (better dashboard, trends, custom ranges)

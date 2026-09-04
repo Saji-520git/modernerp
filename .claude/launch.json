@@ -45,6 +45,22 @@
         "preview:demo"
       ],
       "port": 4173
+    },
+    {
+      "name": "prod-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "preview",
+        "--",
+        "--outDir",
+        "dist",
+        "--port",
+        "4174"
+      ],
+      "port": 4174
     }
   ]
 }

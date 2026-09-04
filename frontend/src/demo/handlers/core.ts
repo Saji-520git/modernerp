@@ -1,6 +1,6 @@
 // ─── Auth, settings, master data, warehouses, users ──────────────────────────
 
-import { DemoHttpError, type DemoHandler } from '../adapter';
+import { DemoHttpError, type DemoHandler } from '../http';
 import { db, paginate, matches, warehouseById } from '../support';
 import { nextId } from '../db';
 import { ROLE_PERMISSIONS } from '../permissions';

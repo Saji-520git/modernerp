@@ -1,6 +1,6 @@
 // ─── Purchases, suppliers, expenses, shifts ──────────────────────────────────
 
-import { DemoHttpError, type DemoHandler } from '../adapter';
+import { DemoHttpError, type DemoHandler } from '../http';
 import {
   db, paginate, matches, productById, shapePurchase, supplierById, userById,
   unitById, stockQty, applyStock, inLocalRange, warehouseById, ymdOf,

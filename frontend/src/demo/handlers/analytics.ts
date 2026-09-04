@@ -4,7 +4,7 @@
 // to, so a sale rung up on the POS moves the dashboard and the reports the way
 // it would in the real system.
 
-import { type DemoHandler } from '../adapter';
+import { type DemoHandler } from '../http';
 import {
   db, productById, customerById, userById, warehouseById, totalStock,
   inLocalRange, ymdOf, realSales, cogsOf, supplierById,

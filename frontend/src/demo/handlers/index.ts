@@ -5,7 +5,7 @@
 // the real API. Anything absent returns a 404 the adapter logs to the console,
 // which is how the sweep in docs/DEMO.md found the gaps.
 
-import type { DemoHandler } from '../adapter';
+import type { DemoHandler } from '../http';
 import * as core from './core';
 import * as catalog from './catalog';
 import * as selling from './selling';

@@ -1,6 +1,6 @@
 // ─── Products, stock, movements and alerts ───────────────────────────────────
 
-import { DemoHttpError, type DemoHandler } from '../adapter';
+import { DemoHttpError, type DemoHandler } from '../http';
 import {
   db, paginate, matches, shapeProduct, productById, totalStock, stockQty,
   warehouseById, unitById, categoryById, batchSummary, applyStock, inLocalRange,

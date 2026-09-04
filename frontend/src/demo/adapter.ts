@@ -11,25 +11,12 @@
 // InventoryPage all branch on a 404).
 
 import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios';
+import { DemoHttpError, type DemoHandler } from './http';
 import { ROUTES } from './handlers';
 import { persist } from './db';
 
-export interface DemoCtx {
-  params: Record<string, string>;
-  query: Record<string, string>;
-  body: any;
-  method: string;
-  path: string;
-}
-
-export type DemoHandler = (ctx: DemoCtx) => unknown;
-
-/** Thrown by a handler to produce a real HTTP-shaped failure. */
-export class DemoHttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+// Defined in http.ts, which imports nothing — see that file for why.
+export { DemoHttpError, type DemoCtx, type DemoHandler } from './http';
 
 // ─── Route matching ──────────────────────────────────────────────────────────
 
