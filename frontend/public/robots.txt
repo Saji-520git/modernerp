@@ -1,0 +1,6 @@
+# This is a private sales demonstration carrying a named prospect's branding.
+# It is not meant to appear in search results. The X-Robots-Tag header in
+# vercel.json is the enforcing copy of this; the file is here for crawlers that
+# read it first.
+User-agent: *
+Disallow: /

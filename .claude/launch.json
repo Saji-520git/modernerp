@@ -34,6 +34,17 @@
         "dev:demo"
       ],
       "port": 5174
+    },
+    {
+      "name": "demo-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "preview:demo"
+      ],
+      "port": 4173
     }
   ]
 }
