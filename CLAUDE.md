@@ -737,7 +737,13 @@ online. Cut from `electron-v1.0` at `c607d83`. **Not for merging into
   (`modernerp@gmail.com` / `superadmin123`) appears nowhere in the build.
   Neither demo account is SUPER_ADMIN.
 
-**Three rules, each enforced rather than remembered** (`npm run verify:demo`):
+**Four rules, each enforced rather than remembered** (`npm run verify:demo`):
+
+0. Every endpoint must be registered on the METHOD the app calls. The table had
+   `sales confirm/cancel/pay` as POST where `salesApi` uses PATCH, so the whole
+   billing flow 404'd while every page still loaded — a page load only issues
+   GETs. `scripts/check-demo-routes.mjs` diffs call sites against the table;
+   it found 24 verb mismatches and 20 missing handlers.
 
 1. `dist/` must never contain demo code. It DID on the first build — the
    guarded branches were eliminated but Rollup kept the imported modules,
@@ -756,7 +762,7 @@ Also on this branch: the app is responsive below `lg` for the first time
 is behind `lg:` or `@media (max-width: 1023.98px)`, so desktop and Electron
 render unchanged — verified at 1440x900.
 
-Tests: `src/demo/demo.test.ts`, 26 cases (117 total on this branch).
+Tests: `src/demo/demo.test.ts`, 39 cases (130 total on this branch).
 
 **Current: Phase 3 continuing**
 **Next sprint: Choose from:**

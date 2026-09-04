@@ -397,11 +397,84 @@ export const paySale: DemoHandler = ({ params, body }) => {
 export const salePayments: DemoHandler = ({ params }) =>
   db().payments
     .filter((p) => p.saleId === params.id)
-    .map((p) => ({
-      id: p.id, saleId: p.saleId, purchaseId: null, amountCents: p.amountCents,
-      method: p.method, date: p.date, note: p.note, createdAt: p.createdAt,
-      createdBy: userById(p.createdById),
-    }));
+    .map((p) => shapeCustomerPayment(p));
+
+/**
+ * Edit a DRAFT invoice.
+ *
+ * A confirmed invoice is deliberately immutable — it has already moved stock,
+ * and the real service refuses the same way.
+ */
+export const updateSale: DemoHandler = ({ params, body }) => {
+  const s = db().sales.find((x) => x.id === params.id);
+  if (!s) throw new DemoHttpError(404, 'Invoice not found');
+  if (s.status !== 'DRAFT') throw new DemoHttpError(400, 'Only a draft invoice can be edited.');
+
+  if (body?.customerId !== undefined) s.customerId = body.customerId || null;
+  if (body?.warehouseId) s.warehouseId = String(body.warehouseId);
+  if (body?.note !== undefined) s.note = body.note;
+  if (body?.date) s.date = String(body.date);
+  if (body?.lines) {
+    s.lines = (body.lines as any[]).map((l, idx) => {
+      const p = productById(l.productId);
+      if (!p) throw new DemoHttpError(404, 'Product not found');
+      const qty = Number(l.qty);
+      const price = Number(l.unitPriceCents ?? p.priceCents);
+      const disc = Number(l.discountCents ?? 0);
+      return {
+        id: `sl_${idx}_${Date.now().toString(36)}`,
+        productId: p.id, qty, unitPriceCents: price, taxPercent: 0,
+        discountCents: disc, lineTotalCents: qty * price - disc, unitId: l.unitId ?? p.unitId,
+      };
+    });
+    s.subtotalCents = s.lines.reduce((n, l) => n + l.lineTotalCents, 0);
+    s.totalCents = s.subtotalCents - s.discountCents;
+  }
+  return shapeSale(s, true);
+};
+
+export const deleteSale: DemoHandler = ({ params }) => {
+  const d = db();
+  const i = d.sales.findIndex((x) => x.id === params.id);
+  if (i < 0) throw new DemoHttpError(404, 'Invoice not found');
+  // Only a draft may be deleted. A confirmed invoice is cancelled, which puts
+  // the stock back and leaves the document in the ledger — deleting it would
+  // silently take a number out of the sequence.
+  if (d.sales[i].status !== 'DRAFT') {
+    throw new DemoHttpError(400, 'A confirmed invoice cannot be deleted — cancel it instead.');
+  }
+  d.sales.splice(i, 1);
+  return { success: true };
+};
+
+/**
+ * Record a payment against an invoice (the newer endpoint, used by the payments
+ * modal). `paySale` above is the older PATCH the invoice detail still calls;
+ * both settle onto the same rows.
+ */
+export const recordSalePayment: DemoHandler = ({ params, body }) => {
+  const d = db();
+  const s = d.sales.find((x) => x.id === params.id);
+  if (!s) throw new DemoHttpError(404, 'Invoice not found');
+
+  const amount = Number(body?.amountCents ?? body?.paidCents ?? 0);
+  if (amount <= 0) throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+  const outstanding = s.totalCents - s.paidCents;
+  if (outstanding <= 0) throw new DemoHttpError(400, 'This invoice is already settled.');
+  if (amount > outstanding) {
+    throw new DemoHttpError(400, `Only Rs. ${(outstanding / 100).toLocaleString()} is outstanding on ${s.number}.`);
+  }
+
+  s.paidCents += amount;
+  const now = body?.paymentDate ? String(body.paymentDate) : new Date().toISOString();
+  d.payments.push({
+    id: nextId('pay'), saleId: s.id, purchaseId: null, amountCents: amount,
+    method: String(body?.method ?? body?.paymentMethod ?? 'CASH'),
+    date: now, note: body?.notes ?? body?.note ?? null,
+    createdById: currentUserId(), createdAt: new Date().toISOString(),
+  });
+  return shapeSale(s, true);
+};
 
 // ─── Sale returns ────────────────────────────────────────────────────────────
 
@@ -410,8 +483,45 @@ export const listReturns: DemoHandler = ({ query }) => {
   return paginate(rows, query);
 };
 
-export const returnsForSale: DemoHandler = ({ params }) =>
-  (db().saleReturns as any[]).filter((r) => r.saleId === params.id);
+/**
+ * The invoice, prepared for a return.
+ *
+ * NOT a list of existing credit notes — `/sales/returns/for-sale/:id` returns
+ * `SaleForReturn`, i.e. the sale itself with three extra fields per line. The
+ * page reads `sale.lines[].availableToReturn` to cap each quantity, so handing
+ * it an array left every line uncapped.
+ *
+ * `refundUnitCents` is prorated against the invoice total rather than being the
+ * list price: the customer paid net of the cart discount, and that is what they
+ * get back.
+ */
+export const saleForReturn: DemoHandler = ({ params }) => {
+  const d = db();
+  const s = d.sales.find((x) => x.id === params.id);
+  if (!s) throw new DemoHttpError(404, 'Invoice not found');
+
+  const priorReturns = (d.saleReturns as any[]).filter((r) => r.saleId === s.id);
+  const returnedByProduct = new Map<string, number>();
+  for (const r of priorReturns) {
+    for (const l of r.lines ?? []) {
+      returnedByProduct.set(l.productId, (returnedByProduct.get(l.productId) ?? 0) + l.qty);
+    }
+  }
+
+  const grossLines = s.lines.reduce((n, l) => n + l.lineTotalCents, 0) || 1;
+  const shaped = shapeSale(s, true) as any;
+  shaped.lines = s.lines.map((l) => {
+    const already = returnedByProduct.get(l.productId) ?? 0;
+    const lineShare = s.totalCents * (l.lineTotalCents / grossLines);
+    return {
+      ...saleLineShape(l),
+      alreadyReturnedQty: already,
+      availableToReturn: Math.max(0, l.qty - already),
+      refundUnitCents: l.qty > 0 ? Math.round(lineShare / l.qty) : 0,
+    };
+  });
+  return shaped;
+};
 
 export const createReturn: DemoHandler = ({ body }) => {
   const d = db();
@@ -523,6 +633,21 @@ export const updateCustomer: DemoHandler = ({ params, body }) => {
   return shapeCustomer(c);
 };
 
+export const deleteCustomer: DemoHandler = ({ params }) => {
+  const d = db();
+  const i = d.customers.findIndex((x) => x.id === params.id);
+  if (i < 0) throw new DemoHttpError(404, 'Customer not found');
+  // A customer with history is deactivated, not deleted — removing them would
+  // orphan every invoice they are on. Mirrors the real service's smart delete.
+  const hasHistory = d.sales.some((s) => s.customerId === params.id);
+  if (hasHistory) {
+    d.customers[i].isActive = false;
+    return { success: true, softDeleted: true };
+  }
+  d.customers.splice(i, 1);
+  return { success: true, softDeleted: false };
+};
+
 export const toggleCustomer: DemoHandler = ({ params }) => {
   const c = db().customers.find((x) => x.id === params.id);
   if (!c) throw new DemoHttpError(404, 'Customer not found');
@@ -531,6 +656,85 @@ export const toggleCustomer: DemoHandler = ({ params }) => {
 };
 
 // ─── Customer payments ───────────────────────────────────────────────────────
+
+/** The CustomerPayment shape the payments modal and the ledger both render. */
+function shapeCustomerPayment(p: ReturnType<typeof db>['payments'][number]) {
+  const sale = db().sales.find((s) => s.id === p.saleId);
+  return {
+    id: p.id,
+    paymentNumber: `RCP-${p.id.slice(-6).toUpperCase()}`,
+    saleId: p.saleId,
+    customerId: sale?.customerId ?? null,
+    amountCents: p.amountCents,
+    paymentMethod: p.method,
+    method: p.method,          // the older PaymentRecord shape reads `method`
+    paymentType: 'PAYMENT',
+    referenceNo: null,
+    bankName: null,
+    paymentDate: p.date,
+    date: p.date,
+    notes: p.note,
+    note: p.note,
+    createdBy: p.createdById,
+    createdByUser: userById(p.createdById),
+    purchaseId: null,
+    isActive: true,
+    createdAt: p.createdAt,
+    updatedAt: p.createdAt,
+  };
+}
+
+export const createCustomerPayment: DemoHandler = ({ body }) => {
+  const d = db();
+  const s = d.sales.find((x) => x.id === body?.saleId);
+  if (!s) throw new DemoHttpError(404, 'Invoice not found');
+  const amount = Number(body?.amountCents ?? 0);
+  if (amount <= 0) throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+
+  const outstanding = s.totalCents - s.paidCents;
+  if (outstanding <= 0) throw new DemoHttpError(400, `${s.number} is already settled.`);
+  // Anything above the balance is refused unless the till was told to hold it
+  // on account, which is what keepChangeOnAccount means.
+  if (amount > outstanding && !body?.keepChangeOnAccount) {
+    throw new DemoHttpError(400, `Only Rs. ${(outstanding / 100).toLocaleString()} is outstanding on ${s.number}.`);
+  }
+
+  const applied = Math.min(amount, outstanding);
+  s.paidCents += applied;
+  const pay = {
+    id: nextId('pay'), saleId: s.id, purchaseId: null, amountCents: applied,
+    method: String(body?.paymentMethod ?? 'CASH'),
+    date: body?.paymentDate ? String(body.paymentDate) : new Date().toISOString(),
+    note: body?.notes ?? null, createdById: currentUserId(), createdAt: new Date().toISOString(),
+  };
+  d.payments.push(pay);
+  return shapeCustomerPayment(pay);
+};
+
+export const deleteCustomerPayment: DemoHandler = ({ params }) => {
+  const d = db();
+  const i = d.payments.findIndex((p) => p.id === params.id);
+  if (i < 0) throw new DemoHttpError(404, 'Payment not found');
+  const pay = d.payments[i];
+  // Reversing a payment has to put the money back on the invoice, or the
+  // receivable silently disappears.
+  const s = d.sales.find((x) => x.id === pay.saleId);
+  if (s) s.paidCents = Math.max(0, s.paidCents - pay.amountCents);
+  d.payments.splice(i, 1);
+  return { success: true };
+};
+
+export const applyCustomerCredit: DemoHandler = ({ body }) => {
+  // The demo carries no unapplied credit balances, so there is nothing to
+  // allocate. Answering honestly beats a 404 that reads as a broken page.
+  return {
+    allocationGroupId: nextId('alloc'),
+    allocations: [],
+    appliedCents: 0,
+    creditRemainingCents: 0,
+    message: `${customerById(String(body?.customerId ?? ''))?.name ?? 'This customer'} has no unapplied credit.`,
+  };
+};
 
 export const listCustomerPayments: DemoHandler = ({ query }) => {
   let rows = db().payments.filter((p) => p.saleId);
@@ -542,10 +746,9 @@ export const listCustomerPayments: DemoHandler = ({ query }) => {
   const shaped = rows.map((p) => {
     const sale = db().sales.find((s) => s.id === p.saleId);
     return {
-      id: p.id, amountCents: p.amountCents, method: p.method, date: p.date, note: p.note,
+      ...shapeCustomerPayment(p),
       sale: sale ? { id: sale.id, number: sale.number } : null,
       customer: customerById(sale?.customerId ?? null),
-      createdBy: userById(p.createdById), createdAt: p.createdAt,
     };
   });
   return paginate(shaped, query);
@@ -558,11 +761,7 @@ export const paymentsForCustomer: DemoHandler = ({ params }) => {
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((p) => {
       const sale = db().sales.find((s) => s.id === p.saleId);
-      return {
-        id: p.id, amountCents: p.amountCents, method: p.method, date: p.date, note: p.note,
-        sale: sale ? { id: sale.id, number: sale.number } : null,
-        createdBy: userById(p.createdById), createdAt: p.createdAt,
-      };
+      return { ...shapeCustomerPayment(p), sale: sale ? { id: sale.id, number: sale.number } : null };
     });
 };
 

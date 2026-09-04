@@ -33,6 +33,7 @@ export const ROUTES: Record<string, DemoHandler> = {
   'PATCH /master-data/units/:id': core.updateMaster('units'),
   'DELETE /master-data/units/:id': core.deleteMaster('units'),
   'GET /units': core.listUnits,
+  'GET /units/:id': core.getUnit,
   'POST /units': core.createMaster('units'),
   'PATCH /units/:id': core.updateMaster('units'),
   'DELETE /units/:id': core.deleteMaster('units'),
@@ -40,8 +41,11 @@ export const ROUTES: Record<string, DemoHandler> = {
   // ── Warehouses ──
   'GET /warehouses': core.listWarehouses,
   'GET /warehouses/:id/stats': core.warehouseStats,
-  'PATCH /warehouses/:id/set-default': core.setDefaultWarehouse,
-  'PATCH /warehouses/:id/toggle': core.toggleWarehouse,
+  'GET /warehouses/:id': core.getWarehouse,
+  'POST /warehouses': core.createWarehouse,
+  'PATCH /warehouses/:id': core.updateWarehouse,
+  'POST /warehouses/:id/set-default': core.setDefaultWarehouse,
+  'POST /warehouses/:id/toggle': core.toggleWarehouse,
   'GET /inventory/warehouses': core.listWarehouses,
 
   // ── Users ──
@@ -63,6 +67,8 @@ export const ROUTES: Record<string, DemoHandler> = {
   'POST /products': catalog.createProduct,
   'PATCH /products/:id': catalog.updateProduct,
   'PATCH /products/:id/toggle-active': catalog.toggleProduct,
+  'DELETE /products/:id': catalog.deleteProduct,
+  'PUT /products/:id/conversions': catalog.setProductConversions,
 
   // ── Inventory ──
   'GET /inventory/stock': catalog.listStock,
@@ -104,33 +110,44 @@ export const ROUTES: Record<string, DemoHandler> = {
   'POST /pos/shifts/:id/force-close': buying.forceCloseShift,
 
   // ── Sales ──
+  // Verbs matter, and these are the ones the app actually uses. confirm/cancel/
+  // pay are PATCH in salesApi, not POST — registering them as POST 404'd the
+  // entire billing flow while every page still loaded fine, because a page load
+  // only issues GETs. scripts/check-demo-routes.mjs now compares the two.
   'GET /sales': selling.listSales,
   'GET /sales/products': selling.salesProducts,
   'GET /sales/customers': selling.salesCustomers,
   'GET /sales/returns/list': selling.listReturns,
-  'GET /sales/returns/for-sale/:id': selling.returnsForSale,
+  'GET /sales/returns/for-sale/:id': selling.saleForReturn,
   'POST /sales/returns': selling.createReturn,
   'GET /sales/returns/:id': selling.getReturn,
   'GET /sales/:id': selling.getSale,
   'POST /sales': selling.createSale,
-  'POST /sales/:id/confirm': selling.confirmSale,
-  'POST /sales/:id/cancel': selling.cancelSale,
-  'POST /sales/:id/pay': selling.paySale,
+  'PATCH /sales/:id': selling.updateSale,
+  'DELETE /sales/:id': selling.deleteSale,
+  'PATCH /sales/:id/confirm': selling.confirmSale,
+  'PATCH /sales/:id/cancel': selling.cancelSale,
+  'PATCH /sales/:id/pay': selling.paySale,
   'GET /sales/:id/payments': selling.salePayments,
+  'POST /sales/:id/payments': selling.recordSalePayment,
 
   // ── Customers ──
   'GET /customers': selling.listCustomers,
   'GET /customers/:id': selling.getCustomer,
   'POST /customers': selling.createCustomer,
-  'PATCH /customers/:id': selling.updateCustomer,
+  'PUT /customers/:id': selling.updateCustomer,
+  'DELETE /customers/:id': selling.deleteCustomer,
   'PATCH /customers/:id/toggle-active': selling.toggleCustomer,
 
   // ── Customer payments ──
   'GET /customer-payments': selling.listCustomerPayments,
+  'POST /customer-payments': selling.createCustomerPayment,
+  'DELETE /customer-payments/:id': selling.deleteCustomerPayment,
   'GET /customer-payments/customer/:id': selling.paymentsForCustomer,
   'GET /customer-payments/sale/:id': selling.salePayments,
   'GET /customer-payments/credit-ledger/:id': selling.creditLedger,
   'POST /customer-payments/lump-sum': selling.lumpSumPayment,
+  'POST /customer-payments/apply-credit': selling.applyCustomerCredit,
 
   // ── Purchases ──
   'GET /purchases': buying.listPurchases,
@@ -140,21 +157,42 @@ export const ROUTES: Record<string, DemoHandler> = {
   'GET /purchases/:id/receipts': buying.purchaseReceipts,
   'POST /purchases': buying.createPurchase,
   'PATCH /purchases/:id': buying.updatePurchase,
-  'POST /purchases/:id/confirm': buying.confirmPurchase,
-  'POST /purchases/:id/cancel': buying.cancelPurchase,
+  'DELETE /purchases/:id': buying.deletePurchase,
+  'PATCH /purchases/:id/confirm': buying.confirmPurchase,
+  'PATCH /purchases/:id/cancel': buying.cancelPurchase,
+  'PATCH /purchases/:id/close-short': buying.closePurchaseShort,
+  'POST /purchases/:id/receipts': buying.receivePurchase,
+  'GET /purchases/receipts/:id': buying.getPurchaseReceipt,
+  'POST /purchases/from-alerts': buying.purchaseFromAlerts,
+
+  // ── Purchase returns (debit notes) ──
   'GET /purchase-returns': buying.listPurchaseReturns,
+  'POST /purchase-returns': buying.createPurchaseReturn,
+  'GET /purchase-returns/:id': buying.getPurchaseReturn,
+  'GET /purchase-returns/:id/debit-note': buying.purchaseReturnDebitNote,
+  'PATCH /purchase-returns/:id/confirm': buying.confirmPurchaseReturn,
+  'PATCH /purchase-returns/:id/cancel': buying.cancelPurchaseReturn,
+  'DELETE /purchase-returns/:id': buying.deletePurchaseReturn,
 
   // ── Suppliers ──
   'GET /suppliers': buying.listSuppliers,
   'GET /suppliers/:id': buying.getSupplier,
   'POST /suppliers': buying.createSupplier,
-  'PATCH /suppliers/:id': buying.updateSupplier,
+  'PUT /suppliers/:id': buying.updateSupplier,
+  'DELETE /suppliers/:id': buying.deleteSupplier,
   'PATCH /suppliers/:id/toggle-active': buying.toggleSupplier,
 
   // ── Supplier payments ──
   'GET /supplier-payments': buying.listSupplierPayments,
+  'POST /supplier-payments': buying.createSupplierPaymentDirect,
+  'DELETE /supplier-payments/:id': buying.deleteSupplierPayment,
   'GET /supplier-payments/purchase/:id': buying.supplierPaymentsForPurchase,
   'GET /supplier-payments/supplier/:id': buying.paymentsForSupplier,
+  'GET /supplier-payments/:id/voucher-data': buying.supplierPaymentVoucher,
+  'GET /supplier-payments/credit-ledger/:id': buying.supplierCreditLedger,
+  'POST /supplier-payments/lump-sum': buying.supplierLumpSum,
+  'POST /supplier-payments/apply-credit': buying.supplierApplyCredit,
+  'POST /supplier-payments/credit': buying.supplierCredit,
   'POST /purchases/:id/payments': buying.createSupplierPayment,
 
   // ── Expenses ──
@@ -162,7 +200,10 @@ export const ROUTES: Record<string, DemoHandler> = {
   'GET /expenses/summary': buying.expenseSummary,
   'GET /expenses/categories': buying.listExpenseCategories,
   'POST /expenses/categories': buying.createExpenseCategory,
+  'PATCH /expenses/categories/:id': buying.updateExpenseCategory,
+  'DELETE /expenses/categories/:id': buying.deleteExpenseCategory,
   'GET /expenses/recurring': buying.listRecurring,
+  'DELETE /expenses/recurring/:id': buying.deleteRecurring,
   'POST /expenses': buying.createExpense,
   'PATCH /expenses/:id': buying.updateExpense,
   'DELETE /expenses/:id': buying.deleteExpense,

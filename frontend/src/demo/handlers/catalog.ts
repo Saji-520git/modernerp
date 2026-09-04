@@ -88,6 +88,35 @@ export const toggleProduct: DemoHandler = ({ params }) => {
   return { id: p.id, isActive: true, name: p.name };
 };
 
+export const deleteProduct: DemoHandler = ({ params }) => {
+  const d = db();
+  const i = d.products.findIndex((p) => p.id === params.id);
+  if (i < 0) throw new DemoHttpError(404, 'Product not found');
+  // The real service hard-deletes only when nothing references the product, and
+  // soft-deletes otherwise. Removing one that is on an invoice would orphan the
+  // line and change historic totals.
+  const hasHistory =
+    d.sales.some((s) => s.lines.some((l) => l.productId === params.id)) ||
+    d.purchases.some((p) => p.lines.some((l) => l.productId === params.id));
+  if (hasHistory) return { success: true, softDeleted: true };
+
+  d.products.splice(i, 1);
+  d.stock = d.stock.filter((s) => s.productId !== params.id);
+  d.batches = d.batches.filter((b) => b.productId !== params.id);
+  return { success: true, softDeleted: false };
+};
+
+export const setProductConversions: DemoHandler = ({ params, body }) => {
+  const p = productById(params.id);
+  if (!p) throw new DemoHttpError(404, 'Product not found');
+  // The demo models one Box→base conversion per product, which is what the
+  // catalogue carries; anything richer is stored but not re-read.
+  const rows = (body?.conversions ?? []) as any[];
+  const box = rows.find((c) => c.fromUnitId === 'unit_box');
+  p.boxOf = box ? Number(box.conversionQty) || undefined : undefined;
+  return productConversions({ params, query: {}, body: null, method: 'GET', path: '' });
+};
+
 export const productConversions: DemoHandler = ({ params }) => {
   const p = productById(params.id);
   if (!p?.boxOf) return [];

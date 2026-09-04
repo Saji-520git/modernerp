@@ -12,7 +12,7 @@
     "test": "vitest",
     "build:demo": "vite build --mode demo --outDir dist-demo",
     "preview:demo": "vite preview --outDir dist-demo --port 4173",
-    "verify:demo": "node scripts/verify-demo-build.mjs",
+    "verify:demo": "node scripts/check-demo-routes.mjs && node scripts/verify-demo-build.mjs",
     "dev:demo": "vite --mode demo --port 5174"
   },
   "dependencies": {

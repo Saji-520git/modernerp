@@ -17,7 +17,7 @@ export const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 export const DEMO_DB_KEY = 'modernerp-demo-db';
 
 /** Bump when the seed shape changes so stale saved data is re-seeded, not merged. */
-export const DEMO_DB_VERSION = 3;
+export const DEMO_DB_VERSION = 4;
 
 /**
  * Demo sign-in accounts.

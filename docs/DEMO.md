@@ -100,11 +100,23 @@ empty whatever time the link is opened.
 
 Scoped to the flows a demo actually walks through, not all ~150 endpoints.
 
-**Working:** login · dashboard · POS (search, barcode, unit conversion, batch
+**Sales and billing — the flow the client cares about most, verified click by
+click in the browser:** raise a manual invoice (customer, warehouse, product
+search or barcode) → confirm, which deducts stock and writes the `SALE_OUT`
+movement → record a full or part payment → the list shows PARTIAL with the
+balance → open the detail, which carries the lines and the payment history →
+Download PDF → Process Return, capped per line at what is still returnable, and
+the credit note puts the stock back.
+
+Proved on `INV-2026-0656`: Rs. 26,500 for Silva Construction, stock 180 → 170 on
+confirm, Rs. 10,000 part payment leaving Rs. 16,500 outstanding, then
+`CRN-2026-0001` for 3 bags taking stock back to 173.
+
+**Also working:** dashboard · POS (search, barcode, unit conversion, batch
 picking, credit limits, hold bills, checkout, receipt) · products · stock
-overview with batches and expiry · stock alerts · sales invoices and payments ·
-sale returns · purchases and GRN · suppliers and supplier payments · customers
-and credit · expenses · POS shifts · users and permissions · warehouses ·
+overview with batches and expiry · stock alerts · purchases, partial GRN
+receipts and debit notes · suppliers and supplier payments · customers and
+credit · expenses · POS shifts · users and permissions · warehouses ·
 categories, brands and units · the sales, inventory, products, customers,
 purchases, ageing and P&L reports.
 
@@ -166,6 +178,22 @@ npm run build            # normal build → dist/
 npm run build:demo       # demo build   → dist-demo/
 npm run verify:demo      # asserts the separation
 ```
+
+### Every endpoint must be registered on the method the app actually calls
+
+`npm run verify:demo` runs `scripts/check-demo-routes.mjs` first. It walks the
+source for `api.<verb>(...)` call sites and compares them with the route table.
+
+This was added after the route table was found to have `confirm`, `cancel` and
+`pay` registered as **POST** when `salesApi` calls them with **PATCH** — so
+confirming an invoice and taking a payment both 404'd, while every page still
+loaded perfectly. A page load only issues GETs, which is exactly why clicking
+through the nav had not caught it. `updateSale`, `deleteSale`,
+`recordPaymentNew`, the whole purchase-returns module and several others had no
+handler at all. 24 verb mismatches and 20 in-scope gaps, all closed.
+
+Endpoints belonging to the switched-off modules are listed in `OUT_OF_SCOPE` in
+that script, with the reason. Anything not on that list is a real gap and fails.
 
 ### The demo must build to `dist-demo/`, never `dist/`
 

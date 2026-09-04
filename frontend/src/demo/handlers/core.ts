@@ -167,6 +167,43 @@ export const warehouseStats: DemoHandler = ({ params }) => {
   };
 };
 
+export const getWarehouse: DemoHandler = ({ params }) => {
+  const w = db().warehouses.find((x) => x.id === params.id);
+  if (!w) throw new DemoHttpError(404, 'Warehouse not found');
+  return { ...w, _count: { stock: db().stock.filter((s) => s.warehouseId === w.id && s.qty > 0).length } };
+};
+
+export const createWarehouse: DemoHandler = ({ body }) => {
+  const d = db();
+  const name = String(body?.name ?? '').trim();
+  const code = String(body?.code ?? '').trim().toUpperCase();
+  if (!name) throw new DemoHttpError(400, 'Name is required');
+  if (!code) throw new DemoHttpError(400, 'Code is required');
+  if (d.warehouses.some((w) => w.code.toUpperCase() === code)) {
+    throw new DemoHttpError(409, `Code ${code} is already in use.`);
+  }
+  const w = {
+    id: nextId('wh'), name, code,
+    city: body?.city ?? null, type: String(body?.type ?? 'WAREHOUSE'),
+    isDefault: false, isActive: true,
+  };
+  d.warehouses.push(w);
+  // A new location starts with a stock row per product, at zero, so it appears
+  // in Stock Overview instead of being invisible until something moves.
+  for (const p of d.products) d.stock.push({ productId: p.id, warehouseId: w.id, qty: 0, shortfallQty: 0 });
+  return w;
+};
+
+export const updateWarehouse: DemoHandler = ({ params, body }) => {
+  const w = db().warehouses.find((x) => x.id === params.id);
+  if (!w) throw new DemoHttpError(404, 'Warehouse not found');
+  if (body?.name) w.name = String(body.name);
+  if (body?.code) w.code = String(body.code).toUpperCase();
+  if (body?.city !== undefined) w.city = body.city;
+  if (body?.type) w.type = String(body.type);
+  return w;
+};
+
 export const setDefaultWarehouse: DemoHandler = ({ params }) => {
   const d = db();
   d.warehouses.forEach((w) => { w.isDefault = w.id === params.id; });
@@ -265,4 +302,10 @@ export const changePassword: DemoHandler = ({ params, body }) => {
   if (!u) throw new DemoHttpError(404, 'User not found');
   u.password = String(body?.newPassword ?? u.password);
   return { message: 'Password updated.' };
+};
+
+export const getUnit: DemoHandler = ({ params }) => {
+  const u = db().units.find((x) => x.id === params.id);
+  if (!u) throw new DemoHttpError(404, 'Unit not found');
+  return { ...u, isActive: true, _count: { productsBase: db().products.filter((p) => p.unitId === u.id).length } };
 };

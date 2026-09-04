@@ -79,6 +79,22 @@ export interface DemoShift {
   cashPayoutsCents: number; status: 'OPEN' | 'CLOSED'; note: string | null;
 }
 
+export interface DemoPurchaseReturn {
+  id: string; number: string; purchaseId: string; supplierId: string; warehouseId: string;
+  status: string; reason: string | null; totalCents: number; isActive: boolean;
+  createdAt: string; updatedAt: string;
+  purchase: { id: string; number: string };
+  supplier: { id: string; name: string; phone: string | null };
+  warehouse: { id: string; name: string; code: string };
+  createdBy: { id: string; fullName: string };
+  lines: Array<{
+    id: string; purchaseLineId: string; productId: string; qty: number;
+    unitCostCents: number; lineTotalCents: number;
+    product: { id: string; name: string; sku: string };
+    purchaseLine: { id: string; qty: number; receivedQty: number; returnedQty: number };
+  }>;
+}
+
 export interface DemoPayment {
   id: string; saleId: string | null; purchaseId: string | null;
   amountCents: number; method: string; date: string; note: string | null; createdById: string; createdAt: string;
@@ -107,6 +123,7 @@ export interface DemoDb {
   payments: DemoPayment[];
   posDrafts: unknown[];
   saleReturns: unknown[];
+  purchaseReturns: DemoPurchaseReturn[];
   alertsRead: string[];
   alertsDismissed: string[];
 }
@@ -322,18 +339,23 @@ export function buildSeed(): DemoDb {
       (supplier.id === 'sup_kandy'  && (p.categoryId === 'cat_electric' || p.categoryId === 'cat_tools')) ||
       (supplier.id === 'sup_upcty'));
     const chosen = (supplierProducts.length ? supplierProducts : PRODUCTS).slice(0, between(2, 5));
+    // The two most recent stay open, so the Purchases page has live work on it.
+    const isOpen = d <= 6;
     const lines: DemoPurchaseLine[] = chosen.map((p, idx) => {
       const qty = Math.max(4, Math.round(p.reorderQty * (0.4 + rnd() * 0.6)));
       return {
-        id: `pl_${poSeq}_${idx}`, productId: p.id, qty, receivedQty: qty,
+        id: `pl_${poSeq}_${idx}`, productId: p.id, qty,
+        // An open order has received NOTHING yet. Seeding receivedQty = qty on
+        // a PENDING order left it with nothing outstanding, so its Receive
+        // Stock panel had no quantity to take in — the order looked delivered
+        // and un-receivable at the same time.
+        receivedQty: isOpen ? 0 : qty,
         unitCostCents: p.costCents, taxPercent: 0, lineTotalCents: qty * p.costCents, unitId: p.unitId,
       };
     });
     const subtotal = lines.reduce((s, l) => s + l.lineTotalCents, 0);
     const when = at(d, between(9, 15), between(0, 59));
     const iso = when.toISOString();
-    // The two most recent stay open, so the Purchases page has live work on it.
-    const isOpen = d <= 6;
     const id = `pur_${poSeq}`;
     purchases.push({
       id, number: `PO-${year}-${String(poSeq).padStart(4, '0')}`,
@@ -423,7 +445,8 @@ export function buildSeed(): DemoDb {
     sales, purchases, movements,
     expenseCategories: EXPENSE_CATEGORIES,
     expenses, shifts, payments,
-    posDrafts: [], saleReturns: [], alertsRead: [], alertsDismissed: [],
+    posDrafts: [], saleReturns: [], purchaseReturns: [],
+    alertsRead: [], alertsDismissed: [],
   };
 }
 

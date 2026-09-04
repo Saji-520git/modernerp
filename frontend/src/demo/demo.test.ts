@@ -12,7 +12,12 @@ import { PRODUCTS, CUSTOMERS, SUPPLIERS } from './catalogue';
 import { DEMO_ACCOUNTS } from './config';
 import { ROLE_PERMISSIONS } from './permissions';
 import { toLocalYMD } from '../utils/local-date';
-import { posCheckout, customerCredit } from './handlers/selling';
+import {
+  posCheckout, customerCredit, createSale, updateSale, deleteSale, confirmSale,
+  cancelSale, recordSalePayment, saleForReturn, createReturn,
+  createCustomerPayment, deleteCustomerPayment,
+} from './handlers/selling';
+import { confirmPurchase, receivePurchase, createPurchaseReturn, confirmPurchaseReturn } from './handlers/buying';
 import { listStock } from './handlers/catalog';
 import { dashboardSummary, profitLoss } from './handlers/analytics';
 import { login } from './handlers/core';
@@ -232,6 +237,184 @@ describe('POS checkout', () => {
       .filter((s) => s.customerId === c.id && s.status === 'CONFIRMED')
       .reduce((n, s) => n + Math.max(0, s.totalCents - s.paidCents), 0);
     expect(info.balance).toBe(expected);
+  });
+});
+
+// ─── Billing ─────────────────────────────────────────────────────────────────
+//
+// The flow the client cares about most, and the one that was broken: the app
+// calls confirm / cancel / pay with PATCH and the demo had registered them as
+// POST, so every one of them 404'd. Loading the page never noticed, because a
+// page load only issues GETs.
+
+describe('the billing chain', () => {
+  const product = PRODUCTS.find((p) => !p.isBatchTracked && p.stock.wh_main > 40)!;
+  const creditCustomer = CUSTOMERS.find((c) => c.creditEnabled)!;
+
+  const newDraft = (qty = 4) =>
+    createSale(ctx({
+      body: {
+        warehouseId: 'wh_main',
+        customerId: creditCustomer.id,
+        lines: [{ productId: product.id, qty, unitPriceCents: product.priceCents }],
+      },
+    })) as any;
+
+  it('creates a draft that has moved no stock yet', () => {
+    const before = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    const sale = newDraft();
+    const after = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    expect(sale.status).toBe('DRAFT');
+    expect(sale.totalCents).toBe(product.priceCents * 4);
+    expect(after).toBe(before);
+  });
+
+  it('edits a draft, and refuses to edit a confirmed invoice', () => {
+    const sale = newDraft();
+    const edited = updateSale(ctx({
+      params: { id: sale.id },
+      body: { lines: [{ productId: product.id, qty: 7, unitPriceCents: product.priceCents }] },
+    })) as any;
+    expect(edited.totalCents).toBe(product.priceCents * 7);
+
+    confirmSale(ctx({ params: { id: sale.id } }));
+    expect(() => updateSale(ctx({ params: { id: sale.id }, body: { note: 'nope' } }))).toThrow(/draft/i);
+  });
+
+  it('deletes a draft but never a confirmed invoice', () => {
+    const draft = newDraft();
+    expect((deleteSale(ctx({ params: { id: draft.id } })) as any).success).toBe(true);
+
+    const confirmed = newDraft();
+    confirmSale(ctx({ params: { id: confirmed.id } }));
+    // Deleting it would take a number out of the sequence — cancel is the path.
+    expect(() => deleteSale(ctx({ params: { id: confirmed.id } }))).toThrow(/cannot be deleted/i);
+  });
+
+  it('confirming deducts stock and records the movement', () => {
+    const sale = newDraft(6);
+    const before = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    confirmSale(ctx({ params: { id: sale.id } }));
+    const after = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+
+    expect(after).toBe(before - 6);
+    const moves = getDb().movements.filter((m) => m.refId === sale.id);
+    expect(moves.map((m) => m.type)).toContain('SALE_OUT');
+  });
+
+  it('cancelling a confirmed invoice puts the stock back', () => {
+    const sale = newDraft(5);
+    confirmSale(ctx({ params: { id: sale.id } }));
+    const afterConfirm = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    cancelSale(ctx({ params: { id: sale.id } }));
+    const afterCancel = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    expect(afterCancel).toBe(afterConfirm + 5);
+  });
+
+  it('takes a part payment and leaves the balance outstanding', () => {
+    const sale = newDraft(4);
+    confirmSale(ctx({ params: { id: sale.id } }));
+    const total = product.priceCents * 4;
+    const part = Math.round(total / 4);
+
+    recordSalePayment(ctx({ params: { id: sale.id }, body: { amountCents: part, method: 'CASH' } }));
+    const after = getDb().sales.find((s) => s.id === sale.id)!;
+    expect(after.paidCents).toBe(part);
+    expect(after.totalCents - after.paidCents).toBe(total - part);
+    expect(getDb().payments.filter((p) => p.saleId === sale.id)).toHaveLength(1);
+  });
+
+  it('refuses a payment larger than the balance', () => {
+    const sale = newDraft(2);
+    confirmSale(ctx({ params: { id: sale.id } }));
+    const total = product.priceCents * 2;
+    expect(() =>
+      recordSalePayment(ctx({ params: { id: sale.id }, body: { amountCents: total + 100, method: 'CASH' } })),
+    ).toThrow(/outstanding/i);
+  });
+
+  it('reversing a payment restores the receivable', () => {
+    const sale = newDraft(3);
+    confirmSale(ctx({ params: { id: sale.id } }));
+    const pay = createCustomerPayment(ctx({
+      body: { saleId: sale.id, amountCents: 5000, paymentMethod: 'CASH', paymentDate: new Date().toISOString() },
+    })) as any;
+    expect(getDb().sales.find((s) => s.id === sale.id)!.paidCents).toBe(5000);
+
+    deleteCustomerPayment(ctx({ params: { id: pay.id } }));
+    expect(getDb().sales.find((s) => s.id === sale.id)!.paidCents).toBe(0);
+  });
+
+  it('prepares a return with a per-line cap, and the return restores stock', () => {
+    const sale = newDraft(8);
+    confirmSale(ctx({ params: { id: sale.id } }));
+
+    // `/sales/returns/for-sale/:id` returns the SALE with per-line return info,
+    // not a list of credit notes. Handing back an array left every line
+    // uncapped, because the page reads lines[].availableToReturn.
+    const prep = saleForReturn(ctx({ params: { id: sale.id } })) as any;
+    expect(Array.isArray(prep.lines)).toBe(true);
+    expect(prep.lines[0].availableToReturn).toBe(8);
+    expect(prep.lines[0].alreadyReturnedQty).toBe(0);
+
+    const before = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    createReturn(ctx({ body: { saleId: sale.id, lines: [{ productId: product.id, qty: 3 }] } }));
+    const after = getDb().stock.find((s) => s.productId === product.id && s.warehouseId === 'wh_main')!.qty;
+    expect(after).toBe(before + 3);
+
+    // A second attempt may only take what is left.
+    const prep2 = saleForReturn(ctx({ params: { id: sale.id } })) as any;
+    expect(prep2.lines[0].alreadyReturnedQty).toBe(3);
+    expect(prep2.lines[0].availableToReturn).toBe(5);
+  });
+
+  it('refuses to return more than was sold', () => {
+    const sale = newDraft(2);
+    confirmSale(ctx({ params: { id: sale.id } }));
+    expect(() =>
+      createReturn(ctx({ body: { saleId: sale.id, lines: [{ productId: product.id, qty: 5 }] } })),
+    ).toThrow(/only 2/i);
+  });
+});
+
+describe('purchasing', () => {
+  it('confirming a purchase order brings stock in', () => {
+    const po = getDb().purchases.find((p) => p.status === 'DRAFT')!;
+    const line = po.lines[0];
+    const before = getDb().stock.find((s) => s.productId === line.productId && s.warehouseId === po.warehouseId)!.qty;
+
+    confirmPurchase(ctx({ params: { id: po.id } }));
+    const after = getDb().stock.find((s) => s.productId === line.productId && s.warehouseId === po.warehouseId)!.qty;
+
+    expect(getDb().purchases.find((p) => p.id === po.id)!.status).toBe('CONFIRMED');
+    expect(after).toBe(before + line.qty);
+  });
+
+  it('receives a partial delivery and leaves the order PARTIAL', () => {
+    const po = getDb().purchases.find((p) => p.status === 'DRAFT')!;
+    const line = po.lines[0];
+    const half = Math.max(1, Math.floor(line.qty / 2));
+
+    receivePurchase(ctx({ params: { id: po.id }, body: { lines: [{ purchaseLineId: line.id, qty: half }] } }));
+    const after = getDb().purchases.find((p) => p.id === po.id)!;
+    expect(after.deliveryStatus).toBe(half >= line.qty ? 'COMPLETE' : 'PARTIAL');
+    expect(after.lines[0].receivedQty).toBe(half);
+  });
+
+  it('a confirmed debit note sends stock back to the supplier', () => {
+    const po = getDb().purchases.find((p) => p.status === 'DRAFT')!;
+    confirmPurchase(ctx({ params: { id: po.id } }));
+    const line = getDb().purchases.find((p) => p.id === po.id)!.lines[0];
+
+    const ret = createPurchaseReturn(ctx({
+      body: { purchaseId: po.id, lines: [{ purchaseLineId: line.id, qty: 2 }] },
+    })) as any;
+    expect(ret.status).toBe('DRAFT');
+
+    const before = getDb().stock.find((s) => s.productId === line.productId && s.warehouseId === po.warehouseId)!.qty;
+    confirmPurchaseReturn(ctx({ params: { id: ret.id } }));
+    const after = getDb().stock.find((s) => s.productId === line.productId && s.warehouseId === po.warehouseId)!.qty;
+    expect(after).toBe(before - 2);
   });
 });
 
