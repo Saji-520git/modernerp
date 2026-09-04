@@ -5,6 +5,7 @@ import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShoppingCart, Package, B
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import ThemeToggle from '../../components/common/ThemeToggle';
+import DemoSignIn from '../../demo/DemoSignIn';
 
 export default function LoginPage() {
   // Deliberately blank. A prefilled address names a real account on a machine
@@ -24,13 +25,17 @@ export default function LoginPage() {
     setPassword('');
   }, []);
 
-  async function onSubmit(e: React.FormEvent) {
+  // Credentials may be passed in rather than read from state: the demo's
+  // one-tap buttons supply them directly, and a setState would not have landed
+  // by the time this ran.
+  async function onSubmit(e: React.FormEvent, override?: { email: string; password: string }) {
     e.preventDefault();
+    const creds = override ?? { email, password };
     setError('');
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/login', { email, password });
-      localStorage.setItem('last_login_email', email);
+      const { data } = await api.post('/auth/login', creds);
+      localStorage.setItem('last_login_email', creds.email);
       // Drop any cached data from a prior account in this tab before entering.
       queryClient.clear();
       setAuth(data.user, data.access, data.refresh);
@@ -53,6 +58,14 @@ export default function LoginPage() {
 
   function handleSubmit() {
     void onSubmit({ preventDefault() {} } as React.FormEvent);
+  }
+
+  function handleDemoPick(demoEmail: string, demoPassword: string) {
+    // Filled in as well as submitted, so the visitor can see which account they
+    // signed in as rather than being teleported past the form.
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    void onSubmit({ preventDefault() {} } as React.FormEvent, { email: demoEmail, password: demoPassword });
   }
 
   return (
@@ -195,6 +208,10 @@ export default function LoginPage() {
                 'Sign in'
               )}
             </button>
+
+            {import.meta.env.VITE_DEMO_MODE === 'true' && (
+              <DemoSignIn onPick={handleDemoPick} disabled={loading} />
+            )}
           </div>
 
           {/* Footer */}

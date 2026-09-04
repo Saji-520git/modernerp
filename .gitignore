@@ -17,3 +17,6 @@ coverage/
 backend/uploads/
 backend/prisma/migrations/dev.db*
 *.tsbuildinfo
+
+# Frontend demo build output (kept separate from dist/, which Electron packages)
+frontend/dist-demo/

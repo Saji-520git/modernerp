@@ -40,6 +40,7 @@ import { useModule } from './hooks/useModule';
 import { useModalFocusTrap } from './hooks/useModalFocusTrap';
 import type { ModuleKey } from './config/modules';
 import { useAuthStore } from './store/authStore';
+import DemoBadge from './demo/DemoBadge';
 
 // ─── Coming-soon stub ─────────────────────────────────────────────────────────
 
@@ -414,6 +415,9 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* Demo builds only — Vite folds this to `false` and Rollup drops the
+          import, so a real install carries neither the badge nor the mock layer. */}
+      {import.meta.env.VITE_DEMO_MODE === 'true' && <DemoBadge />}
     </>
   );
 }

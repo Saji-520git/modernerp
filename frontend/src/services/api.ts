@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { installDemoAdapter } from '../demo/install';
 
 // v1.0.44 — guards against multiple parallel 401s scheduling several logout
 // timers / dispatching several banners. Reset AFTER logout() runs (see below).
@@ -10,6 +11,16 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   timeout: 30000,
 });
+
+// ─── Demo builds only ─────────────────────────────────────────────────────────
+// Vite substitutes a literal for import.meta.env.VITE_DEMO_MODE at build time,
+// so in every normal build this reads `if ('undefined' === 'true')`, Rollup
+// removes the branch, and `src/demo` has no remaining importer to include.
+// Nothing about the real code path changes: the adapter is only swapped when
+// the flag is on.
+if (import.meta.env.VITE_DEMO_MODE === 'true') {
+  installDemoAdapter(api);
+}
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
