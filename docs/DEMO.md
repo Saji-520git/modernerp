@@ -16,7 +16,7 @@ branch `demo/client-preview`, cut from `electron-v1.0` at `c607d83` (v1.1.8).
 | Branch | `demo/client-preview` (never merge into `electron-v1.0` without re-reading §5) |
 | Build | `npm run build:demo` → `frontend/dist-demo/` |
 | Host | Vercel, static. No cold start, no server cost. |
-| **Live** | **https://frontend-mu-khaki-19.vercel.app** (project `sajithfaiz1999-1725/frontend`) |
+| **Live** | **https://modernerp-demo.vercel.app** (project `sajithfaiz1999-1725/modernerp-demo`) |
 | Data | Fictional. Generated in `src/demo/catalogue.ts`. |
 | Persistence | `localStorage`, per visitor, per browser. Nothing leaves the device. |
 
@@ -278,8 +278,21 @@ prospect's branding and should not turn up in a search for their business.
 
 ### The deployment, as it stands
 
-First deploy: **https://frontend-mu-khaki-19.vercel.app**
-Immutable alias: `https://frontend-of8rb9hja-sajithfaiz1999-1725.vercel.app`
+Client-facing: **https://modernerp-demo.vercel.app**
+Also public: `https://frontend-mu-khaki-19.vercel.app` (the domain the project
+was first created with; kept because it works, harmless to leave).
+
+⚠️ **Not every Vercel URL for this project is public.** Vercel's default
+Standard Protection puts an SSO login wall in front of *deployment* URLs —
+`modernerp-demo-hfrskbifz-….vercel.app` and anything aliased directly to a
+deployment both redirect to `vercel.com/login`. Only a domain attached to the
+PROJECT is public. `modernerp-demo.vercel.app` is public because it was added
+with `vercel domains add <domain> <project>`, not with `vercel alias set`.
+
+That distinction is easy to miss, because a protected URL still ends in a 200 —
+just on Vercel's sign-in page. When checking a URL, confirm it SERVES the demo
+(grep the HTML for the business name, or the bundle for `__MODERNERP_DEMO__`),
+never just that it responds.
 
 Verified against the LIVE site, not a local copy — the served bundle carries
 `__MODERNERP_DEMO__`, the demo credentials and the fictional catalogue, and
@@ -291,9 +304,9 @@ attachments upload — no console errors.
 
 Three things to know about this deployment:
 
-1. **The project is named `frontend`**, because that is the directory it was
-   deployed from, so the URL reads `frontend-…`. Rename it in the Vercel
-   dashboard before sending the link to a client.
+1. **Renamed** to `modernerp-demo` (`vercel project rename`). Note that a
+   rename does NOT rename the existing auto-generated domain — the project
+   domain had to be added separately, as above.
 2. **GitHub is not connected** — the CLI reported *"You need to add a Login
    Connection to your GitHub account first (400)"*. Nothing is broken by it;
    it only means no automatic redeploy on push. Re-run the deploy command to
