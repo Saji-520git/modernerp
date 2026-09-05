@@ -762,7 +762,15 @@ Also on this branch: the app is responsive below `lg` for the first time
 is behind `lg:` or `@media (max-width: 1023.98px)`, so desktop and Electron
 render unchanged — verified at 1440x900.
 
-Tests: `src/demo/demo.test.ts`, 39 cases (130 total on this branch).
+Tests: `src/demo/demo.test.ts`, 47 cases (138 total on this branch).
+
+A matching verb is not a matching SHAPE. Walking the contacts and expenses
+pages found three responses invented rather than read: customer lump-sum
+returned no `allocations` (the modal blanked after the money moved), the expense
+summary read from/to instead of {year,month} (whole year as "This Month"), and
+the Expense entity uses `amount`, not `amountCents` — the one place in the app
+that breaks the convention. The tests now assert the fields each modal
+destructures.
 
 **Current: Phase 3 continuing**
 **Next sprint: Choose from:**

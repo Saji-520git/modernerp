@@ -15,9 +15,13 @@ import { toLocalYMD } from '../utils/local-date';
 import {
   posCheckout, customerCredit, createSale, updateSale, deleteSale, confirmSale,
   cancelSale, recordSalePayment, saleForReturn, createReturn,
-  createCustomerPayment, deleteCustomerPayment,
+  createCustomerPayment, deleteCustomerPayment, lumpSumPayment, creditLedger,
+  applyCustomerCredit,
 } from './handlers/selling';
-import { confirmPurchase, receivePurchase, createPurchaseReturn, confirmPurchaseReturn } from './handlers/buying';
+import {
+  confirmPurchase, receivePurchase, createPurchaseReturn, confirmPurchaseReturn,
+  supplierCreditLedger, supplierLumpSum, createExpense, listExpenses, expenseSummary,
+} from './handlers/buying';
 import { listStock } from './handlers/catalog';
 import { dashboardSummary, profitLoss } from './handlers/analytics';
 import { login } from './handlers/core';
@@ -374,6 +378,130 @@ describe('the billing chain', () => {
     expect(() =>
       createReturn(ctx({ body: { saleId: sale.id, lines: [{ productId: product.id, qty: 5 }] } })),
     ).toThrow(/only 2/i);
+  });
+});
+
+// The route checker proves an endpoint exists on the right method. It cannot
+// prove the RESPONSE is shaped the way the screen reads it — and a wrong shape
+// fails at render, after the write has already landed. These assert the exact
+// fields the modals destructure.
+describe('response shapes the UI destructures', () => {
+  const creditCustomer = CUSTOMERS.find((c) => c.creditEnabled)!;
+
+  it('lump-sum returns allocations the modal can map over', () => {
+    // LumpSumPaymentModal renders result.allocations.map(a => a.saleNumber /
+    // a.paymentNumber / a.appliedCents) and reads appliedCents and
+    // creditAddedCents. Returning `{ applied, unappliedCents }` instead left
+    // allocations undefined: the money moved and the screen went blank.
+    const out = lumpSumPayment(ctx({
+      body: { customerId: creditCustomer.id, amountCents: 50_000, paymentMethod: 'CASH' },
+    })) as any;
+
+    expect(Array.isArray(out.allocations)).toBe(true);
+    expect(typeof out.allocationGroupId).toBe('string');
+    expect(typeof out.appliedCents).toBe('number');
+    expect(typeof out.creditAddedCents).toBe('number');
+    for (const a of out.allocations) {
+      expect(typeof a.saleNumber).toBe('string');
+      expect(typeof a.paymentNumber).toBe('string');
+      expect(typeof a.appliedCents).toBe('number');
+    }
+    // Every cent is either allocated or held as credit.
+    const allocated = out.allocations.reduce((n: number, a: any) => n + a.appliedCents, 0);
+    expect(allocated).toBe(out.appliedCents);
+    expect(out.appliedCents + out.creditAddedCents).toBe(50_000);
+  });
+
+  it('lump-sum settles the oldest invoice first', () => {
+    const before = getDb().sales
+      .filter((s) => s.customerId === creditCustomer.id && s.status === 'CONFIRMED' && s.paidCents < s.totalCents)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const out = lumpSumPayment(ctx({
+      body: { customerId: creditCustomer.id, amountCents: 50_000, paymentMethod: 'CASH' },
+    })) as any;
+    if (out.allocations.length) {
+      expect(out.allocations[0].saleNumber).toBe(before[0].number);
+    }
+  });
+
+  it('lump-sum reduces the outstanding by exactly what it applied', () => {
+    const owed = () => getDb().sales
+      .filter((s) => s.customerId === creditCustomer.id && s.status === 'CONFIRMED')
+      .reduce((n, s) => n + Math.max(0, s.totalCents - s.paidCents), 0);
+    const before = owed();
+    const out = lumpSumPayment(ctx({
+      body: { customerId: creditCustomer.id, amountCents: 50_000, paymentMethod: 'CASH' },
+    })) as any;
+    expect(before - owed()).toBe(out.appliedCents);
+  });
+
+  it('both credit ledgers are bare arrays, as their services declare', () => {
+    expect(Array.isArray(creditLedger(ctx({ params: { id: creditCustomer.id } })))).toBe(true);
+    expect(Array.isArray(supplierCreditLedger(ctx({ params: { id: SUPPLIERS[0].id } })))).toBe(true);
+  });
+
+  it('apply-credit returns the allocation envelope the modal reads', () => {
+    const out = applyCustomerCredit(ctx({ body: { customerId: creditCustomer.id, amountCents: 1000 } })) as any;
+    expect(Array.isArray(out.allocations)).toBe(true);
+    expect(typeof out.appliedCents).toBe('number');
+    expect(typeof out.creditRemainingCents).toBe('number');
+  });
+
+  it('an expense carries `amount`, not `amountCents`', () => {
+    // The Expense entity in services/expenses.ts breaks the app's usual
+    // `…Cents` convention. Emitting amountCents left the money column blank,
+    // and reading it on create rejected every expense as "greater than zero".
+    const cat = getDb().expenseCategories[0];
+    const created = createExpense(ctx({
+      body: { categoryId: cat.id, amount: 450_000, description: 'Signboard repainting', paymentMethod: 'CASH' },
+    })) as any;
+
+    expect(created.amount).toBe(450_000);
+    expect(created).not.toHaveProperty('amountCents');
+    expect(created.category).toMatchObject({ id: cat.id, name: cat.name });
+
+    const listed = listExpenses(ctx({ query: { pageSize: '500' } })) as any;
+    const row = listed.data.find((e: any) => e.id === created.id);
+    expect(row.amount).toBe(450_000);
+  });
+
+  it('the expense summary is one calendar month, not everything', () => {
+    // getMonthlySummary takes { year, month } — reading from/to matched nothing,
+    // so every expense fell in the window: the page showed the whole year as
+    // "This Month" and Rs. 0.00 as "Last Month".
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+
+    const all = getDb().expenses.reduce((n, e) => n + e.amountCents, 0);
+    const s = expenseSummary(ctx({ query: { year: String(y), month: String(m) } })) as any;
+
+    expect(s.month).toBe(`${y}-${String(m).padStart(2, '0')}`);
+    expect(s.totalCents).toBeLessThan(all);
+    expect(typeof s.prevTotalCents).toBe('number');
+    expect(s.prevTotalCents).toBeGreaterThan(0);   // the seed trades in prior months
+    expect(Array.isArray(s.byCategory)).toBe(true);
+    for (const c of s.byCategory) {
+      expect(typeof c.id).toBe('string');
+      expect(c).toHaveProperty('budget');
+      expect(c).toHaveProperty('overBudget');
+    }
+    // The month's rows must add up to the headline.
+    const summed = s.byCategory.reduce((n: number, c: any) => n + c.totalCents, 0);
+    expect(summed).toBe(s.totalCents);
+  });
+
+  it('supplier lump-sum uses purchaseNumber, which is what its modal renders', () => {
+    const withDebt = getDb().purchases.find((p) => p.status === 'CONFIRMED' && p.paidCents < p.totalCents);
+    if (!withDebt) return;
+    const out = supplierLumpSum(ctx({
+      body: { supplierId: withDebt.supplierId, amountCents: 20_000, paymentMethod: 'CASH' },
+    })) as any;
+    expect(Array.isArray(out.allocations)).toBe(true);
+    for (const a of out.allocations) {
+      expect(typeof a.purchaseNumber).toBe('string');
+      expect(typeof a.paymentNumber).toBe('string');
+    }
   });
 });
 

@@ -765,38 +765,67 @@ export const paymentsForCustomer: DemoHandler = ({ params }) => {
     });
 };
 
-export const creditLedger: DemoHandler = ({ params }) => {
-  const sales = realSales().filter((s) => s.customerId === params.id);
-  const rows = sales.map((s) => ({
-    id: s.id, date: s.date, type: 'INVOICE', reference: s.number,
-    debitCents: s.totalCents, creditCents: s.paidCents,
-    balanceCents: s.totalCents - s.paidCents,
-  }));
-  return { rows, openingBalanceCents: 0, closingBalanceCents: creditBalanceOf(params.id) };
-};
+/**
+ * Unapplied credit movements for a customer.
+ *
+ * `customerPaymentsApi.creditLedger` is typed `Promise<CustomerCreditLedgerEntry[]>`
+ * — a bare array, not an envelope. The demo holds no unapplied credit (every
+ * payment is allocated to an invoice as it is taken), so the honest answer is an
+ * empty list rather than a re-labelled invoice list, which would have shown
+ * invoices as credit movements.
+ */
+export const creditLedger: DemoHandler = () => [];
 
+/**
+ * One payment settled across a customer's open invoices, oldest first.
+ *
+ * The response shape is `LumpSumCustomerPaymentResult` and it is load-bearing:
+ * the modal renders `result.allocations.map(a => a.saleNumber / a.paymentNumber
+ * / a.appliedCents)` and reads `appliedCents` and `creditAddedCents`. An earlier
+ * version of this handler invented `{ applied, unappliedCents }`, so
+ * `allocations` was undefined and the modal threw on `.map` the moment a
+ * payment succeeded — the money moved correctly and the screen went blank.
+ */
 export const lumpSumPayment: DemoHandler = ({ body }) => {
   const d = db();
   const customerId = String(body?.customerId ?? '');
-  let remaining = Number(body?.amountCents ?? 0);
-  if (remaining <= 0) throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+  const total = Number(body?.amountCents ?? 0);
+  if (total <= 0) throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+
+  let remaining = total;
   // Oldest invoice first, which is how a counter actually settles an account.
   const open = d.sales
     .filter((s) => s.customerId === customerId && s.status === 'CONFIRMED' && s.paidCents < s.totalCents)
     .sort((a, b) => a.date.localeCompare(b.date));
-  const applied: unknown[] = [];
-  const now = new Date().toISOString();
+
+  const allocations: Array<{ saleId: string; saleNumber: string; paymentNumber: string; appliedCents: number }> = [];
+  const now = body?.paymentDate ? String(body.paymentDate) : new Date().toISOString();
+
   for (const s of open) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, s.totalCents - s.paidCents);
     s.paidCents += take;
     remaining -= take;
-    d.payments.push({
+    const pay = {
       id: nextId('pay'), saleId: s.id, purchaseId: null, amountCents: take,
-      method: String(body?.method ?? 'CASH'), date: now, note: 'Account settlement',
-      createdById: currentUserId(), createdAt: now,
+      method: String(body?.paymentMethod ?? body?.method ?? 'CASH'),
+      date: now, note: body?.notes ?? 'Account settlement',
+      createdById: currentUserId(), createdAt: new Date().toISOString(),
+    };
+    d.payments.push(pay);
+    allocations.push({
+      saleId: s.id,
+      saleNumber: s.number,
+      paymentNumber: `RCP-${pay.id.slice(-6).toUpperCase()}`,
+      appliedCents: take,
     });
-    applied.push({ saleId: s.id, number: s.number, amountCents: take });
   }
-  return { applied, unappliedCents: remaining };
+
+  return {
+    allocationGroupId: nextId('alloc'),
+    allocations,
+    appliedCents: total - remaining,
+    // Anything left over sits on the account rather than being refused.
+    creditAddedCents: remaining,
+  };
 };

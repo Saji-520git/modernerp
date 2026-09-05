@@ -326,15 +326,31 @@ export const toggleSupplier: DemoHandler = ({ params }) => {
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
 
+/**
+ * The `Expense` shape the page renders.
+ *
+ * The money field is `amount` (in cents), NOT `amountCents` — the rest of the
+ * app uses the `…Cents` suffix, this module does not, and guessing produced a
+ * table of blank amounts. Same on the way in: `CreateExpensePayload.amount`.
+ */
 function shapeExpense(e: ReturnType<typeof db>['expenses'][number]) {
   const cat = db().expenseCategories.find((c) => c.id === e.categoryId);
   return {
-    id: e.id, amountCents: e.amountCents, date: e.date, description: e.description,
-    reference: e.reference, paymentMethod: e.paymentMethod,
+    id: e.id,
     categoryId: e.categoryId,
-    category: cat ? { id: cat.id, name: cat.name, color: cat.color } : null,
-    isRecurringTemplate: false, isDeleted: false,
-    createdBy: userById(e.createdById), createdAt: e.createdAt,
+    category: cat
+      ? { id: cat.id, name: cat.name, color: cat.color }
+      : { id: e.categoryId, name: 'Other', color: '#94a3b8' },
+    amount: e.amountCents,
+    description: e.description,
+    date: e.date,
+    paymentMethod: e.paymentMethod,
+    reference: e.reference,
+    isRecurring: false,
+    recurringDay: null,
+    createdById: e.createdById,
+    createdBy: userById(e.createdById),
+    createdAt: e.createdAt,
   };
 }
 
@@ -344,38 +360,90 @@ export const listExpenses: DemoHandler = ({ query }) => {
   if (query.from || query.to) rows = rows.filter((e) => inLocalRange(e.date, query.from, query.to));
   if (query.search) rows = rows.filter((e) => matches([e.description, e.reference], query.search));
   rows.sort((a, b) => b.date.localeCompare(a.date));
-  const shaped = rows.map(shapeExpense);
-  return { ...paginate(shaped, query), totalCents: rows.reduce((n, e) => n + e.amountCents, 0) };
+  // ExpenseListResponse is exactly { total, page, pageSize, data } — the
+  // running total belongs to /expenses/summary, not here.
+  return paginate(rows.map(shapeExpense), query);
 };
 
+/**
+ * One calendar month of expenses, with the month before it for comparison.
+ *
+ * `expensesApi.getMonthlySummary` takes `{ year, month }` and returns
+ * `MonthlySummary` — NOT a from/to range. Reading `from`/`to` here matched
+ * nothing, so every expense fell inside the window: the page showed the whole
+ * year as "This Month" and Rs. 0.00 as "Last Month".
+ *
+ * `month` is 1-based on the wire, which is what the page sends.
+ */
 export const expenseSummary: DemoHandler = ({ query }) => {
-  const rows = db().expenses.filter((e) => inLocalRange(e.date, query.from, query.to));
+  const d = db();
+  const now = new Date();
+  const year = parseInt(query.year ?? '', 10) || now.getFullYear();
+  const month = parseInt(query.month ?? '', 10) || now.getMonth() + 1;
+
+  // Local calendar months, not UTC — the same rule as everywhere else here.
+  const inMonth = (iso: string, y: number, m: number) => {
+    const dt = new Date(iso);
+    return dt.getFullYear() === y && dt.getMonth() + 1 === m;
+  };
+  const prevY = month === 1 ? year - 1 : year;
+  const prevM = month === 1 ? 12 : month - 1;
+
+  const rows = d.expenses.filter((e) => inMonth(e.date, year, month));
+  const prev = d.expenses.filter((e) => inMonth(e.date, prevY, prevM));
+
+  const totalCents = rows.reduce((n, e) => n + e.amountCents, 0);
+  const prevTotalCents = prev.reduce((n, e) => n + e.amountCents, 0);
+
   const byCat = new Map<string, number>();
   for (const e of rows) byCat.set(e.categoryId, (byCat.get(e.categoryId) ?? 0) + e.amountCents);
+
   return {
-    totalCents: rows.reduce((n, e) => n + e.amountCents, 0),
+    month: `${year}-${String(month).padStart(2, '0')}`,
+    totalCents,
+    prevTotalCents,
+    // null rather than a fake 100% when there is no baseline to compare against.
+    changePct: prevTotalCents === 0
+      ? null
+      : Math.round(((totalCents - prevTotalCents) / prevTotalCents) * 1000) / 10,
     count: rows.length,
-    byCategory: [...byCat.entries()].map(([id, totalCents]) => {
-      const c = db().expenseCategories.find((x) => x.id === id);
-      return { categoryId: id, name: c?.name ?? 'Other', color: c?.color ?? '#94a3b8', totalCents };
-    }).sort((a, b) => b.totalCents - a.totalCents),
+    overBudgetCount: 0,
+    byCategory: [...byCat.entries()]
+      .map(([id, cents]) => {
+        const c = d.expenseCategories.find((x) => x.id === id);
+        return {
+          id, name: c?.name ?? 'Other', color: c?.color ?? '#94a3b8',
+          totalCents: cents, budget: null, overBudget: false,
+        };
+      })
+      .sort((a, b) => b.totalCents - a.totalCents),
   };
 };
 
 export const listExpenseCategories: DemoHandler = () =>
   db().expenseCategories.map((c) => ({
-    ...c, isActive: true, monthlyBudgetCents: 0,
+    ...c, isActive: true, monthlyBudget: null,
     _count: { expenses: db().expenses.filter((e) => e.categoryId === c.id).length },
   }));
 
 export const createExpense: DemoHandler = ({ body }) => {
   const d = db();
-  const amount = Number(body?.amountCents ?? 0);
-  if (amount <= 0) throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+  // `amount`, per CreateExpensePayload — not `amountCents`.
+  const amount = Number(body?.amount ?? body?.amountCents ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+  }
+  const categoryId = String(body?.categoryId ?? d.expenseCategories[0].id);
+  if (!d.expenseCategories.some((c) => c.id === categoryId)) {
+    throw new DemoHttpError(400, 'Pick a category.');
+  }
   const e = {
-    id: nextId('exp'), categoryId: String(body?.categoryId ?? d.expenseCategories[0].id),
-    amountCents: amount, date: body?.date ? String(body.date) : new Date().toISOString(),
-    description: String(body?.description ?? ''), reference: body?.reference ?? null,
+    id: nextId('exp'), categoryId,
+    amountCents: Math.round(amount),
+    // The picker sends an instant already resolved by ymdToTransactionISO.
+    date: body?.date ? String(body.date) : new Date().toISOString(),
+    description: String(body?.description ?? '').trim(),
+    reference: body?.reference ?? null,
     paymentMethod: String(body?.paymentMethod ?? 'CASH'),
     createdById: currentUserId(), createdAt: new Date().toISOString(),
   };
@@ -386,7 +454,20 @@ export const createExpense: DemoHandler = ({ body }) => {
 export const updateExpense: DemoHandler = ({ params, body }) => {
   const e = db().expenses.find((x) => x.id === params.id);
   if (!e) throw new DemoHttpError(404, 'Expense not found');
-  Object.assign(e, body ?? {});
+  // Mapped field by field: a blind Object.assign would write an `amount` key
+  // alongside `amountCents` and the row would keep its old figure.
+  if (body?.amount !== undefined) {
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new DemoHttpError(400, 'Enter an amount greater than zero.');
+    }
+    e.amountCents = Math.round(amount);
+  }
+  if (body?.categoryId) e.categoryId = String(body.categoryId);
+  if (body?.description !== undefined) e.description = String(body.description);
+  if (body?.date) e.date = String(body.date);
+  if (body?.paymentMethod) e.paymentMethod = String(body.paymentMethod);
+  if (body?.reference !== undefined) e.reference = body.reference;
   return shapeExpense(e);
 };
 
@@ -395,7 +476,9 @@ export const deleteExpense: DemoHandler = ({ params }) => {
   const i = d.expenses.findIndex((x) => x.id === params.id);
   if (i < 0) throw new DemoHttpError(404, 'Expense not found');
   d.expenses.splice(i, 1);
-  return { success: true };
+  // expensesApi.deleteExpense is typed { success, warning } — the page reads
+  // `warning` to show a note after the row disappears.
+  return { success: true, warning: null };
 };
 
 export const createExpenseCategory: DemoHandler = ({ body }) => {
@@ -406,7 +489,7 @@ export const createExpenseCategory: DemoHandler = ({ body }) => {
   };
   if (!c.name) throw new DemoHttpError(400, 'Name is required');
   d.expenseCategories.push(c);
-  return { ...c, isActive: true, monthlyBudgetCents: 0, _count: { expenses: 0 } };
+  return { ...c, isActive: true, monthlyBudget: null, _count: { expenses: 0 } };
 };
 
 export const listRecurring: DemoHandler = () => [];
@@ -416,7 +499,7 @@ export const updateExpenseCategory: DemoHandler = ({ params, body }) => {
   if (!c) throw new DemoHttpError(404, 'Category not found');
   if (body?.name) c.name = String(body.name);
   if (body?.color) c.color = String(body.color);
-  return { ...c, isActive: true, monthlyBudgetCents: 0 };
+  return { ...c, isActive: true, monthlyBudget: null };
 };
 
 export const deleteExpenseCategory: DemoHandler = ({ params }) => {
@@ -466,16 +549,13 @@ export const supplierPaymentVoucher: DemoHandler = ({ params }) => {
   };
 };
 
-export const supplierCreditLedger: DemoHandler = ({ params }) => {
-  const rows = db().purchases
-    .filter((p) => p.supplierId === params.id && p.status === 'CONFIRMED')
-    .map((p) => ({
-      id: p.id, date: p.date, type: 'PURCHASE', reference: p.number,
-      debitCents: p.paidCents, creditCents: p.totalCents,
-      balanceCents: p.totalCents - p.paidCents,
-    }));
-  return { rows, openingBalanceCents: 0, closingBalanceCents: supplierOutstanding(params.id) };
-};
+/**
+ * Unapplied credit movements for a supplier — a bare array, per
+ * `supplierPaymentsApi.creditLedger: Promise<SupplierCreditLedgerEntry[]>`.
+ * The demo allocates every payment as it is taken, so there is no floating
+ * credit to list.
+ */
+export const supplierCreditLedger: DemoHandler = () => [];
 
 export const supplierLumpSum: DemoHandler = ({ body }) => {
   const d = db();

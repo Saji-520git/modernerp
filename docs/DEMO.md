@@ -197,6 +197,28 @@ handler at all. 24 verb mismatches and 20 in-scope gaps, all closed.
 Endpoints belonging to the switched-off modules are listed in `OUT_OF_SCOPE` in
 that script, with the reason. Anything not on that list is a real gap and fails.
 
+### A matching method is not a matching SHAPE
+
+The route check proves an endpoint exists on the right verb. It cannot prove the
+RESPONSE is shaped the way the screen reads it — and a wrong shape fails at
+render, *after* the write has already landed, which is the worst place for it.
+Three were found by walking the pages:
+
+- `POST /customer-payments/lump-sum` returned `{ applied, unappliedCents }`;
+  the modal maps `result.allocations` and reads `appliedCents` /
+  `creditAddedCents`. The money moved correctly and the screen went blank.
+- `GET /expenses/summary` takes `{ year, month }`, not `{ from, to }`. Reading
+  from/to matched nothing, so every expense fell inside the window: the page
+  showed the whole year as "This Month" and Rs. 0.00 as "Last Month".
+- The `Expense` entity uses `amount`, not `amountCents` — the one place in the
+  app that breaks the `…Cents` convention. Emitting `amountCents` blanked the
+  money column, and reading it on create rejected every expense.
+
+The lesson is the same each time: read the declared type, do not infer it from
+the neighbours. `demo.test.ts` now asserts the exact fields each modal
+destructures, because TypeScript cannot check a shape the demo invents at
+runtime.
+
 ### The demo must build to `dist-demo/`, never `dist/`
 
 The Electron app packages `frontend/dist/`. A demo build landing there would

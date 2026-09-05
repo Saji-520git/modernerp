@@ -118,11 +118,15 @@
     max-width: 100% !important;
   }
 
-  /* ── 9. Long words break rather than widening the page ──────────────────── */
+  /* ── 9. Long words break rather than widening the page ────────────────────
+   * `break-word` breaks only a word that cannot fit on a line of its own;
+   * `anywhere` breaks at the first character that overflows, which turned
+   * "Asiri Hardware (Trade)" into "Asiri Hardwa / re (Trade)" on a customer
+   * heading that had room to wrap normally. */
   .erp-content h1,
   .erp-content h2,
   .erp-content h3 {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   /* ── 10. Room for the fixed DEMO badge at the foot of a scrolled page ───── */
