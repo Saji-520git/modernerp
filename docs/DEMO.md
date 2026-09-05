@@ -72,7 +72,9 @@ matters — POS, Products, Sales, Purchases and Inventory all branch on
 A sale rung up on the till deducts stock, records `SALE_OUT` movements, issues
 the next `INV-YYYY-NNNN` from **max+1** (never a row count — CLAUDE.md sprint
 21), and moves the dashboard and every report. Verified end to end at 375×812:
-`INV-2026-0656`, Rs. 4,950 cash, socket outlets 74 → 71 and hammers 23 → 21.
+a Rs. 4,950 cash sale took socket outlets 74 → 71 and hammers 23 → 21, wrote a
+`SALE_OUT` movement for each line, and moved the dashboard's "today" tile from
+Rs. 225.6K/8 orders to Rs. 230.6K/9.
 
 ### Dates
 
@@ -157,7 +159,7 @@ mobile top bar is `display: none`; `main` has `padding-top: 0`; `body` has
 
 ## 5. The safety rules, and how they are enforced
 
-Three things must never happen. None of them rely on being remembered.
+Four things must never happen. None of them rely on being remembered.
 
 ### The production build must not contain the demo
 
