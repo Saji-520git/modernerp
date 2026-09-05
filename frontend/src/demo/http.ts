@@ -19,7 +19,7 @@ export interface DemoCtx {
   path: string;
 }
 
-export type DemoHandler = (ctx: DemoCtx) => unknown;
+export type DemoHandler = (ctx: DemoCtx) => unknown | Promise<unknown>;
 
 /** Thrown by a handler to produce a real HTTP-shaped failure. */
 export class DemoHttpError extends Error {

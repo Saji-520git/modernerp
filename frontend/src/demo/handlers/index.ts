@@ -11,6 +11,8 @@ import * as catalog from './catalog';
 import * as selling from './selling';
 import * as buying from './buying';
 import * as analytics from './analytics';
+import * as importing from './importing';
+import * as attachments from './attachments';
 
 export const ROUTES: Record<string, DemoHandler> = {
   // ── Auth ──
@@ -46,7 +48,8 @@ export const ROUTES: Record<string, DemoHandler> = {
   'PATCH /warehouses/:id': core.updateWarehouse,
   'POST /warehouses/:id/set-default': core.setDefaultWarehouse,
   'POST /warehouses/:id/toggle': core.toggleWarehouse,
-  'GET /inventory/warehouses': core.listWarehouses,
+  // Bare array here; the paged envelope lives on GET /warehouses.
+  'GET /inventory/warehouses': core.listWarehousesBare,
 
   // ── Users ──
   'GET /users': core.listUsers,
@@ -222,6 +225,17 @@ export const ROUTES: Record<string, DemoHandler> = {
   'GET /reports/dashboard': analytics.dashboardStats,
   'GET /reports/today-summary': analytics.todaySummary,
 
-  // ── Attachments — the demo stores no files ──
-  'GET /attachments': () => [],
+  // ── Product import ──
+  // Reachable from the ADMIN nav with no module flag, so it must answer.
+  'POST /import/preview': importing.importPreview,
+  'POST /import/confirm': importing.importConfirm,
+
+  // ── Attachments ──
+  // AttachmentPanel is mounted on Purchase detail, Supplier Payments and
+  // Purchase Returns. `list` is GET /attachments/:refType/:refId — a two-segment
+  // path, so a bare 'GET /attachments' never matched it and every purchase order
+  // rendered "Could not load attachments." in red.
+  'GET /attachments/:refType/:refId': attachments.listAttachments,
+  'POST /attachments': attachments.uploadAttachment,
+  'DELETE /attachments/:id': attachments.deleteAttachment,
 };

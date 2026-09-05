@@ -212,11 +212,22 @@ export const listExpiring: DemoHandler = () => {
   return out;
 };
 
-export const batchDetail: DemoHandler = ({ params, query }) => {
+/**
+ * `GET /inventory/batches/:productId/:warehouseId`.
+ *
+ * Both ids are PATH parameters — `inventoryApi.getBatchDetail` puts them in the
+ * URL. Reading warehouseId off the query string matched nothing, so the batch
+ * drawer reported "No batch records (stock added before batch tracking)" for
+ * every product that has them. The POS route
+ * (`/pos/products/:productId/batches`) really does pass warehouseId as a query
+ * param, which is why `posBatches` below reads it differently — the two are not
+ * interchangeable.
+ */
+export const batchDetail: DemoHandler = ({ params }) => {
   const now = Date.now();
   const soon = now + 60 * 24 * 3600 * 1000;
   return db().batches
-    .filter((b) => b.productId === params.productId && b.warehouseId === query.warehouseId && b.qty > 0)
+    .filter((b) => b.productId === params.productId && b.warehouseId === params.warehouseId && b.qty > 0)
     .map((b) => {
       const t = b.expiryDate ? Date.parse(b.expiryDate) : null;
       return {

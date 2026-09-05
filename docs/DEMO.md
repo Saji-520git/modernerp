@@ -122,10 +122,24 @@ credit · expenses · POS shifts · users and permissions · warehouses ·
 categories, brands and units · the sales, inventory, products, customers,
 purchases, ageing and P&L reports.
 
+**Also walked click by click:** warehouses (list, detail, stats), users (create,
+deactivate, permissions), stock adjustments, warehouse transfers, batch write-off
+with its automatic loss expense, barcode labels, product import, and document
+attachments.
+
 **Deliberately off** — the optional modules are switched off in the seeded
 `moduleFlags`, so their nav entries are hidden rather than left as dead links:
 promotions, stock-take, loyalty, quotations, WhatsApp, data management, audit
 trail, product export.
+
+> **Out-of-scope is a claim about the NAV, not a convenience.** `/import` was on
+> that list and should not have been: Import Products sits in the ADMIN nav with
+> no module flag, so a visitor reaches it and can upload a file — which would
+> have answered a client's own product list with "not included in the demo".
+> Attachments were listed too, and `AttachmentPanel` is mounted on every
+> purchase order, where it rendered a red "Could not load attachments." Both are
+> implemented now. Before adding anything to `OUT_OF_SCOPE`, check `AppShell`:
+> an entry is only unreachable if a module flag or a role gate actually hides it.
 
 Any endpoint with no handler returns a 404 and logs
 `[demo] no handler for METHOD /path` to the console. Every page reachable from

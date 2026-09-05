@@ -76,8 +76,14 @@ for (const key of served) {
 // AppShell hides their nav entries and ModuleGuard redirects their routes — the
 // call sites are unreachable in a demo build. `products/export/csv` is behind
 // the productExport module; `settings/modules` needs `manage_modules`, which is
-// super-admin-only and no demo account holds. Attachments are file uploads the
-// demo has nowhere to put.
+// super-admin-only and no demo account holds.
+//
+// `/import` was on this list and should not have been: Import Products sits in
+// the ADMIN nav with NO module flag, so a visitor reaches it and can upload a
+// file — which would have answered a client's own product list with "not
+// included in the demo". It is implemented now. Before adding anything here,
+// check AppShell's nav: an entry is only unreachable if a module flag or a role
+// gate actually hides it.
 //
 // Anything NOT matched here is a real gap and fails the check.
 const OUT_OF_SCOPE = [
@@ -87,8 +93,6 @@ const OUT_OF_SCOPE = [
   /^\/stock-takes(\/|$)/,
   /^\/loyalty(\/|$)/,
   /^\/data-management(\/|$)/,
-  /^\/import(\/|$)/,
-  /^\/attachments(\/|$)/,
   /^\/products\/export\//,
   /^\/settings\/modules$/,
 ];

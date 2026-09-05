@@ -142,35 +142,96 @@ export const listUnits: DemoHandler = ({ query }) => {
 
 // ─── Warehouses ──────────────────────────────────────────────────────────────
 
-export const listWarehouses: DemoHandler = () =>
-  db().warehouses.map((w) => ({
-    ...w,
-    _count: { stock: db().stock.filter((s) => s.warehouseId === w.id && s.qty > 0).length },
-  }));
+/** The full `Warehouse` entity the pages render. */
+function shapeWarehouse(w: ReturnType<typeof db>['warehouses'][number]) {
+  const d = db();
+  return {
+    id: w.id, name: w.name, code: w.code,
+    address: null, city: w.city, phone: null, email: null,
+    // The service's union is MAIN | BRANCH | STORE | TRANSIT | VIRTUAL.
+    type: (w.type === 'WAREHOUSE' ? 'MAIN' : w.type) as 'MAIN' | 'BRANCH' | 'STORE' | 'TRANSIT' | 'VIRTUAL',
+    isActive: w.isActive, isDefault: w.isDefault,
+    notes: null, managerId: null, manager: null,
+    createdAt: d.seededAt, updatedAt: d.seededAt,
+    _count: {
+      stock: d.stock.filter((s) => s.warehouseId === w.id && s.qty > 0).length,
+      purchases: d.purchases.filter((p) => p.warehouseId === w.id).length,
+      sales: d.sales.filter((s) => s.warehouseId === w.id).length,
+      posShifts: d.shifts.filter((s) => s.warehouseId === w.id).length,
+    },
+  };
+}
+
+/**
+ * `GET /warehouses` — a PAGED envelope keyed `items`, not `data`.
+ *
+ * `warehousesApi.list` returns WarehouseListResponse; the page reads
+ * `data?.items ?? []`. Returning a bare array here left the Warehouses page
+ * showing its "No warehouses found" empty state over two seeded locations.
+ * The bare-array form still exists, but only where its callers want it —
+ * see `listWarehousesBare`.
+ */
+export const listWarehouses: DemoHandler = ({ query }) => {
+  let rows = db().warehouses.filter((w) => matches([w.name, w.code, w.city], query.search));
+  if (query.type) rows = rows.filter((w) => w.type === query.type);
+  if (query.isActive === 'true') rows = rows.filter((w) => w.isActive);
+  if (query.isActive === 'false') rows = rows.filter((w) => !w.isActive);
+  const page = Math.max(1, parseInt(query.page ?? '1', 10) || 1);
+  const pageSize = Math.max(1, parseInt(query.pageSize ?? '50', 10) || 50);
+  return {
+    items: rows.slice((page - 1) * pageSize, page * pageSize).map(shapeWarehouse),
+    total: rows.length, page, pageSize,
+  };
+};
+
+/**
+ * `GET /inventory/warehouses` and `GET /pos/warehouses` — a bare array.
+ * Two endpoints, two shapes; they cannot share one handler.
+ */
+export const listWarehousesBare: DemoHandler = () => db().warehouses.map(shapeWarehouse);
 
 export const warehouseStats: DemoHandler = ({ params }) => {
   const d = db();
   const rows = d.stock.filter((s) => s.warehouseId === params.id);
-  const valueCents = rows.reduce((n, s) => {
-    const p = d.products.find((x) => x.id === s.productId);
-    return n + s.qty * (p?.costCents ?? 0);
-  }, 0);
   return {
-    warehouse: warehouseById(params.id),
-    productCount: rows.filter((r) => r.qty > 0).length,
-    totalQty: rows.reduce((n, s) => n + s.qty, 0),
-    stockValueCents: valueCents,
-    lowStockCount: rows.filter((s) => {
-      const p = d.products.find((x) => x.id === s.productId);
-      return p ? s.qty <= p.reorderLevel : false;
-    }).length,
+    totalProducts: rows.filter((r) => r.qty > 0).length,
+    totalUnits: rows.reduce((n, s) => n + s.qty, 0),
+    openShifts: d.shifts.filter((s) => s.warehouseId === params.id && s.status === 'OPEN').length,
+    recentMovements: d.movements
+      .filter((m) => m.warehouseId === params.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 10)
+      .map((m) => {
+        const p = d.products.find((x) => x.id === m.productId);
+        return {
+          id: m.id, type: m.type, qty: m.qty, createdAt: m.createdAt,
+          product: { name: p?.name ?? 'Unknown', sku: p?.sku ?? '—' },
+        };
+      }),
   };
 };
 
+/** `GET /warehouses/:id` — WarehouseWithStock: the entity plus its stock rows. */
 export const getWarehouse: DemoHandler = ({ params }) => {
-  const w = db().warehouses.find((x) => x.id === params.id);
+  const d = db();
+  const w = d.warehouses.find((x) => x.id === params.id);
   if (!w) throw new DemoHttpError(404, 'Warehouse not found');
-  return { ...w, _count: { stock: db().stock.filter((s) => s.warehouseId === w.id && s.qty > 0).length } };
+  return {
+    ...shapeWarehouse(w),
+    stock: d.stock
+      .filter((s) => s.warehouseId === w.id && s.qty > 0)
+      .map((s) => {
+        const p = d.products.find((x) => x.id === s.productId);
+        return {
+          qty: s.qty,
+          product: {
+            id: s.productId, name: p?.name ?? 'Unknown', sku: p?.sku ?? '—',
+            costCents: p?.costCents ?? 0,
+          },
+        };
+      })
+      .sort((a, b) => a.product.name.localeCompare(b.product.name)),
+  };
 };
 
 export const createWarehouse: DemoHandler = ({ body }) => {
@@ -191,7 +252,7 @@ export const createWarehouse: DemoHandler = ({ body }) => {
   // A new location starts with a stock row per product, at zero, so it appears
   // in Stock Overview instead of being invisible until something moves.
   for (const p of d.products) d.stock.push({ productId: p.id, warehouseId: w.id, qty: 0, shortfallQty: 0 });
-  return w;
+  return shapeWarehouse(w);
 };
 
 export const updateWarehouse: DemoHandler = ({ params, body }) => {
@@ -201,20 +262,22 @@ export const updateWarehouse: DemoHandler = ({ params, body }) => {
   if (body?.code) w.code = String(body.code).toUpperCase();
   if (body?.city !== undefined) w.city = body.city;
   if (body?.type) w.type = String(body.type);
-  return w;
+  return shapeWarehouse(w);
 };
 
 export const setDefaultWarehouse: DemoHandler = ({ params }) => {
   const d = db();
   d.warehouses.forEach((w) => { w.isDefault = w.id === params.id; });
-  return d.warehouses.find((w) => w.id === params.id);
+  const w = d.warehouses.find((x) => x.id === params.id);
+  if (!w) throw new DemoHttpError(404, 'Warehouse not found');
+  return shapeWarehouse(w);
 };
 
 export const toggleWarehouse: DemoHandler = ({ params }) => {
   const w = db().warehouses.find((x) => x.id === params.id);
   if (!w) throw new DemoHttpError(404, 'Warehouse not found');
   w.isActive = !w.isActive;
-  return w;
+  return shapeWarehouse(w);
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────

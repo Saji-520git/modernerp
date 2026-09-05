@@ -22,9 +22,10 @@ import {
   confirmPurchase, receivePurchase, createPurchaseReturn, confirmPurchaseReturn,
   supplierCreditLedger, supplierLumpSum, createExpense, listExpenses, expenseSummary,
 } from './handlers/buying';
-import { listStock } from './handlers/catalog';
+import { listStock, batchDetail } from './handlers/catalog';
 import { dashboardSummary, profitLoss } from './handlers/analytics';
-import { login } from './handlers/core';
+import { login, listWarehouses, listWarehousesBare, warehouseStats } from './handlers/core';
+import { importPreview, importConfirm } from './handlers/importing';
 import { DemoHttpError } from './http';
 
 const ctx = (over: Partial<Parameters<typeof posCheckout>[0]> = {}) => ({
@@ -543,6 +544,111 @@ describe('purchasing', () => {
     confirmPurchaseReturn(ctx({ params: { id: ret.id } }));
     const after = getDb().stock.find((s) => s.productId === line.productId && s.warehouseId === po.warehouseId)!.qty;
     expect(after).toBe(before - 2);
+  });
+});
+
+describe('warehouses', () => {
+  it('GET /warehouses is a paged envelope keyed `items`', () => {
+    // warehousesApi.list returns WarehouseListResponse and the page reads
+    // `data?.items ?? []`. A bare array here left the Warehouses page showing
+    // "No warehouses found" over two seeded locations.
+    const out = listWarehouses(ctx()) as any;
+    expect(Array.isArray(out.items)).toBe(true);
+    expect(out.items.length).toBe(getDb().warehouses.length);
+    expect(typeof out.total).toBe('number');
+    expect(out).not.toHaveProperty('data');
+    for (const w of out.items) {
+      expect(typeof w.code).toBe('string');
+      expect(w._count).toHaveProperty('stock');
+      expect(w._count).toHaveProperty('purchases');
+    }
+  });
+
+  it('GET /inventory/warehouses is still a bare array', () => {
+    // Two endpoints, two shapes — they cannot share one handler.
+    const out = listWarehousesBare(ctx());
+    expect(Array.isArray(out)).toBe(true);
+  });
+
+  it('stats carry the fields WarehouseStats declares', () => {
+    const s = warehouseStats(ctx({ params: { id: 'wh_main' } })) as any;
+    expect(typeof s.totalProducts).toBe('number');
+    expect(typeof s.totalUnits).toBe('number');
+    expect(typeof s.openShifts).toBe('number');
+    expect(Array.isArray(s.recentMovements)).toBe(true);
+  });
+});
+
+describe('batches', () => {
+  it('reads BOTH ids from the path, not the query string', () => {
+    // inventoryApi.getBatchDetail puts productId AND warehouseId in the URL.
+    // Reading warehouseId off the query matched nothing, so the batch drawer
+    // reported "No batch records" for every product that has them.
+    const tracked = PRODUCTS.find((p) => p.isBatchTracked)!;
+    const rows = batchDetail(ctx({ params: { productId: tracked.id, warehouseId: 'wh_main' } })) as any[];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const b of rows) {
+      expect(typeof b.batchNumber === 'string' || b.batchNumber === null).toBe(true);
+      expect(['expired', 'expiring_soon', 'ok', 'no_expiry']).toContain(b.status);
+    }
+  });
+});
+
+describe('product import', () => {
+  // A stand-in for the FormData/File pair the page posts — enough surface for
+  // the handler, and no dependency on those globals existing under Node.
+  const upload = (csv: string) => ({ get: (k: string) => (k === 'file' ? { text: async () => csv } : null) });
+
+  const HEADER = 'name,sku,barcode,category,brand,unit,costPrice,sellPrice,taxPercent,reorderLevel,openingStock,warehouseName';
+
+  it('previews valid rows and reports the bad ones', async () => {
+    const clash = PRODUCTS[0].sku;
+    const csv = [
+      HEADER,
+      'Galvanised Bucket 12L,HW-BKT-12,,Tools & Hardware,Prestige Works,pcs,540,780,0,10,25,Gampola Main Store',
+      `Duplicate SKU Row,${clash},,,,pcs,100,150,0,1,0,`,
+      ',HW-NONAME,,,,pcs,100,150,0,1,0,',
+    ].join('\r\n');
+
+    const out = await importPreview(ctx({ body: upload(csv) })) as any;
+    expect(out.valid).toHaveLength(1);
+    expect(out.valid[0].sku).toBe('HW-BKT-12');
+    expect(out.errors.map((e: any) => e.field).sort()).toEqual(['name', 'sku']);
+  });
+
+  it('catches a SKU repeated within the file itself', async () => {
+    const csv = [HEADER,
+      'One,HW-SAME,,,,pcs,10,20,0,1,0,',
+      'Two,HW-SAME,,,,pcs,10,20,0,1,0,',
+    ].join('\r\n');
+    const out = await importPreview(ctx({ body: upload(csv) })) as any;
+    expect(out.valid).toHaveLength(1);
+    expect(out.errors.some((e: any) => /more than once/.test(e.message))).toBe(true);
+  });
+
+  it('confirm creates the product in cents, with opening stock at the named warehouse', async () => {
+    const csv = [HEADER,
+      'Galvanised Bucket 12L,HW-BKT-12,,Tools & Hardware,Prestige Works,pcs,540,780,0,10,25,Back Yard Store',
+    ].join('\r\n');
+
+    const before = getDb().products.length;
+    const summary = await importConfirm(ctx({ body: upload(csv) })) as any;
+    expect(summary).toEqual({ imported: 1, withStock: 1, skipped: 0 });
+    expect(getDb().products.length).toBe(before + 1);
+
+    const p = getDb().products.find((x) => x.sku === 'HW-BKT-12')!;
+    // The sheet is in rupees; the store is in integer cents.
+    expect(p.costCents).toBe(54_000);
+    expect(p.priceCents).toBe(78_000);
+
+    const rows = getDb().stock.filter((s) => s.productId === p.id);
+    expect(rows.find((s) => s.warehouseId === 'wh_yard')!.qty).toBe(25);
+    expect(rows.find((s) => s.warehouseId === 'wh_main')!.qty).toBe(0);
+    expect(getDb().movements.some((m) => m.refType === 'IMPORT' && m.qty === 25)).toBe(true);
+  });
+
+  it('rejects a file with no name/sku header', async () => {
+    await expect(importPreview(ctx({ body: upload('foo,bar\r\n1,2') }))).rejects.toThrow(/header row/i);
   });
 });
 

@@ -114,7 +114,9 @@ export const demoAdapter: AxiosAdapter = async (config: InternalAxiosRequestConf
     r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
 
     try {
-      const data = r.handler({ params, query, body, method, path });
+      // `await` so a handler may be async — the product import has to read the
+      // uploaded File before it can answer. Synchronous handlers are unaffected.
+      const data = await r.handler({ params, query, body, method, path });
       // Every handler mutates the same object graph; one save point keeps the
       // persisted copy consistent with what the UI just rendered.
       persist();
