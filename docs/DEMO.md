@@ -16,6 +16,7 @@ branch `demo/client-preview`, cut from `electron-v1.0` at `c607d83` (v1.1.8).
 | Branch | `demo/client-preview` (never merge into `electron-v1.0` without re-reading §5) |
 | Build | `npm run build:demo` → `frontend/dist-demo/` |
 | Host | Vercel, static. No cold start, no server cost. |
+| **Live** | **https://frontend-mu-khaki-19.vercel.app** (project `sajithfaiz1999-1725/frontend`) |
 | Data | Fictional. Generated in `src/demo/catalogue.ts`. |
 | Persistence | `localStorage`, per visitor, per browser. Nothing leaves the device. |
 
@@ -274,6 +275,34 @@ npx vercel deploy --prod
 lives for hashed assets, and `X-Robots-Tag: noindex` — the demo carries a named
 prospect's branding and should not turn up in a search for their business.
 `public/robots.txt` says the same for crawlers that read it first.
+
+### The deployment, as it stands
+
+First deploy: **https://frontend-mu-khaki-19.vercel.app**
+Immutable alias: `https://frontend-of8rb9hja-sajithfaiz1999-1725.vercel.app`
+
+Verified against the LIVE site, not a local copy — the served bundle carries
+`__MODERNERP_DEMO__`, the demo credentials and the fictional catalogue, and
+carries neither production seed credential. Headers confirmed on the wire:
+`X-Robots-Tag: noindex, nofollow`, `nosniff`, `strict-origin-when-cross-origin`,
+`max-age=0, must-revalidate` on the HTML and `immutable` on hashed assets.
+`robots.txt` serves `Disallow: /`. Signed in, the dashboard renders and
+attachments upload — no console errors.
+
+Three things to know about this deployment:
+
+1. **The project is named `frontend`**, because that is the directory it was
+   deployed from, so the URL reads `frontend-…`. Rename it in the Vercel
+   dashboard before sending the link to a client.
+2. **GitHub is not connected** — the CLI reported *"You need to add a Login
+   Connection to your GitHub account first (400)"*. Nothing is broken by it;
+   it only means no automatic redeploy on push. Re-run the deploy command to
+   publish an update, or connect GitHub in Vercel's account settings.
+3. **`vercel.json` is load-bearing.** Vercel auto-detected Vite and would have
+   run `vite build` into `dist/` — the PRODUCTION bundle, with the demo layer
+   stripped out and no backend to talk to. The config's explicit
+   `buildCommand`/`outputDirectory` is what makes the deploy build `dist-demo`.
+   Do not remove it.
 
 To preview the real bundle locally before deploying:
 

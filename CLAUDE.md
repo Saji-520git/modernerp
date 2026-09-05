@@ -724,7 +724,10 @@ Phase 3 sprints completed:
 ### Branch `demo/client-preview` — hosted client demo (2026-09-05)
 
 A frontend-only build of the ERP for a prospective client to click through
-online. Cut from `electron-v1.0` at `c607d83`. **Not for merging into
+online. Cut from `electron-v1.0` at `c607d83`. Live at
+**https://frontend-mu-khaki-19.vercel.app** (Vercel project
+`sajithfaiz1999-1725/frontend` — rename before sending to a client; GitHub is
+not connected, so redeploy by re-running the command). **Not for merging into
 `electron-v1.0`** — read `docs/DEMO.md` first if that is ever proposed.
 
 - No backend. The single axios instance in `services/api.ts` gets a replacement
